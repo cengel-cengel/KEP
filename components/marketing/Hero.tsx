@@ -30,15 +30,15 @@ export function Hero() {
       />
 
       <Container className="relative">
-        <div className="grid min-h-[78vh] items-center py-20 sm:py-28 lg:min-h-[80vh] lg:py-32">
-          <div className="max-w-2xl">
+        <div className="grid min-h-[78vh] items-center py-20 sm:py-28 lg:min-h-[80vh] lg:py-32 3xl:min-h-[700px] 3xl:max-h-[900px] 4xl:min-h-[800px]">
+          <div className="max-w-2xl 3xl:max-w-3xl">
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gold animate-fade-in">
               {t('eyebrow')}
             </p>
             <h1 className="mt-5 text-display-xl text-balance text-white animate-fade-up">
               {t('title')}
             </h1>
-            <p className="mt-6 max-w-xl text-lg leading-relaxed text-brand-100 animate-fade-up">
+            <p className="mt-6 max-w-xl text-lg leading-relaxed text-brand-100 animate-fade-up 3xl:max-w-2xl">
               {t('subtitle')}
             </p>
             <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center animate-fade-up">

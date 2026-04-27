@@ -39,7 +39,7 @@ export function Footer() {
   return (
     <footer className="bg-brand text-brand-100">
       <Container>
-        <div className="grid grid-cols-2 gap-10 py-16 md:grid-cols-5 md:gap-8">
+        <div className="grid grid-cols-2 gap-10 py-16 md:grid-cols-5 md:gap-8 3xl:gap-12 3xl:py-20 4xl:py-24">
           {/* Brand-Spalte */}
           <div className="col-span-2 md:col-span-2">
             <LogoKED invert />

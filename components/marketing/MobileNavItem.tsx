@@ -14,21 +14,23 @@ interface MobileNavItemProps {
 
 /**
  * Mobile-Navigationspunkt im Hamburger-Drawer.
- * Mit Submenu: Accordion-Toggle, mehrere können gleichzeitig offen sein.
- * Ohne Submenu: einfacher Link.
+ *
+ * Locale-Stickiness: Alle Links nutzen Link aus @/i18n/routing
+ * mit dem kanonischen pathname. Die aktuelle Locale wird vom
+ * Routing-Context automatisch beibehalten.
  */
 export function MobileNavItem({ item, onNavigate }: MobileNavItemProps) {
   const t = useTranslations('Navigation');
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
-  const isActive = pathname.startsWith(item.href);
+  const isActive = pathname.startsWith(item.pathname);
 
   if (!item.submenu) {
     return (
       <li>
         <Link
-          href={item.href}
+          href={{ pathname: item.pathname }}
           aria-current={isActive ? 'page' : undefined}
           onClick={onNavigate}
           className={cn(
@@ -74,10 +76,9 @@ export function MobileNavItem({ item, onNavigate }: MobileNavItemProps) {
 
       {open && (
         <ul className="mt-1 space-y-0.5 pl-4 border-l border-slate-200 ml-3">
-          {/* Direkter Link zur Hauptseite */}
           <li>
             <Link
-              href={item.href}
+              href={{ pathname: item.pathname }}
               onClick={onNavigate}
               className="block rounded-md px-3 py-2 text-sm font-medium text-brand hover:bg-slate-50"
             >
@@ -85,9 +86,9 @@ export function MobileNavItem({ item, onNavigate }: MobileNavItemProps) {
             </Link>
           </li>
           {item.submenu.map((sub) => (
-            <li key={`${sub.href}#${sub.hash ?? ''}`}>
+            <li key={`${sub.pathname}#${sub.hash ?? ''}`}>
               <Link
-                href={sub.hash ? { pathname: sub.href, hash: sub.hash } : { pathname: sub.href }}
+                href={sub.hash ? { pathname: sub.pathname, hash: sub.hash } : { pathname: sub.pathname }}
                 onClick={onNavigate}
                 className="block rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-brand"
               >

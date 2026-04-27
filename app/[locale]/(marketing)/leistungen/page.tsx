@@ -104,6 +104,8 @@ function ServiceBlock({
       <div
         className={cn(
           'relative aspect-[4/3] overflow-hidden rounded-2xl ring-1 ring-slate-200',
+          '3xl:aspect-[3/2] 4xl:aspect-[16/10]',
+          'mx-auto w-full max-w-[720px] 3xl:max-w-[820px]',
           reverse && 'lg:order-2',
         )}
       >
@@ -111,7 +113,7 @@ function ServiceBlock({
           src={SERVICE_IMAGES[serviceKey]}
           alt={tServices(`items.${serviceKey}.alt`)}
           fill
-          sizes="(min-width: 1024px) 50vw, 100vw"
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 100vw, (max-width: 1920px) 50vw, 820px"
           className="object-cover"
         />
       </div>

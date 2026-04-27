@@ -66,7 +66,7 @@ export function Header() {
           <nav aria-label="Hauptnavigation" className="hidden md:block">
             <ul className="flex items-center gap-1">
               {NAV_PRIMARY.map((item) => (
-                <HeaderNavItem key={item.href} item={item} />
+                <HeaderNavItem key={item.pathname} item={item} />
               ))}
             </ul>
           </nav>
@@ -148,7 +148,7 @@ export function Header() {
             <ul className="flex flex-col gap-1">
               {NAV_PRIMARY.map((item) => (
                 <MobileNavItem
-                  key={item.href}
+                  key={item.pathname}
                   item={item}
                   onNavigate={() => setMobileOpen(false)}
                 />

@@ -36,12 +36,12 @@ export function ServiceCard({
         className,
       )}
     >
-      <div className="relative aspect-[16/10] w-full overflow-hidden bg-brand-50">
+      <div className="relative aspect-[16/10] w-full overflow-hidden bg-brand-50 3xl:aspect-[16/9]">
         <Image
           src={image}
           alt={imageAlt}
           fill
-          sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1920px) 33vw, 560px"
           className="object-cover transition duration-500 group-hover:scale-[1.03]"
         />
         <div

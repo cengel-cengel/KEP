@@ -162,7 +162,7 @@ function TeamSection() {
           description={t('team_description')}
         />
 
-        <div className="mt-12 space-y-6">
+        <div className="mt-12 space-y-6 3xl:space-y-8 4xl:space-y-10">
           {TEAM_MEMBERS.map((member) => {
             const focus =
               (tMembers.raw(`${member.id}.focus`) as ReadonlyArray<string> | undefined) ?? [];

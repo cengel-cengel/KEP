@@ -17,9 +17,12 @@ const CLOSE_DELAY_MS = 200;
  * Desktop-Navigationspunkt. Wenn `submenu` vorhanden ist,
  * rendert ein Hover-Dropdown. Sonst ein einfacher Link.
  *
+ * Locale-Stickiness: Alle Links nutzen die i18n-Link-Komponente
+ * aus @/i18n/routing. Die Locale wird aus dem Routing-Context
+ * gelesen - kein expliziter `locale`-Prop, kein hardcoded Pfad.
+ *
  * - Hover öffnet, Mouse-Leave schließt mit 200 ms Delay
- * - ESC schließt
- * - Klick außerhalb schließt
+ * - ESC schließt, Klick außerhalb schließt
  * - role="menu" + role="menuitem"
  */
 export function HeaderNavItem({ item }: HeaderNavItemProps) {
@@ -30,9 +33,8 @@ export function HeaderNavItem({ item }: HeaderNavItemProps) {
   const wrapperRef = useRef<HTMLLIElement>(null);
   const menuId = useId();
 
-  const isActive = pathname.startsWith(item.href);
+  const isActive = pathname.startsWith(item.pathname);
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return;
     function onPointerDown(e: PointerEvent) {
@@ -44,7 +46,6 @@ export function HeaderNavItem({ item }: HeaderNavItemProps) {
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [open]);
 
-  // ESC closes
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -54,7 +55,6 @@ export function HeaderNavItem({ item }: HeaderNavItemProps) {
     return () => document.removeEventListener('keydown', onKey);
   }, [open]);
 
-  // Cleanup timer on unmount
   useEffect(() => {
     return () => {
       if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -73,12 +73,11 @@ export function HeaderNavItem({ item }: HeaderNavItemProps) {
     }
   }
 
-  // Einfacher Link ohne Submenu
   if (!item.submenu) {
     return (
       <li>
         <Link
-          href={item.href}
+          href={{ pathname: item.pathname }}
           aria-current={isActive ? 'page' : undefined}
           className={cn(
             'relative inline-flex h-10 items-center px-3 text-sm font-medium transition rounded-md',
@@ -147,29 +146,18 @@ export function HeaderNavItem({ item }: HeaderNavItemProps) {
         )}
       >
         <ul className="py-1">
-          {item.submenu.map((sub) => {
-            const subActive =
-              pathname.startsWith(sub.href) &&
-              typeof window !== 'undefined' &&
-              window.location.hash === `#${sub.hash}`;
-            return (
-              <li key={`${sub.href}#${sub.hash ?? ''}`} role="none">
-                <Link
-                  role="menuitem"
-                  href={sub.hash ? { pathname: sub.href, hash: sub.hash } : { pathname: sub.href }}
-                  onClick={() => setOpen(false)}
-                  className={cn(
-                    'block rounded-md px-3 py-2 text-sm transition',
-                    subActive
-                      ? 'text-gold-700 font-medium bg-gold-50'
-                      : 'text-slate-700 hover:bg-slate-50 hover:text-brand',
-                  )}
-                >
-                  {t(sub.labelKey)}
-                </Link>
-              </li>
-            );
-          })}
+          {item.submenu.map((sub) => (
+            <li key={`${sub.pathname}#${sub.hash ?? ''}`} role="none">
+              <Link
+                role="menuitem"
+                href={sub.hash ? { pathname: sub.pathname, hash: sub.hash } : { pathname: sub.pathname }}
+                onClick={() => setOpen(false)}
+                className="block rounded-md px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 hover:text-brand"
+              >
+                {t(sub.labelKey)}
+              </Link>
+            </li>
+          ))}
         </ul>
       </div>
     </li>

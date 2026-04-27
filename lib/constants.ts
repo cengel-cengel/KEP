@@ -49,6 +49,8 @@ export const ROUTES = {
 /**
  * Navigations-Items (Header) inkl. Submenüs.
  * `labelKey` referenziert eine Key in messages/Navigation.
+ * `pathname` ist der kanonische Pfad - i18n/routing übersetzt
+ *   automatisch in die korrekte Locale-Variante (z.B. /leistungen <-> /en/services).
  */
 export type PrimaryHref =
   | '/leistungen'
@@ -57,50 +59,50 @@ export type PrimaryHref =
   | '/kontakt';
 
 export type NavSubmenuItem = {
-  href: PrimaryHref;
+  pathname: PrimaryHref;
   hash?: string;
   labelKey: string;
 };
 
 export type NavPrimaryItem = {
-  href: PrimaryHref;
+  pathname: PrimaryHref;
   labelKey: string;
   submenu?: ReadonlyArray<NavSubmenuItem>;
 };
 
 export const NAV_PRIMARY: ReadonlyArray<NavPrimaryItem> = [
   {
-    href: '/leistungen',
+    pathname: '/leistungen',
     labelKey: 'services',
     submenu: [
-      { href: '/leistungen', hash: 'sammelgut', labelKey: 'submenu_services_groupage' },
-      { href: '/leistungen', hash: 'direkt', labelKey: 'submenu_services_direct' },
-      { href: '/leistungen', hash: 'uk', labelKey: 'submenu_services_uk' },
-      { href: '/leistungen', hash: 'lager', labelKey: 'submenu_services_warehouse' },
+      { pathname: '/leistungen', hash: 'sammelgut', labelKey: 'submenu_services_groupage' },
+      { pathname: '/leistungen', hash: 'direkt', labelKey: 'submenu_services_direct' },
+      { pathname: '/leistungen', hash: 'uk', labelKey: 'submenu_services_uk' },
+      { pathname: '/leistungen', hash: 'lager', labelKey: 'submenu_services_warehouse' },
     ],
   },
   {
-    href: '/netzwerk',
+    pathname: '/netzwerk',
     labelKey: 'network',
     submenu: [
-      { href: '/netzwerk', hash: 'stuttgart', labelKey: 'submenu_network_stuttgart' },
-      { href: '/netzwerk', hash: 'witham', labelKey: 'submenu_network_witham' },
-      { href: '/netzwerk', hash: 'stoke', labelKey: 'submenu_network_stoke' },
-      { href: '/netzwerk', hash: 'lines', labelKey: 'submenu_network_lines' },
-      { href: '/netzwerk', hash: 'partners', labelKey: 'submenu_network_partners' },
+      { pathname: '/netzwerk', hash: 'stuttgart', labelKey: 'submenu_network_stuttgart' },
+      { pathname: '/netzwerk', hash: 'witham', labelKey: 'submenu_network_witham' },
+      { pathname: '/netzwerk', hash: 'stoke', labelKey: 'submenu_network_stoke' },
+      { pathname: '/netzwerk', hash: 'lines', labelKey: 'submenu_network_lines' },
+      { pathname: '/netzwerk', hash: 'partners', labelKey: 'submenu_network_partners' },
     ],
   },
   {
-    href: '/ueber-uns',
+    pathname: '/ueber-uns',
     labelKey: 'about',
     submenu: [
-      { href: '/ueber-uns', hash: 'team', labelKey: 'submenu_about_team' },
-      { href: '/ueber-uns', hash: 'values', labelKey: 'submenu_about_values' },
-      { href: '/ueber-uns', hash: 'history', labelKey: 'submenu_about_history' },
+      { pathname: '/ueber-uns', hash: 'team', labelKey: 'submenu_about_team' },
+      { pathname: '/ueber-uns', hash: 'values', labelKey: 'submenu_about_values' },
+      { pathname: '/ueber-uns', hash: 'history', labelKey: 'submenu_about_history' },
     ],
   },
   {
-    href: '/kontakt',
+    pathname: '/kontakt',
     labelKey: 'contact',
   },
 ];

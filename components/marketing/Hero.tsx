@@ -17,7 +17,9 @@ export function Hero() {
         role="presentation"
         fill
         priority
+        fetchPriority="high"
         sizes="100vw"
+        quality={85}
         className="object-cover object-center opacity-70"
       />
       <div

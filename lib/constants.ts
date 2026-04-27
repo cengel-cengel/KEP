@@ -19,6 +19,13 @@ export const SITE = {
     city: 'Stuttgart',
     country: 'DE',
   },
+  /** Stuttgart Innenstadt - vor Go-Live mit echter Adresse abgleichen */
+  geo: {
+    latitude: 48.7758,
+    longitude: 9.1829,
+  },
+  googleSiteVerification: process.env.GOOGLE_SITE_VERIFICATION ?? '',
+  linkedInUrl: 'https://www.linkedin.com/',
 } as const;
 
 /**

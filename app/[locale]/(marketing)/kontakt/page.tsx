@@ -6,6 +6,7 @@ import { Section } from '@/components/ui/Section';
 import { PageHero } from '@/components/marketing/PageHero';
 import { ContactForm } from '@/components/marketing/ContactForm';
 import { buildLocaleMetadata } from '@/lib/seo';
+import { SITE } from '@/lib/constants';
 
 export async function generateMetadata({
   params,
@@ -30,10 +31,21 @@ export default async function ContactPage({
   const { locale } = await params;
   setRequestLocale(locale);
 
+  const contactPageJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'ContactPage',
+    name: 'Kontakt - KED Global Logistics',
+    mainEntity: { '@id': `${SITE.url}/#organization` },
+  };
+
   return (
     <>
       <ContactHero />
       <ContactBody />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(contactPageJsonLd) }}
+      />
     </>
   );
 }

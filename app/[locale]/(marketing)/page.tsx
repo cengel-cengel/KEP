@@ -26,6 +26,7 @@ import {
   ROUTES,
   SERVICE_IMAGES,
   SERVICE_KEYS,
+  SITE,
   TRUST_KEYS,
   type ServiceKey,
 } from '@/lib/constants';
@@ -68,6 +69,19 @@ export default async function LandingPage({
   const { locale } = await params;
   setRequestLocale(locale);
 
+  const tServices = await getTranslations({ locale, namespace: 'Services.items' });
+  const serviceJsonLd = SERVICE_KEYS.map((key) => ({
+    '@context': 'https://schema.org',
+    '@type': 'Service',
+    serviceType: tServices(`${key}.title`),
+    description: tServices(`${key}.long`),
+    provider: { '@id': `${SITE.url}/#organization` },
+    areaServed:
+      key === 'uk'
+        ? { '@type': 'Country', name: 'United Kingdom' }
+        : { '@type': 'Country', name: 'Germany' },
+  }));
+
   return (
     <>
       <Hero />
@@ -77,6 +91,11 @@ export default async function LandingPage({
       <TechSection />
       <TrustSection />
       <CtaBlock />
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceJsonLd) }}
+      />
     </>
   );
 }

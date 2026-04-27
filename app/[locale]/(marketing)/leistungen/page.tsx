@@ -11,9 +11,11 @@ import { FaqAccordion } from '@/components/marketing/FaqAccordion';
 import {
   SERVICE_IMAGES,
   SERVICE_KEYS,
+  SITE,
   type ServiceKey,
 } from '@/lib/constants';
 import { buildLocaleMetadata } from '@/lib/seo';
+import { JsonLd, buildBreadcrumbList } from '@/components/shared/JsonLd';
 
 export async function generateMetadata({
   params,
@@ -44,7 +46,22 @@ export default async function ServicesPage({
   setRequestLocale(locale);
 
   const t = await getTranslations({ locale, namespace: 'ServicesPage' });
+  const tNav = await getTranslations({ locale, namespace: 'Navigation' });
   const faq = (t.raw('faq') as ReadonlyArray<FaqItem>) ?? [];
+
+  const faqJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faq.map((q) => ({
+      '@type': 'Question',
+      name: q.q,
+      acceptedAnswer: { '@type': 'Answer', text: q.a },
+    })),
+  };
+
+  const breadcrumbJsonLd = buildBreadcrumbList([
+    { name: tNav('services'), url: `${SITE.url}/${locale === 'en' ? 'en/services' : 'leistungen'}` },
+  ]);
 
   return (
     <>
@@ -53,6 +70,9 @@ export default async function ServicesPage({
         title={t('hero_title')}
         description={t('hero_subtitle')}
       />
+
+      <JsonLd data={faqJsonLd} />
+      <JsonLd data={breadcrumbJsonLd} />
 
       <Section tone="white" spacing="none">
         <Container>

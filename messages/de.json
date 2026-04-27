@@ -66,25 +66,25 @@
         "title": "Sammelgut Deutschland",
         "short": "Tägliche Sammelgut-Linien zu allen deutschen Wirtschaftsräumen.",
         "long": "Schnelle und zuverlässige Stückgutlogistik mit fester Linientaktung. Bündelung in unserem Stuttgarter Hub, kurze Laufzeiten dank dichtem Partnernetzwerk.",
-        "alt": "KED-LKW-Flotte mit beleuchteter Stadtskyline im Hintergrund"
+        "alt": "KED Global Logistics LKW-Flotte vor beleuchteter Stadtskyline – Sammelgut Stuttgart"
       },
       "direkt": {
         "title": "Direktverkehre Europa",
         "short": "Schnelle Direktverkehre mit eigenem Equipment durch ganz Europa.",
         "long": "Teil- und Komplettladungen direkt vom Versender zum Empfänger. Eigener Fuhrpark und feste Subunternehmer für planbare Laufzeiten.",
-        "alt": "KED-Sattelzug an einer Hallenrampe im Sonnenuntergang"
+        "alt": "KED Global Logistics Sattelzug an Hallenrampe im Sonnenuntergang – Direktverkehre Europa"
       },
       "uk": {
         "title": "UK-Logistik",
         "short": "Tagesaktuelle Linien nach Großbritannien – inkl. Zollabwicklung.",
         "long": "Tägliche Hauptläufe nach Witham und Stoke – mit eigener UK-Tochter „England Logistics\" und kompletter Zollabwicklung aus einer Hand.",
-        "alt": "Beleuchtetes KED-Hub bei Nacht mit Stadtskyline"
+        "alt": "KED Global Logistics Hub bei Nacht mit Skyline – UK-Logistik Witham Stoke"
       },
       "lager": {
         "title": "Lager & Umschlag",
         "short": "Moderne Umschlagsflächen in Stuttgart für Ihre Logistik.",
         "long": "Cross-Docking, Kommissionierung und Lagerhaltung in unserem Stuttgarter Hub. Modernes WMS, tägliche Bestandsabgleiche, flexible Skalierung.",
-        "alt": "KED-Lagerhalle mit Gabelstaplern und Mitarbeitern"
+        "alt": "KED Global Logistics Lagerhalle Stuttgart mit Gabelstaplern – Lager und Umschlag"
       }
     }
   },
@@ -306,7 +306,7 @@
     "eyebrow": "Disposition & Technik",
     "title": "Modern. Digital. Transparent.",
     "description": "Unsere Disposition arbeitet mit modernem TMS, digitalen Frachtbriefen und einem Kundenportal, das alle Sendungen in Echtzeit zeigt.",
-    "image_alt": "Disposition mit Mitarbeitern an Monitoren – moderne Logistiksteuerung",
+    "image_alt": "KED Global Logistics Disposition – Mitarbeiter an Monitoren mit Live-Tracking weltweit",
     "features": {
       "tracking": { "title": "Live-Tracking", "description": "Sendungsstatus in Echtzeit – im Web und mobil." },
       "documents": { "title": "Digitale Dokumente", "description": "CMR, Lieferscheine und Rechnungen jederzeit verfügbar." },

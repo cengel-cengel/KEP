@@ -38,11 +38,11 @@ export function Hero() {
               {t('eyebrow')}
             </p>
             <h1
-              className="mt-5 max-w-[18ch] text-balance text-4xl font-bold leading-[1.05] tracking-tight text-white animate-fade-up [hyphens:auto] [overflow-wrap:break-word] sm:max-w-[20ch] sm:text-5xl md:text-6xl md:max-w-[24ch] lg:text-display-xl 3xl:text-display-2xl"
+              className="mt-5 max-w-[18ch] text-balance text-4xl font-bold leading-tight tracking-tight text-white animate-fade-up [hyphens:auto] [overflow-wrap:break-word] sm:max-w-[20ch] sm:text-5xl md:max-w-[24ch] md:text-6xl lg:max-w-[28ch] lg:text-7xl 3xl:text-display-2xl"
             >
-              {t.rich('title', {
-                line: (chunks) => <span className="block">{chunks}</span>,
-              })}
+              <span className="block">{t('title_line1')}</span>
+              <span className="block">{t('title_line2')}</span>
+              <span className="block">{t('title_line3')}</span>
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-brand-100 animate-fade-up 3xl:max-w-2xl">
               {t('subtitle')}

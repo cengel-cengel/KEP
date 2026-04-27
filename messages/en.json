@@ -44,7 +44,9 @@
   },
   "Hero": {
     "eyebrow": "We move. You grow.",
-    "title": "<line>Groupage.</line><line>Direct.</line><line>UK.</line>",
+    "title_line1": "Groupage.",
+    "title_line2": "Direct.",
+    "title_line3": "UK.",
     "subtitle": "Your forwarding agent from Stuttgart – with our own network in Great Britain. Personal, reliable and connected across Europe.",
     "cta_primary": "Get a quote",
     "cta_secondary": "Explore services"

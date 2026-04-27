@@ -44,7 +44,9 @@
   },
   "Hero": {
     "eyebrow": "We move. You grow.",
-    "title": "<line>Sammelgut.</line><line>Direktverkehre.</line><line>UK.</line>",
+    "title_line1": "Sammelgut.",
+    "title_line2": "Direktverkehre.",
+    "title_line3": "UK.",
     "subtitle": "Ihre Spedition aus Stuttgart – mit eigenem Netzwerk in Großbritannien. Persönlich, zuverlässig und europaweit vernetzt.",
     "cta_primary": "Angebot anfordern",
     "cta_secondary": "Leistungen ansehen"

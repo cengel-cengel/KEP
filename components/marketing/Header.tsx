@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { LogoKED } from '@/components/shared/LogoKED';
 import { LanguageSwitcher } from '@/components/marketing/LanguageSwitcher';
+import { HeaderNavItem } from '@/components/marketing/HeaderNavItem';
+import { MobileNavItem } from '@/components/marketing/MobileNavItem';
 
 export function Header() {
   const t = useTranslations('Navigation');
@@ -40,9 +42,6 @@ export function Header() {
     }
   }, [mobileOpen]);
 
-  const isActive = (href: string) =>
-    href === ROUTES.home ? pathname === '/' : pathname.startsWith(href);
-
   return (
     <header
       className={cn(
@@ -55,7 +54,6 @@ export function Header() {
     >
       <Container>
         <div className="flex h-16 items-center justify-between md:h-[72px]">
-          {/* Logo */}
           <Link
             href={ROUTES.home}
             aria-label={t('services')}
@@ -67,34 +65,13 @@ export function Header() {
           {/* Desktop-Nav */}
           <nav aria-label="Hauptnavigation" className="hidden md:block">
             <ul className="flex items-center gap-1">
-              {NAV_PRIMARY.map((item) => {
-                const active = isActive(item.href);
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      aria-current={active ? 'page' : undefined}
-                      className={cn(
-                        'relative inline-flex h-10 items-center px-3 text-sm font-medium transition rounded-md',
-                        active ? 'text-brand' : 'text-slate-600 hover:text-brand',
-                      )}
-                    >
-                      {t(item.labelKey)}
-                      <span
-                        className={cn(
-                          'absolute bottom-1 left-3 right-3 h-px transition-all',
-                          active ? 'bg-gold opacity-100' : 'bg-gold opacity-0',
-                        )}
-                        aria-hidden="true"
-                      />
-                    </Link>
-                  </li>
-                );
-              })}
+              {NAV_PRIMARY.map((item) => (
+                <HeaderNavItem key={item.href} item={item} />
+              ))}
             </ul>
           </nav>
 
-          {/* Desktop-CTAs + LanguageSwitcher */}
+          {/* Desktop-CTAs */}
           <div className="hidden items-center gap-3 md:flex">
             <LanguageSwitcher />
             <span aria-hidden="true" className="h-5 w-px bg-slate-200" />
@@ -106,7 +83,6 @@ export function Header() {
             </Button>
           </div>
 
-          {/* Mobile-Toggle */}
           <button
             type="button"
             className="inline-flex h-10 w-10 items-center justify-center rounded-md text-brand md:hidden hover:bg-slate-100"
@@ -166,27 +142,15 @@ export function Header() {
           </div>
 
           <ul className="flex flex-1 flex-col gap-1 overflow-y-auto bg-white p-4">
-            {NAV_PRIMARY.map((item) => {
-              const active = isActive(item.href);
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    aria-current={active ? 'page' : undefined}
-                    className={cn(
-                      'flex items-center justify-between rounded-md px-3 py-3 text-base font-medium',
-                      active
-                        ? 'bg-slate-100 text-brand'
-                        : 'text-slate-700 hover:bg-slate-50 hover:text-brand',
-                    )}
-                  >
-                    {t(item.labelKey)}
-                    {active && <span className="h-1.5 w-1.5 rounded-full bg-gold" aria-hidden="true" />}
-                  </Link>
-                </li>
-              );
-            })}
+            {NAV_PRIMARY.map((item) => (
+              <MobileNavItem
+                key={item.href}
+                item={item}
+                onNavigate={() => setMobileOpen(false)}
+              />
+            ))}
           </ul>
+
           <div className="shrink-0 border-t border-slate-100 bg-white p-4">
             <div className="flex flex-col gap-2">
               <Button asChild variant="outline" size="md" className="w-full">

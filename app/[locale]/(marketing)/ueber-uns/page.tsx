@@ -120,7 +120,7 @@ function StorySection() {
   const t = useTranslations('About');
 
   return (
-    <Section tone="white" spacing="lg">
+    <Section tone="white" spacing="lg" id="history" className="scroll-mt-24">
       <Container>
         <div className="grid items-start gap-12 lg:grid-cols-2">
           <div>
@@ -153,7 +153,7 @@ function TeamSection() {
   const tMembers = useTranslations('About.members');
 
   return (
-    <Section tone="slate" spacing="lg">
+    <Section tone="slate" spacing="lg" id="team" className="scroll-mt-24">
       <Container>
         <SectionHeader
           eyebrow={t('team_eyebrow')}
@@ -216,7 +216,7 @@ function ValuesSection() {
   const t = useTranslations('About');
 
   return (
-    <Section tone="white" spacing="lg">
+    <Section tone="white" spacing="lg" id="values" className="scroll-mt-24">
       <Container>
         <SectionHeader
           eyebrow={t('values_eyebrow')}

@@ -47,15 +47,63 @@ export const ROUTES = {
 } as const;
 
 /**
- * Navigations-Items (Header).
+ * Navigations-Items (Header) inkl. Submenüs.
  * `labelKey` referenziert eine Key in messages/Navigation.
  */
-export const NAV_PRIMARY = [
-  { href: ROUTES.leistungen, labelKey: 'services' },
-  { href: ROUTES.netzwerk, labelKey: 'network' },
-  { href: ROUTES.ueberUns, labelKey: 'about' },
-  { href: ROUTES.kontakt, labelKey: 'contact' },
-] as const;
+export type PrimaryHref =
+  | '/leistungen'
+  | '/netzwerk'
+  | '/ueber-uns'
+  | '/kontakt';
+
+export type NavSubmenuItem = {
+  href: PrimaryHref;
+  hash?: string;
+  labelKey: string;
+};
+
+export type NavPrimaryItem = {
+  href: PrimaryHref;
+  labelKey: string;
+  submenu?: ReadonlyArray<NavSubmenuItem>;
+};
+
+export const NAV_PRIMARY: ReadonlyArray<NavPrimaryItem> = [
+  {
+    href: '/leistungen',
+    labelKey: 'services',
+    submenu: [
+      { href: '/leistungen', hash: 'sammelgut', labelKey: 'submenu_services_groupage' },
+      { href: '/leistungen', hash: 'direkt', labelKey: 'submenu_services_direct' },
+      { href: '/leistungen', hash: 'uk', labelKey: 'submenu_services_uk' },
+      { href: '/leistungen', hash: 'lager', labelKey: 'submenu_services_warehouse' },
+    ],
+  },
+  {
+    href: '/netzwerk',
+    labelKey: 'network',
+    submenu: [
+      { href: '/netzwerk', hash: 'stuttgart', labelKey: 'submenu_network_stuttgart' },
+      { href: '/netzwerk', hash: 'witham', labelKey: 'submenu_network_witham' },
+      { href: '/netzwerk', hash: 'stoke', labelKey: 'submenu_network_stoke' },
+      { href: '/netzwerk', hash: 'lines', labelKey: 'submenu_network_lines' },
+      { href: '/netzwerk', hash: 'partners', labelKey: 'submenu_network_partners' },
+    ],
+  },
+  {
+    href: '/ueber-uns',
+    labelKey: 'about',
+    submenu: [
+      { href: '/ueber-uns', hash: 'team', labelKey: 'submenu_about_team' },
+      { href: '/ueber-uns', hash: 'values', labelKey: 'submenu_about_values' },
+      { href: '/ueber-uns', hash: 'history', labelKey: 'submenu_about_history' },
+    ],
+  },
+  {
+    href: '/kontakt',
+    labelKey: 'contact',
+  },
+];
 
 export const NAV_FOOTER = {
   services: [

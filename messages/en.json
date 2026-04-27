@@ -17,7 +17,19 @@
     "about": "About",
     "contact": "Contact",
     "portal": "Customer Portal",
-    "quote": "Get a quote"
+    "quote": "Get a quote",
+    "submenu_services_groupage": "Groupage Germany",
+    "submenu_services_direct": "Direct Shipments EU",
+    "submenu_services_uk": "UK Logistics",
+    "submenu_services_warehouse": "Warehousing & Handling",
+    "submenu_network_stuttgart": "Stuttgart HQ",
+    "submenu_network_witham": "Witham (UK South)",
+    "submenu_network_stoke": "Stoke (UK North)",
+    "submenu_network_lines": "Line services",
+    "submenu_network_partners": "Partners",
+    "submenu_about_team": "Management",
+    "submenu_about_values": "Values",
+    "submenu_about_history": "Story"
   },
   "LanguageSwitcher": {
     "label": "Switch language",
@@ -428,6 +440,87 @@
     "cta_title": "Let's talk about your logistics.",
     "cta_description": "You can reach our management and dispatch directly – no call centre, no detours.",
     "cta_primary": "Send inquiry"
+  },
+  "ContactPage": {
+    "page_title": "Contact – KED Global Logistics Stuttgart",
+    "page_description": "Contact KED Global Logistics in Stuttgart for groupage, direct shipments, UK logistics and warehousing. Personal advice, response within 24 hours.",
+    "hero_eyebrow": "Contact",
+    "hero_title": "We look forward to your inquiry.",
+    "hero_subtitle": "Personal, direct and without obligation – write to us or give us a call.",
+    "info_title": "How to reach us",
+    "info_address_label": "Address",
+    "info_address_lines": ["Musterstraße 1", "70173 Stuttgart, Germany"],
+    "info_phone_label": "Phone",
+    "info_phone": "+49 711 000 000",
+    "info_phone_hours": "Mon–Fri 08:00–17:00",
+    "info_email_label": "Email",
+    "info_email": "info@ked-global-logistics.de",
+    "info_email_response": "Reply within 24 hours",
+    "info_hours_label": "Opening hours",
+    "info_hours": "Mon–Fri 08:00–17:00",
+    "info_hours_weekend": "Sat & Sun closed",
+    "emergency_title": "Urgent inquiry outside opening hours?",
+    "emergency_text": "Write to our operations address, we monitor it around the clock.",
+    "emergency_email": "ops@ked-global-logistics.de",
+    "form_title": "Inquiry form",
+    "form_intro": "Briefly describe your needs. We'll get back to you within 24 hours with a quote.",
+    "form_first_name": "First name",
+    "form_last_name": "Last name",
+    "form_company": "Company",
+    "form_position": "Position",
+    "form_position_optional": "(optional)",
+    "form_email": "Email",
+    "form_phone": "Phone",
+    "form_phone_optional": "(optional)",
+    "form_service_type": "Service type",
+    "form_service_type_placeholder": "Please select",
+    "form_message": "Your message",
+    "form_message_placeholder": "Briefly describe shipment type, route and volume …",
+    "form_consent": "I have read the <link>privacy policy</link> and agree to the processing of my data.",
+    "form_submit": "Send inquiry",
+    "form_submitting": "Sending …",
+    "form_error": "Something went wrong while sending. Please try again later or give us a call.",
+    "service_options": {
+      "sammelgut": "Groupage Germany",
+      "direkt": "Direct EU",
+      "uk": "UK Logistics",
+      "lager": "Warehousing & Handling",
+      "other": "Other"
+    },
+    "errors": {
+      "first_name_required": "Please enter your first name.",
+      "last_name_required": "Please enter your last name.",
+      "company_required": "Please enter the company name.",
+      "email_required": "Please enter your email address.",
+      "email_invalid": "Please enter a valid email address.",
+      "service_required": "Please choose a service type.",
+      "message_required": "Please enter a message (at least 10 characters).",
+      "consent_required": "Please accept the privacy notice."
+    }
+  },
+  "ThanksPage": {
+    "page_title": "Thank you for your inquiry",
+    "page_description": "Your inquiry has reached KED Global Logistics. We will get back to you within 24 hours.",
+    "icon_label": "Successfully sent",
+    "title": "Thank you for your inquiry",
+    "subtitle": "We have received your message and will get back to you within 24 hours.",
+    "steps_title": "What happens next?",
+    "steps": [
+      {
+        "title": "Within 24 hours",
+        "description": "Our sales team reviews your inquiry and gets back to you."
+      },
+      {
+        "title": "Personal call",
+        "description": "We discuss your requirements directly over the phone."
+      },
+      {
+        "title": "Tailored quote",
+        "description": "You receive a concrete, transparent quote."
+      }
+    ],
+    "back_home": "Back to homepage",
+    "see_services": "Explore services"
   },
   "Cookie": {
     "title": "We use cookies",

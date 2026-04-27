@@ -219,7 +219,7 @@ function LinesSection() {
   const lines = (t.raw('lines') as ReadonlyArray<LineRow>) ?? [];
 
   return (
-    <Section tone="white" spacing="lg">
+    <Section tone="white" spacing="lg" id="lines" className="scroll-mt-24">
       <Container>
         <SectionHeader
           eyebrow={t('lines_eyebrow')}
@@ -299,7 +299,7 @@ function PartnersSection() {
   const partners = (t.raw('partners') as ReadonlyArray<PartnerItem>) ?? [];
 
   return (
-    <Section tone="slate" spacing="lg">
+    <Section tone="slate" spacing="lg" id="partners" className="scroll-mt-24">
       <Container>
         <SectionHeader
           eyebrow={t('partners_eyebrow')}

@@ -17,7 +17,19 @@
     "about": "Über uns",
     "contact": "Kontakt",
     "portal": "Kundenportal",
-    "quote": "Angebot anfordern"
+    "quote": "Angebot anfordern",
+    "submenu_services_groupage": "Sammelgut Deutschland",
+    "submenu_services_direct": "Direktverkehre EU",
+    "submenu_services_uk": "UK-Logistik",
+    "submenu_services_warehouse": "Lager & Umschlag",
+    "submenu_network_stuttgart": "Stuttgart HQ",
+    "submenu_network_witham": "Witham (UK Süd)",
+    "submenu_network_stoke": "Stoke (UK Nord)",
+    "submenu_network_lines": "Linienverkehre",
+    "submenu_network_partners": "Partner",
+    "submenu_about_team": "Geschäftsführung",
+    "submenu_about_values": "Werte",
+    "submenu_about_history": "Geschichte"
   },
   "LanguageSwitcher": {
     "label": "Sprache wechseln",
@@ -428,6 +440,87 @@
     "cta_title": "Sprechen wir über Ihre Logistik.",
     "cta_description": "Sie erreichen unsere Geschäftsführung und Disposition direkt – ohne Callcenter, ohne Umwege.",
     "cta_primary": "Anfrage senden"
+  },
+  "ContactPage": {
+    "page_title": "Kontakt – KED Global Logistics Stuttgart",
+    "page_description": "Kontaktieren Sie KED Global Logistics in Stuttgart für Sammelgut, Direktverkehre, UK-Logistik und Lager. Persönliche Beratung, Antwort innerhalb von 24 Stunden.",
+    "hero_eyebrow": "Kontakt",
+    "hero_title": "Wir freuen uns auf Ihre Anfrage.",
+    "hero_subtitle": "Persönlich, direkt und unverbindlich – schreiben Sie uns oder rufen Sie uns an.",
+    "info_title": "So erreichen Sie uns",
+    "info_address_label": "Adresse",
+    "info_address_lines": ["Musterstraße 1", "70173 Stuttgart, Deutschland"],
+    "info_phone_label": "Telefon",
+    "info_phone": "+49 711 000 000",
+    "info_phone_hours": "Mo–Fr 08:00–17:00 Uhr",
+    "info_email_label": "E-Mail",
+    "info_email": "info@ked-global-logistics.de",
+    "info_email_response": "Antwort innerhalb von 24 Stunden",
+    "info_hours_label": "Öffnungszeiten",
+    "info_hours": "Mo–Fr 08:00–17:00 Uhr",
+    "info_hours_weekend": "Sa & So geschlossen",
+    "emergency_title": "Dringende Anfrage außerhalb der Öffnungszeiten?",
+    "emergency_text": "Schreiben Sie an unsere Operations-Adresse, wir prüfen rund um die Uhr.",
+    "emergency_email": "ops@ked-global-logistics.de",
+    "form_title": "Anfrageformular",
+    "form_intro": "Beschreiben Sie kurz Ihren Bedarf. Wir melden uns binnen 24 Stunden mit einem Angebot.",
+    "form_first_name": "Vorname",
+    "form_last_name": "Nachname",
+    "form_company": "Firma",
+    "form_position": "Position",
+    "form_position_optional": "(optional)",
+    "form_email": "E-Mail",
+    "form_phone": "Telefon",
+    "form_phone_optional": "(optional)",
+    "form_service_type": "Verkehrsart",
+    "form_service_type_placeholder": "Bitte wählen",
+    "form_message": "Ihre Nachricht",
+    "form_message_placeholder": "Beschreiben Sie kurz Sendungsart, Relation und Volumen …",
+    "form_consent": "Ich habe die <link>Datenschutzerklärung</link> gelesen und stimme der Verarbeitung meiner Daten zu.",
+    "form_submit": "Anfrage senden",
+    "form_submitting": "Wird gesendet …",
+    "form_error": "Beim Senden ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut oder rufen Sie uns an.",
+    "service_options": {
+      "sammelgut": "Sammelgut Deutschland",
+      "direkt": "Direktverkehr EU",
+      "uk": "UK-Logistik",
+      "lager": "Lager & Umschlag",
+      "other": "Sonstiges"
+    },
+    "errors": {
+      "first_name_required": "Bitte Vornamen angeben.",
+      "last_name_required": "Bitte Nachnamen angeben.",
+      "company_required": "Bitte Firmenname angeben.",
+      "email_required": "Bitte E-Mail angeben.",
+      "email_invalid": "Bitte eine gültige E-Mail-Adresse eingeben.",
+      "service_required": "Bitte Verkehrsart wählen.",
+      "message_required": "Bitte Nachricht eingeben (mind. 10 Zeichen).",
+      "consent_required": "Bitte Datenschutzhinweise akzeptieren."
+    }
+  },
+  "ThanksPage": {
+    "page_title": "Vielen Dank für Ihre Anfrage",
+    "page_description": "Ihre Anfrage ist bei KED Global Logistics eingegangen. Wir melden uns innerhalb von 24 Stunden.",
+    "icon_label": "Erfolgreich gesendet",
+    "title": "Vielen Dank für Ihre Anfrage",
+    "subtitle": "Wir haben Ihre Nachricht erhalten und melden uns innerhalb von 24 Stunden bei Ihnen.",
+    "steps_title": "Was passiert jetzt?",
+    "steps": [
+      {
+        "title": "Innerhalb 24 Stunden",
+        "description": "Unser Vertrieb prüft Ihre Anfrage und meldet sich kurz zurück."
+      },
+      {
+        "title": "Persönlicher Rückruf",
+        "description": "Wir besprechen Ihre Anforderungen direkt am Telefon."
+      },
+      {
+        "title": "Maßgeschneidertes Angebot",
+        "description": "Sie erhalten ein konkretes, transparentes Angebot."
+      }
+    ],
+    "back_home": "Zurück zur Startseite",
+    "see_services": "Leistungen ansehen"
   },
   "Cookie": {
     "title": "Wir verwenden Cookies",

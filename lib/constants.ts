@@ -80,24 +80,40 @@ export const SERVICES = [
     id: 'sammelgut',
     title: 'Sammelgut Deutschland',
     short: 'Taegliche Sammelgut-Linien zu allen deutschen Wirtschaftsraeumen.',
+    long:
+      'Schnelle und zuverlaessige Stueckgutlogistik mit fester Linientaktung. ' +
+      'Buendelung in unserem Stuttgarter Hub, kurze Laufzeiten dank dichtem Partnernetzwerk.',
+    image: '/images/fleet-collage.jpg',
     icon: 'Boxes',
   },
   {
     id: 'direkt',
     title: 'Direktverkehre Europa',
     short: 'Schnelle Direktverkehre mit eigenem Equipment durch ganz Europa.',
+    long:
+      'Teil- und Komplettladungen direkt vom Versender zum Empfaenger. ' +
+      'Eigener Fuhrpark und feste Subunternehmer fuer planbare Laufzeiten.',
+    image: '/images/service-hauptlauf.jpg',
     icon: 'Truck',
   },
   {
     id: 'uk',
     title: 'UK-Logistik',
     short: 'Tagesaktuelle Linien nach Grossbritannien - inkl. Zollabwicklung.',
+    long:
+      'Taegliche Hauptlaeufe nach Witham und Stoke - mit eigener UK-Tochter ' +
+      '"England Logistics" und kompletter Zollabwicklung aus einer Hand.',
+    image: '/images/network-hub.jpg',
     icon: 'Ship',
   },
   {
     id: 'lager',
     title: 'Lager & Umschlag',
     short: 'Moderne Umschlagsflaechen in Stuttgart fuer Ihre Logistik.',
+    long:
+      'Cross-Docking, Kommissionierung und Lagerhaltung in unserem Stuttgarter Hub. ' +
+      'Modernes WMS, taegliche Bestandsabgleiche, flexible Skalierung.',
+    image: '/images/service-lager.jpg',
     icon: 'Warehouse',
   },
 ] as const;
@@ -122,9 +138,32 @@ export const TEAM = [
 
 export const STATS = [
   { value: '45+', label: 'Jahre Erfahrung' },
-  { value: '2', label: 'Standorte DE & UK' },
-  { value: 'Taeglich', label: 'UK-Linien' },
-  { value: '> 50', label: 'Partner europaweit' },
+  { value: '2', label: 'UK-Hubs (Witham + Stoke)' },
+  { value: '100%', label: 'Eigenes Netzwerk' },
+  { value: '24/7', label: 'Live-Tracking' },
+] as const;
+
+export const LOCATIONS = [
+  {
+    id: 'stuttgart',
+    label: 'Hauptstandort',
+    name: 'Stuttgart',
+    role: 'Headquarter & Hub Deutschland',
+    address: 'Musterstrasse 1, 70173 Stuttgart',
+    phone: '+49 711 000 000',
+    description:
+      'Unser Hauptstandort und zentrale Drehscheibe fuer Sammelgut, Direktverkehre und UK-Linien.',
+  },
+  {
+    id: 'uk',
+    label: 'Strategischer Partner',
+    name: 'England Logistics',
+    role: 'Hubs Witham & Stoke-on-Trent',
+    address: 'Witham, Essex / Stoke-on-Trent, Staffordshire',
+    phone: '+44 ...',
+    description:
+      'Unser exklusiver UK-Partner mit zwei Hubs. Komplette Distribution, Zollabwicklung und Last-Mile auf der Insel.',
+  },
 ] as const;
 
 export const SHIPMENT_STATUS = {

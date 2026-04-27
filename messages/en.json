@@ -182,6 +182,91 @@
       }
     ]
   },
+  "NetworkPage": {
+    "page_title": "Network – Stuttgart, Witham, Stoke",
+    "page_description": "Our network: headquarters in Stuttgart, exclusive UK partner England Logistics with hubs in Witham (Essex) and Stoke-on-Trent. Daily line services and IDS connection.",
+    "hero_eyebrow": "Network",
+    "hero_title": "Stuttgart meets Great Britain.",
+    "hero_subtitle": "A central hub in Stuttgart, an exclusive partner on the island. Together we cover Germany, Europe and Great Britain with fixed line services.",
+    "hq_eyebrow": "Headquarters",
+    "hq_title": "Stuttgart",
+    "hq_image_alt": "KED headquarters Stuttgart at night with illuminated warehouse and skyline",
+    "hq_description": "Our headquarters is conveniently located in the Stuttgart economic area with direct access to the A8 and A81 motorways. The cross-dock hall is the daily control centre for groupage, direct shipments and UK trunks – including our own dispatch on site.",
+    "hq_address_label": "Address & contact",
+    "hq_stats": {
+      "hall_area": { "value": "[≈ 6,500 m²]", "label": "Warehouse area" },
+      "gates": { "value": "[24]", "label": "Loading gates" },
+      "daily_shipments": { "value": "[> 800]", "label": "Shipments per day" },
+      "employees": { "value": "[> 60]", "label": "Employees" }
+    },
+    "partner_eyebrow": "England Logistics",
+    "partner_title": "Strategic Partner UK",
+    "partner_intro": "Our exclusive UK partner with two hubs. England Logistics is an IDS member, runs its own UK-wide distribution and shares our quality standards: live data exchange, joint KPIs and dedicated contacts.",
+    "witham": {
+      "eyebrow": "Southern Hub",
+      "name": "Witham",
+      "location": "Essex, UK",
+      "description": "Our main hub for southern and central England including London. Directly on the A12 with fast access via Felixstowe.",
+      "coverage_label": "Coverage",
+      "coverage": "Southern & central England incl. Greater London",
+      "transit_label": "Transit from Stuttgart",
+      "transit": "from 48 hours",
+      "frequency_label": "Frequency",
+      "frequency": "Mon–Fri"
+    },
+    "stoke": {
+      "eyebrow": "Northern Hub",
+      "name": "Stoke-on-Trent",
+      "location": "Staffordshire, UK",
+      "description": "Hub for the Midlands, northern England and Scotland. Optimal location between Manchester, Birmingham and Liverpool.",
+      "coverage_label": "Coverage",
+      "coverage": "Midlands, northern England, Scotland",
+      "transit_label": "Transit from Stuttgart",
+      "transit": "48–72 hours",
+      "frequency_label": "Frequency",
+      "frequency": "Mon–Fri"
+    },
+    "lines_eyebrow": "Line services",
+    "lines_title": "Daily Line Services",
+    "lines_description": "Fixed departure days and times – predictable like a timetable.",
+    "lines_columns": {
+      "route": "Route",
+      "frequency": "Frequency",
+      "transit": "Transit",
+      "cutoff": "Cut-off"
+    },
+    "lines": [
+      { "route": "Stuttgart → Witham", "frequency": "Mon–Fri", "transit": "48 h", "cutoff": "14:00 CET" },
+      { "route": "Witham → Stuttgart", "frequency": "Mon–Fri", "transit": "48 h", "cutoff": "12:00 GMT" },
+      { "route": "Stuttgart → Stoke", "frequency": "Mon–Fri", "transit": "48–72 h", "cutoff": "14:00 CET" },
+      { "route": "Stoke → Stuttgart", "frequency": "Mon–Fri", "transit": "48–72 h", "cutoff": "12:00 GMT" }
+    ],
+    "partners_eyebrow": "Network",
+    "partners_title": "Our network partners",
+    "partners_description": "We work with established partner networks that secure our reach and quality.",
+    "partners": [
+      {
+        "name": "IDS Logistik",
+        "country": "Germany",
+        "description": "One of the largest LCL cooperatives in Germany. More than 50 system partners ensure nationwide groupage distribution."
+      },
+      {
+        "name": "England Logistics",
+        "country": "United Kingdom",
+        "description": "Exclusive UK partner with own hubs in Witham and Stoke-on-Trent. Full distribution and customs clearance."
+      },
+      {
+        "name": "[Further partners]",
+        "country": "Europe",
+        "description": "Selected direct-transport and warehouse partners in France, Benelux, Italy and Spain."
+      }
+    ],
+    "partners_disclaimer": "Partner logos will be added once approved.",
+    "cta_eyebrow": "UK shipments",
+    "cta_title": "Shipping to or from the UK?",
+    "cta_description": "We handle the trunk run, customs and last-mile – without Brexit hassle and with a transparent price.",
+    "cta_button": "Send UK inquiry"
+  },
   "Locations": {
     "eyebrow": "Locations",
     "title": "Stuttgart meets Great Britain.",

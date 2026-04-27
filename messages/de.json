@@ -182,6 +182,91 @@
       }
     ]
   },
+  "NetworkPage": {
+    "page_title": "Netzwerk – Stuttgart, Witham, Stoke",
+    "page_description": "Unser Netzwerk: Hauptstandort Stuttgart, exklusiver UK-Partner England Logistics mit Hubs in Witham (Essex) und Stoke-on-Trent. Tägliche Linienverkehre und IDS-Anbindung.",
+    "hero_eyebrow": "Netzwerk",
+    "hero_title": "Stuttgart trifft Großbritannien.",
+    "hero_subtitle": "Ein zentraler Hub in Stuttgart, ein exklusiver Partner auf der Insel. Gemeinsam decken wir Deutschland, Europa und Großbritannien mit festen Linienverkehren ab.",
+    "hq_eyebrow": "Hauptstandort",
+    "hq_title": "Stuttgart",
+    "hq_image_alt": "KED-Hauptstandort Stuttgart bei Nacht mit beleuchteter Halle und Skyline",
+    "hq_description": "Unser Hauptstandort liegt verkehrsgünstig im Stuttgarter Wirtschaftsraum mit direkter Anbindung an A8 und A81. Die Cross-Dock-Halle ist täglich Schaltzentrale für Sammelgut, Direktverkehre und UK-Hauptläufe – inkl. eigener Disposition vor Ort.",
+    "hq_address_label": "Adresse & Kontakt",
+    "hq_stats": {
+      "hall_area": { "value": "[≈ 6.500 m²]", "label": "Hallenfläche" },
+      "gates": { "value": "[24]", "label": "Verladetore" },
+      "daily_shipments": { "value": "[> 800]", "label": "Sendungen täglich" },
+      "employees": { "value": "[> 60]", "label": "Mitarbeitende" }
+    },
+    "partner_eyebrow": "England Logistics",
+    "partner_title": "Strategischer Partner UK",
+    "partner_intro": "Unser exklusiver UK-Partner mit zwei Hubs. England Logistics ist IDS-Mitglied, betreibt eigene Distribution UK-weit und teilt unsere Qualitätsstandards: Live-Datenaustausch, gemeinsame KPIs und feste Ansprechpartner.",
+    "witham": {
+      "eyebrow": "Hub Süd",
+      "name": "Witham",
+      "location": "Essex, UK",
+      "description": "Unser Hauptdrehkreuz für Süd- und Mittelengland inklusive London. Direkt an der A12, schnelle Anbindung über Felixstowe.",
+      "coverage_label": "Coverage",
+      "coverage": "Süd-/Mittelengland inkl. Greater London",
+      "transit_label": "Laufzeit ab Stuttgart",
+      "transit": "ab 48 Stunden",
+      "frequency_label": "Frequenz",
+      "frequency": "Mo–Fr"
+    },
+    "stoke": {
+      "eyebrow": "Hub Nord",
+      "name": "Stoke-on-Trent",
+      "location": "Staffordshire, UK",
+      "description": "Hub für die Midlands, Nordengland und Schottland. Optimale Lage zwischen Manchester, Birmingham und Liverpool.",
+      "coverage_label": "Coverage",
+      "coverage": "Midlands, Nordengland, Schottland",
+      "transit_label": "Laufzeit ab Stuttgart",
+      "transit": "48–72 Stunden",
+      "frequency_label": "Frequenz",
+      "frequency": "Mo–Fr"
+    },
+    "lines_eyebrow": "Linienverkehre",
+    "lines_title": "Tägliche Linienverkehre",
+    "lines_description": "Feste Abfahrtstage und -zeiten – planbar wie ein Fahrplan.",
+    "lines_columns": {
+      "route": "Strecke",
+      "frequency": "Frequenz",
+      "transit": "Laufzeit",
+      "cutoff": "Cut-off"
+    },
+    "lines": [
+      { "route": "Stuttgart → Witham", "frequency": "Mo–Fr", "transit": "48 h", "cutoff": "14:00 MEZ" },
+      { "route": "Witham → Stuttgart", "frequency": "Mo–Fr", "transit": "48 h", "cutoff": "12:00 GMT" },
+      { "route": "Stuttgart → Stoke", "frequency": "Mo–Fr", "transit": "48–72 h", "cutoff": "14:00 MEZ" },
+      { "route": "Stoke → Stuttgart", "frequency": "Mo–Fr", "transit": "48–72 h", "cutoff": "12:00 GMT" }
+    ],
+    "partners_eyebrow": "Netzwerk",
+    "partners_title": "Unsere Netzwerkpartner",
+    "partners_description": "Wir arbeiten mit etablierten Partnernetzwerken, die unsere Reichweite und Qualität sichern.",
+    "partners": [
+      {
+        "name": "IDS Logistik",
+        "country": "Deutschland",
+        "description": "Eines der größten Stückgut-Kooperationen Deutschlands. Über 50 Systempartner sorgen für flächendeckende Sammelgut-Verteilung."
+      },
+      {
+        "name": "England Logistics",
+        "country": "Großbritannien",
+        "description": "Exklusiver UK-Partner mit eigenen Hubs in Witham und Stoke-on-Trent. Komplette Distribution und Zollabwicklung."
+      },
+      {
+        "name": "[Weitere Partner]",
+        "country": "Europa",
+        "description": "Ausgewählte Direktverkehrs- und Lager-Partner in Frankreich, Benelux, Italien und Spanien."
+      }
+    ],
+    "partners_disclaimer": "Logos der Partner werden nach jeweiliger Freigabe ergänzt.",
+    "cta_eyebrow": "UK-Verkehre",
+    "cta_title": "Sendung nach UK oder aus UK?",
+    "cta_description": "Wir kümmern uns um Hauptlauf, Zoll und Last-Mile – ohne Brexit-Stress, mit transparentem Preis.",
+    "cta_button": "UK-Anfrage senden"
+  },
   "Locations": {
     "eyebrow": "Standorte",
     "title": "Stuttgart trifft Großbritannien.",

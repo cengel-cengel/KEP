@@ -137,19 +137,24 @@ export function Header() {
             </button>
           </div>
 
-          <div className="shrink-0 border-b border-slate-100 bg-white px-4 py-4">
+          <div className="shrink-0 border-b border-slate-100 bg-white px-4 py-3">
             <LanguageSwitcher variant="mobile" />
           </div>
 
-          <ul className="flex flex-1 flex-col gap-1 overflow-y-auto bg-white p-4">
-            {NAV_PRIMARY.map((item) => (
-              <MobileNavItem
-                key={item.href}
-                item={item}
-                onNavigate={() => setMobileOpen(false)}
-              />
-            ))}
-          </ul>
+          <nav
+            aria-label="Hauptnavigation mobil"
+            className="min-h-0 flex-1 overflow-y-auto bg-white p-4"
+          >
+            <ul className="flex flex-col gap-1">
+              {NAV_PRIMARY.map((item) => (
+                <MobileNavItem
+                  key={item.href}
+                  item={item}
+                  onNavigate={() => setMobileOpen(false)}
+                />
+              ))}
+            </ul>
+          </nav>
 
           <div className="shrink-0 border-t border-slate-100 bg-white p-4">
             <div className="flex flex-col gap-2">

@@ -4,7 +4,7 @@
 
 export const SITE = {
   name: 'KED Global Logistics',
-  fullName: 'Engel, Dehnavi & Kempf Global Logistics GmbH',
+  fullName: 'Engel, The Navi & Kempf Global Logistics GmbH',
   shortName: 'KED',
   tagline: 'Sammelgut. Direktverkehre. UK.',
   description:
@@ -120,12 +120,12 @@ export const SERVICES = [
 
 export const TEAM = [
   {
-    id: 'denawi',
-    initials: 'DD',
-    name: 'Dawoud Denawi',
+    id: 'thenavi',
+    initials: 'DTN',
+    name: 'Dawoud The Navi',
     role: 'Head of Operations',
     description:
-      'Mit über 20 Jahren internationaler Speditionserfahrung verantwortet Dawoud Denawi den operativen Kernbereich von KED Global Logistics. Sein Fokus liegt auf der durchgängigen Prozessoptimierung, Logistikautomatisierung und der konsequenten Digitalisierung sämtlicher Transport- und Hallenprozesse. Als treibende Kraft hinter der Internationalisierung des Unternehmens hat er strategische Partnerschaften – darunter das exklusive UK-Netzwerk mit England Logistics in Witham und Stoke – aufgebaut und zur betrieblichen Reife geführt. Seine Verantwortungsbereiche umfassen Disposition, Hallenmanagement, Subunternehmer-Steuerung, Qualitätsmanagement nach DIN EN ISO 9001, Compliance (ADR/Gefahrgut, Zollabwicklung) sowie die operative Skalierung für Sendungsvolumen bis 100.000 Sendungen täglich.',
+      'Mit über 20 Jahren internationaler Speditionserfahrung verantwortet Dawoud The Navi den operativen Kernbereich von KED Global Logistics. Sein Fokus liegt auf der durchgängigen Prozessoptimierung, Logistikautomatisierung und der konsequenten Digitalisierung sämtlicher Transport- und Hallenprozesse. Als treibende Kraft hinter der Internationalisierung des Unternehmens hat er strategische Partnerschaften – darunter das exklusive UK-Netzwerk mit England Logistics in Witham und Stoke – aufgebaut und zur betrieblichen Reife geführt. Seine Verantwortungsbereiche umfassen Disposition, Hallenmanagement, Subunternehmer-Steuerung, Qualitätsmanagement nach DIN EN ISO 9001, Compliance (ADR/Gefahrgut, Zollabwicklung) sowie die operative Skalierung für Sendungsvolumen bis 100.000 Sendungen täglich.',
     focus: [
       'Prozessoptimierung',
       'Logistikautomatisierung',
@@ -137,11 +137,11 @@ export const TEAM = [
   },
   {
     id: 'kempf',
-    initials: 'MK',
-    name: 'Markus Kempf',
+    initials: 'MLJK',
+    name: 'Markus Long John Kempf',
     role: 'Head of Business Development & Solutions',
     description:
-      'Markus Kempf entwickelt maßgeschneiderte Logistik-Lösungen für anspruchsvolle Industrie- und Handelskunden. Als Experte für Supply-Chain-Management gestaltet er ganzheitliche Konzepte, die weit über klassischen Transport hinausgehen: von Lieferantenanbindung über Lagerstrategien bis zur letzten Meile. Sein Anspruch ist es, jedem Kunden eine planbare, transparente und skalierbare Supply Chain zu bieten – integriert in dessen ERP-Systeme, mit Echtzeit-Sichtbarkeit und klaren KPIs. Im Vertrieb verbindet er tiefes operatives Verständnis mit strategischer Beratungskompetenz.',
+      'Markus Long John Kempf entwickelt maßgeschneiderte Logistik-Lösungen für anspruchsvolle Industrie- und Handelskunden. Als Experte für Supply-Chain-Management gestaltet er ganzheitliche Konzepte, die weit über klassischen Transport hinausgehen: von Lieferantenanbindung über Lagerstrategien bis zur letzten Meile. Sein Anspruch ist es, jedem Kunden eine planbare, transparente und skalierbare Supply Chain zu bieten – integriert in dessen ERP-Systeme, mit Echtzeit-Sichtbarkeit und klaren KPIs. Im Vertrieb verbindet er tiefes operatives Verständnis mit strategischer Beratungskompetenz.',
     focus: [
       'Supply-Chain-Management',
       'Vertrieb & Key Account',

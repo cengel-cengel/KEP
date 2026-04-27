@@ -10,10 +10,20 @@ interface AvatarInitialsProps {
   className?: string;
 }
 
-const SIZES = {
-  md: 'h-16 w-16 text-lg',
-  lg: 'h-20 w-20 text-2xl',
-  xl: 'h-24 w-24 text-3xl',
+const CONTAINER_SIZES = {
+  md: 'h-16 w-16',
+  lg: 'h-20 w-20',
+  xl: 'h-24 w-24',
+} as const;
+
+/**
+ * Schriftgrößen je Avatar-Größe und Initialen-Länge.
+ * 4+ Zeichen (z.B. "MLJK") werden kleiner gesetzt damit sie passen.
+ */
+const TEXT_SIZES = {
+  md: { short: 'text-lg', long: 'text-sm tracking-tight' },
+  lg: { short: 'text-2xl', long: 'text-base tracking-tight' },
+  xl: { short: 'text-3xl', long: 'text-xl tracking-tight' },
 } as const;
 
 /**
@@ -21,9 +31,12 @@ const SIZES = {
  *
  * TODO: Echte Portraitfotos einsetzen, sobald verfügbar.
  * Vorgehen: <Image src="/images/team/<id>.jpg" /> in einem
- * runden Container statt der Initialen-SVG.
+ * runden Container statt der Initialen.
  */
 export function AvatarInitials({ initials, name, size = 'lg', className }: AvatarInitialsProps) {
+  const lengthBucket = initials.length >= 4 ? 'long' : 'short';
+  const textSize = TEXT_SIZES[size][lengthBucket];
+
   return (
     <span
       role="img"
@@ -31,7 +44,8 @@ export function AvatarInitials({ initials, name, size = 'lg', className }: Avata
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-full bg-gold font-bold text-brand',
         'ring-4 ring-gold-100',
-        SIZES[size],
+        CONTAINER_SIZES[size],
+        textSize,
         className,
       )}
     >

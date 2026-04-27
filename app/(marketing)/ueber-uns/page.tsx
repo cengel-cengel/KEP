@@ -12,7 +12,7 @@ export const metadata = {
   ...buildMetadata({
     title: 'Über uns – Geschäftsführung & Werte',
     description:
-      'Lernen Sie das Team von KED Global Logistics kennen: Dawoud Denawi (Operations), Markus Kempf (Business Development), Carlos Engel (Digital Services). Stuttgart, 20+ Jahre Erfahrung, eigenes UK-Netzwerk.',
+      'Lernen Sie das Team von KED Global Logistics kennen: Dawoud The Navi (Operations), Markus Long John Kempf (Business Development), Carlos Engel (Digital Services). Stuttgart, 20+ Jahre Erfahrung, eigenes UK-Netzwerk.',
     path: '/ueber-uns',
   }),
   keywords: [
@@ -21,8 +21,8 @@ export const metadata = {
     'Geschäftsführung',
     'Supply Chain Management',
     'UK Logistik',
-    'Dawoud Denawi',
-    'Markus Kempf',
+    'Dawoud The Navi',
+    'Markus Long John Kempf',
     'Carlos Engel',
     'Logistikautomatisierung',
     'Digitalisierung Spedition',
@@ -62,7 +62,7 @@ export default function UeberUnsPage() {
     <>
       <PageHero
         eyebrow="Über uns"
-        title="Engel, Dehnavi & Kempf"
+        title="Engel, The Navi & Kempf"
         description="Eine Spedition aus Stuttgart – inhabergeführt, persönlich, technologisch. Wir verbinden klassische Speditionskompetenz mit konsequenter Digitalisierung und einem starken UK-Netzwerk."
       />
 

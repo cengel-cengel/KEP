@@ -23,9 +23,9 @@ import { LOCATIONS, ROUTES, SERVICES } from '@/lib/constants';
 import { buildMetadata } from '@/lib/seo';
 
 export const metadata = buildMetadata({
-  title: 'Spedition Stuttgart - Sammelgut, Direktverkehre, UK',
+  title: 'Spedition Stuttgart – Sammelgut, Direktverkehre, UK',
   description:
-    'KED Global Logistics ist Ihre Spedition aus Stuttgart fuer Sammelgut, Direktverkehre Europa und UK-Logistik. Eigene UK-Hubs in Witham und Stoke. Persoenlich, zuverlaessig, digital.',
+    'KED Global Logistics ist Ihre Spedition aus Stuttgart für Sammelgut, Direktverkehre Europa und UK-Logistik. Eigene UK-Hubs in Witham und Stoke. Persönlich, zuverlässig, digital.',
   path: '/',
 });
 
@@ -37,10 +37,10 @@ const SERVICE_ALT: Record<string, string> = {
 };
 
 const FEATURES = [
-  { icon: Radar, title: 'Live-Tracking', description: 'Sendungsstatus in Echtzeit - im Web und mobil.' },
-  { icon: FileText, title: 'Digitale Dokumente', description: 'CMR, Lieferscheine und Rechnungen jederzeit verfuegbar.' },
+  { icon: Radar, title: 'Live-Tracking', description: 'Sendungsstatus in Echtzeit – im Web und mobil.' },
+  { icon: FileText, title: 'Digitale Dokumente', description: 'CMR, Lieferscheine und Rechnungen jederzeit verfügbar.' },
   { icon: QrCode, title: 'CMR per QR-Code', description: 'Papierloser Frachtbrief direkt am Smartphone.' },
-  { icon: Shield, title: 'Kundenportal 24/7', description: 'Alle Sendungen, Dokumente und Auftraege an einem Ort.' },
+  { icon: Shield, title: 'Kundenportal 24/7', description: 'Alle Sendungen, Dokumente und Aufträge an einem Ort.' },
 ] as const;
 
 export default function LandingPage() {
@@ -56,8 +56,8 @@ export default function LandingPage() {
           <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
             <SectionHeader
               eyebrow="Leistungen"
-              title="Vier Saeulen. Ein Versprechen: Ihre Ware kommt an."
-              description="Vom taeglichen Sammelgutverkehr bis zum strategischen UK-Hauptlauf - alles aus einer Hand."
+              title="Vier Säulen. Ein Versprechen: Ihre Ware kommt an."
+              description="Vom täglichen Sammelgutverkehr bis zum strategischen UK-Hauptlauf – alles aus einer Hand."
             />
             <Button asChild variant="ghost" rightIcon={<ArrowRight className="h-4 w-4" />}>
               <Link href={ROUTES.leistungen}>Alle Leistungen</Link>
@@ -84,8 +84,8 @@ export default function LandingPage() {
         <Container>
           <SectionHeader
             eyebrow="Standorte"
-            title="Stuttgart trifft Grossbritannien."
-            description="Unser Hauptstandort in Stuttgart ist das Drehkreuz fuer Deutschland und Europa. Auf der Insel sorgt unser exklusiver Partner England Logistics fuer flaechendeckende Distribution."
+            title="Stuttgart trifft Großbritannien."
+            description="Unser Hauptstandort in Stuttgart ist das Drehkreuz für Deutschland und Europa. Auf der Insel sorgt unser exklusiver Partner England Logistics für flächendeckende Distribution."
           />
 
           <div className="mt-12 grid gap-6 lg:grid-cols-2">

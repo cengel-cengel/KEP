@@ -26,7 +26,7 @@ export const metadata = {
 
 /**
  * Interne Demo-Seite zur visuellen Abnahme aller UI-Komponenten.
- * Wird nicht in der Sitemap aufgefuehrt.
+ * Wird nicht in der Sitemap aufgeführt.
  */
 export default function StyleguidePage() {
   return (
@@ -52,7 +52,7 @@ export default function StyleguidePage() {
           <SectionHeader
             eyebrow="01"
             title="Buttons"
-            description="Vier Varianten in drei Groessen, mit Loading-State und Icons."
+            description="Vier Varianten in drei Größen, mit Loading-State und Icons."
           />
 
           <div className="mt-10 space-y-8">
@@ -63,7 +63,7 @@ export default function StyleguidePage() {
               <Button variant="ghost">Ghost</Button>
             </Group>
 
-            <Group title="Groessen">
+            <Group title="Größen">
               <Button size="sm">Small</Button>
               <Button size="md">Medium</Button>
               <Button size="lg">Large</Button>
@@ -108,7 +108,7 @@ export default function StyleguidePage() {
             <Card padding="lg">
               <div className="space-y-5">
                 <Input
-                  label="Vollstaendiger Name"
+                  label="Vollständiger Name"
                   placeholder="Max Mustermann"
                   required
                 />
@@ -127,7 +127,7 @@ export default function StyleguidePage() {
                 <Input
                   label="PLZ"
                   placeholder="70173"
-                  error="Bitte eine gueltige deutsche PLZ angeben."
+                  error="Bitte eine gültige deutsche PLZ angeben."
                 />
               </div>
             </Card>
@@ -137,7 +137,7 @@ export default function StyleguidePage() {
                 <Select
                   label="Verkehrsart"
                   required
-                  placeholder="Bitte waehlen"
+                  placeholder="Bitte wählen"
                   options={[
                     { value: 'sammelgut', label: 'Sammelgut Deutschland' },
                     { value: 'direkt', label: 'Direktverkehr Europa' },
@@ -154,7 +154,7 @@ export default function StyleguidePage() {
                 <Checkbox
                   label={
                     <>
-                      Ich habe die <a href="/datenschutz" className="text-accent underline">Datenschutzerklaerung</a> gelesen und stimme der Verarbeitung zu.
+                      Ich habe die <a href="/datenschutz" className="text-accent underline">Datenschutzerklärung</a> gelesen und stimme der Verarbeitung zu.
                     </>
                   }
                   required
@@ -171,7 +171,7 @@ export default function StyleguidePage() {
           <SectionHeader
             eyebrow="03"
             title="Cards"
-            description="Stripe-Stil mit duennen Borders. Mit und ohne Hover-State."
+            description="Stripe-Stil mit dünnen Borders. Mit und ohne Hover-State."
           />
 
           <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -180,7 +180,7 @@ export default function StyleguidePage() {
               <CardHeader className="mt-4">
                 <CardTitle>Sammelgut Deutschland</CardTitle>
                 <CardDescription>
-                  Taegliche Sammelgut-Linien zu allen deutschen Wirtschaftsraeumen.
+                  Tägliche Sammelgut-Linien zu allen deutschen Wirtschaftsräumen.
                 </CardDescription>
               </CardHeader>
               <CardFooter>
@@ -237,7 +237,7 @@ export default function StyleguidePage() {
           <SectionHeader
             eyebrow="04"
             title="Badges"
-            description="Status-Indikatoren in sieben Toenen, mit/ohne Punkt."
+            description="Status-Indikatoren in sieben Tönen, mit/ohne Punkt."
           />
 
           <div className="mt-10 space-y-6">
@@ -246,7 +246,7 @@ export default function StyleguidePage() {
               <Badge tone="info" dot>Abgeholt</Badge>
               <Badge tone="gold" dot>Im Transit</Badge>
               <Badge tone="success" dot>Zugestellt</Badge>
-              <Badge tone="warning" dot>Verzoegert</Badge>
+              <Badge tone="warning" dot>Verzögert</Badge>
               <Badge tone="error" dot>Storniert</Badge>
               <Badge tone="brand" dot>Premium</Badge>
             </Group>
@@ -267,11 +267,11 @@ export default function StyleguidePage() {
           <SectionHeader
             eyebrow="05"
             title="Spinner"
-            description="Loading-Indikator in drei Groessen, accent-Farbe."
+            description="Loading-Indikator in drei Größen, accent-Farbe."
           />
 
           <div className="mt-10">
-            <Group title="Groessen">
+            <Group title="Größen">
               <Spinner size="sm" />
               <Spinner size="md" />
               <Spinner size="lg" />

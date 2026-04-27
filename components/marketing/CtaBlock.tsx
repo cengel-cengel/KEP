@@ -17,8 +17,8 @@ interface CtaBlockProps {
 
 export function CtaBlock({
   eyebrow = 'Sprechen wir',
-  title = 'Bereit fuer Ihre naechste Sendung?',
-  description = 'Erhalten Sie binnen 24 Stunden ein massgeschneidertes Angebot - persoenlich und unverbindlich.',
+  title = 'Bereit für Ihre nächste Sendung?',
+  description = 'Erhalten Sie binnen 24 Stunden ein maßgeschneidertes Angebot – persönlich und unverbindlich.',
   primaryHref = ROUTES.kontakt,
   primaryLabel = 'Jetzt Angebot anfordern',
   secondaryHref,

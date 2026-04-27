@@ -9,7 +9,7 @@ interface PageHeroProps {
 }
 
 /**
- * Kompakter Hero fuer Unter-Seiten (nicht Landing).
+ * Kompakter Hero für Unter-Seiten (nicht Landing).
  * Tiefblauer Hintergrund mit dezentem Gitter-Muster.
  */
 export function PageHero({ eyebrow, title, description, className }: PageHeroProps) {

@@ -8,7 +8,7 @@ interface SlotProps {
 }
 
 /**
- * Minimaler Slot fuer asChild-Prop.
+ * Minimaler Slot für asChild-Prop.
  * Reicht className und alle weiteren Props an das Kind-Element weiter.
  */
 export function Slot({ children, className, ...props }: SlotProps) {

@@ -19,7 +19,7 @@ export function Footer() {
             </p>
             <p className="mt-4 max-w-sm text-sm leading-relaxed text-brand-100/80">
               Spedition aus Stuttgart mit Schwerpunkt Sammelgut, Direktverkehre
-              und UK-Logistik. Persoenlich, zuverlaessig, europaweit vernetzt.
+              und UK-Logistik. Persönlich, zuverlässig, europaweit vernetzt.
             </p>
 
             <ul className="mt-6 space-y-2 text-sm">

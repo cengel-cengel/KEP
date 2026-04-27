@@ -1,5 +1,5 @@
 /**
- * Formatierungs-Helfer fuer deutsches Locale.
+ * Formatierungs-Helfer für deutsches Locale.
  */
 
 const DATE_FORMAT = new Intl.DateTimeFormat('de-DE', {

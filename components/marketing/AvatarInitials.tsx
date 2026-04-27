@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 interface AvatarInitialsProps {
   initials: string;
   /**
-   * Name fuer aria-label (Screenreader).
+   * Name für aria-label (Screenreader).
    */
   name: string;
   size?: 'md' | 'lg' | 'xl';
@@ -19,7 +19,7 @@ const SIZES = {
 /**
  * Platzhalter-Avatar mit Initialen auf Gold-Kreis.
  *
- * TODO: Echte Portraitfotos einsetzen, sobald verfuegbar.
+ * TODO: Echte Portraitfotos einsetzen, sobald verfügbar.
  * Vorgehen: <Image src="/images/team/<id>.jpg" /> in einem
  * runden Container statt der Initialen-SVG.
  */
@@ -27,7 +27,7 @@ export function AvatarInitials({ initials, name, size = 'lg', className }: Avata
   return (
     <span
       role="img"
-      aria-label={`Platzhalter-Avatar fuer ${name}`}
+      aria-label={`Platzhalter-Avatar für ${name}`}
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-full bg-gold font-bold text-brand',
         'ring-4 ring-gold-100',

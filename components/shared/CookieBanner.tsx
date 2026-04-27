@@ -55,7 +55,7 @@ export function CookieBanner() {
     }
   }, []);
 
-  // Bei offenem Settings-Dialog: ESC = schliessen
+  // Bei offenem Settings-Dialog: ESC = schließen
   useEffect(() => {
     if (!showSettings) return;
     const onKey = (e: KeyboardEvent) => {
@@ -111,14 +111,14 @@ export function CookieBanner() {
               </h2>
               <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
                 Wir nutzen Cookies, um unsere Website und unseren Service zu
-                optimieren. Notwendige Cookies sind fuer den Betrieb der Seite
+                optimieren. Notwendige Cookies sind für den Betrieb der Seite
                 erforderlich. Statistik- und Marketing-Cookies setzen wir nur
                 mit Ihrer Zustimmung ein. Mehr in unserer{' '}
                 <Link
                   href={ROUTES.datenschutz}
                   className="font-medium text-accent hover:underline"
                 >
-                  Datenschutzerklaerung
+                  Datenschutzerklärung
                 </Link>
                 .
               </p>
@@ -170,7 +170,7 @@ export function CookieBanner() {
               </h3>
               <button
                 type="button"
-                aria-label="Schliessen"
+                aria-label="Schließen"
                 className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100"
                 onClick={() => setShowSettings(false)}
               >
@@ -179,14 +179,14 @@ export function CookieBanner() {
             </div>
 
             <p className="mt-2 text-sm text-slate-600">
-              Verwalten Sie hier Ihre Praeferenzen. Sie koennen die Einstellungen
-              jederzeit aendern.
+              Verwalten Sie hier Ihre Präferenzen. Sie können die Einstellungen
+              jederzeit ändern.
             </p>
 
             <div className="mt-5 space-y-3">
               <ConsentRow
                 title="Notwendig"
-                description="Erforderlich fuer den Betrieb der Website (Sitzung, Sicherheit). Kann nicht deaktiviert werden."
+                description="Erforderlich für den Betrieb der Website (Sitzung, Sicherheit). Kann nicht deaktiviert werden."
                 checked
                 disabled
               />
@@ -198,7 +198,7 @@ export function CookieBanner() {
               />
               <ConsentRow
                 title="Marketing"
-                description="Ermoeglicht personalisierte Inhalte und Reichweitenmessung."
+                description="Ermöglicht personalisierte Inhalte und Reichweitenmessung."
                 checked={marketing}
                 onChange={setMarketing}
               />

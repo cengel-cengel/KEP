@@ -10,7 +10,7 @@ import { buildMetadata } from '@/lib/seo';
 
 export const metadata = {
   ...buildMetadata({
-    title: 'Ueber uns - Geschaeftsfuehrung & Werte',
+    title: 'Über uns – Geschäftsführung & Werte',
     description:
       'Lernen Sie das Team von KED Global Logistics kennen: Dawoud Denawi (Operations), Markus Kempf (Business Development), Carlos Engel (Digital Services). Stuttgart, 20+ Jahre Erfahrung, eigenes UK-Netzwerk.',
     path: '/ueber-uns',
@@ -18,7 +18,7 @@ export const metadata = {
   keywords: [
     'KED Global Logistics',
     'Spedition Stuttgart',
-    'Geschaeftsfuehrung',
+    'Geschäftsführung',
     'Supply Chain Management',
     'UK Logistik',
     'Dawoud Denawi',
@@ -30,7 +30,7 @@ export const metadata = {
 };
 
 export default function UeberUnsPage() {
-  // JSON-LD Organization + Person fuer SEO
+  // JSON-LD Organization + Person für SEO
   const orgJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Organization',
@@ -61,9 +61,9 @@ export default function UeberUnsPage() {
   return (
     <>
       <PageHero
-        eyebrow="Ueber uns"
+        eyebrow="Über uns"
         title="Engel, Dehnavi & Kempf"
-        description="Eine Spedition aus Stuttgart - inhabergefuehrt, persoenlich, technologisch. Wir verbinden klassische Speditionskompetenz mit konsequenter Digitalisierung und einem starken UK-Netzwerk."
+        description="Eine Spedition aus Stuttgart – inhabergeführt, persönlich, technologisch. Wir verbinden klassische Speditionskompetenz mit konsequenter Digitalisierung und einem starken UK-Netzwerk."
       />
 
       {/* Geschichte / Intro */}
@@ -79,15 +79,15 @@ export default function UeberUnsPage() {
               </h2>
               <div className="mt-6 space-y-4 text-lg leading-relaxed text-slate-600">
                 <p>
-                  Hinter KED Global Logistics stehen drei Geschaeftsfuehrer, die
-                  ueber Jahrzehnte hinweg Speditionserfahrung in Stuttgart, Europa
-                  und Grossbritannien aufgebaut haben.
+                  Hinter KED Global Logistics stehen drei Geschäftsführer, die
+                  über Jahrzehnte hinweg Speditionserfahrung in Stuttgart, Europa
+                  und Großbritannien aufgebaut haben.
                 </p>
                 <p>
-                  Was uns auszeichnet: kurze Wege, persoenliche Ansprechpartner und
-                  ein klarer Anspruch an Qualitaet und Digitalisierung. Wir
+                  Was uns auszeichnet: kurze Wege, persönliche Ansprechpartner und
+                  ein klarer Anspruch an Qualität und Digitalisierung. Wir
                   betreiben ein eigenes Transport-Management-System, ein
-                  Kundenportal und ein exklusives UK-Netzwerk - damit Ihre Sendungen
+                  Kundenportal und ein exklusives UK-Netzwerk – damit Ihre Sendungen
                   jederzeit transparent und planbar sind.
                 </p>
               </div>
@@ -109,9 +109,9 @@ export default function UeberUnsPage() {
       <Section tone="slate" spacing="lg">
         <Container>
           <SectionHeader
-            eyebrow="Geschaeftsfuehrung"
-            title="Unsere Geschaeftsfuehrung"
-            description="Drei Profile, drei Verantwortungsbereiche - eine gemeinsame Linie: Logistik, die liefert."
+            eyebrow="Geschäftsführung"
+            title="Unsere Geschäftsführung"
+            description="Drei Profile, drei Verantwortungsbereiche – eine gemeinsame Linie: Logistik, die liefert."
           />
 
           <div className="mt-12 space-y-6">
@@ -164,8 +164,8 @@ export default function UeberUnsPage() {
         <Container>
           <SectionHeader
             eyebrow="Unsere Werte"
-            title="Wofuer KED steht"
-            description="Fuenf Prinzipien, an denen wir uns jeden Tag messen lassen."
+            title="Wofür KED steht"
+            description="Fünf Prinzipien, an denen wir uns jeden Tag messen lassen."
           />
 
           <ul className="mt-12 divide-y divide-slate-200 border-y border-slate-200">
@@ -200,13 +200,13 @@ export default function UeberUnsPage() {
       </Section>
 
       <CtaBlock
-        eyebrow="Persoenlich. Direkt."
-        title="Sprechen wir ueber Ihre Logistik."
-        description="Sie erreichen unsere Geschaeftsfuehrung und Disposition direkt - ohne Callcenter, ohne Umwege."
+        eyebrow="Persönlich. Direkt."
+        title="Sprechen wir über Ihre Logistik."
+        description="Sie erreichen unsere Geschäftsführung und Disposition direkt – ohne Callcenter, ohne Umwege."
         primaryLabel="Anfrage senden"
       />
 
-      {/* Strukturierte Daten fuer SEO */}
+      {/* Strukturierte Daten für SEO */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}

@@ -22,12 +22,12 @@ export function Header() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Mobile-Menue bei Routenwechsel schliessen
+  // Mobile-Menü bei Routenwechsel schließen
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
 
-  // Body-Scroll lock bei offenem Mobile-Menue
+  // Body-Scroll lock bei offenem Mobile-Menü
   useEffect(() => {
     if (mobileOpen) {
       document.body.style.overflow = 'hidden';
@@ -108,7 +108,7 @@ export function Header() {
           <button
             type="button"
             className="inline-flex h-10 w-10 items-center justify-center rounded-md text-brand md:hidden hover:bg-slate-100"
-            aria-label={mobileOpen ? 'Menue schliessen' : 'Menue oeffnen'}
+            aria-label={mobileOpen ? 'Menü schließen' : 'Menü öffnen'}
             aria-expanded={mobileOpen}
             aria-controls="mobile-nav"
             onClick={() => setMobileOpen((v) => !v)}
@@ -125,7 +125,7 @@ export function Header() {
       {/* Mobile-Drawer */}
       <div
         className={cn(
-          'fixed inset-0 z-50 md:hidden transition',
+          'fixed inset-0 z-50 md:hidden',
           mobileOpen ? 'pointer-events-auto' : 'pointer-events-none',
         )}
         aria-hidden={!mobileOpen}
@@ -133,33 +133,34 @@ export function Header() {
         {/* Backdrop */}
         <div
           className={cn(
-            'absolute inset-0 bg-brand/40 transition-opacity duration-200',
+            'absolute inset-0 bg-black/50 transition-opacity duration-200',
             mobileOpen ? 'opacity-100' : 'opacity-0',
           )}
           onClick={() => setMobileOpen(false)}
         />
-        {/* Panel */}
+        {/* Panel - voll opak, deutlicher Schatten links */}
         <nav
           id="mobile-nav"
           aria-label="Mobile Navigation"
           className={cn(
-            'absolute right-0 top-0 h-full w-[88%] max-w-sm bg-white shadow-2xl',
+            'absolute right-0 top-0 flex h-full w-[88%] max-w-sm flex-col bg-white',
+            'shadow-[-12px_0_40px_-12px_rgba(0,0,0,0.4)]',
             'transition-transform duration-300 ease-out',
             mobileOpen ? 'translate-x-0' : 'translate-x-full',
           )}
         >
-          <div className="flex h-16 items-center justify-between border-b border-slate-100 px-4">
+          <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-100 bg-white px-4">
             <LogoKED />
             <button
               type="button"
               className="inline-flex h-10 w-10 items-center justify-center rounded-md text-brand hover:bg-slate-100"
-              aria-label="Menue schliessen"
+              aria-label="Menü schließen"
               onClick={() => setMobileOpen(false)}
             >
               <X className="h-5 w-5" aria-hidden="true" />
             </button>
           </div>
-          <ul className="flex flex-col p-4">
+          <ul className="flex flex-1 flex-col gap-1 overflow-y-auto bg-white p-4">
             {NAV_PRIMARY.map((item) => {
               const active = isActive(item.href);
               return (
@@ -181,13 +182,15 @@ export function Header() {
               );
             })}
           </ul>
-          <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 p-4">
-            <Button asChild variant="outline" size="md" className="w-full">
-              <Link href={ROUTES.portal.login}>Kundenportal</Link>
-            </Button>
-            <Button asChild size="md" className="w-full">
-              <Link href={ROUTES.kontakt}>Angebot anfordern</Link>
-            </Button>
+          <div className="shrink-0 border-t border-slate-100 bg-white p-4">
+            <div className="flex flex-col gap-2">
+              <Button asChild variant="outline" size="md" className="w-full">
+                <Link href={ROUTES.portal.login}>Kundenportal</Link>
+              </Button>
+              <Button asChild size="md" className="w-full">
+                <Link href={ROUTES.kontakt}>Angebot anfordern</Link>
+              </Button>
+            </div>
           </div>
         </nav>
       </div>

@@ -38,8 +38,8 @@ export function Hero() {
               Sammelgut. Direktverkehre. UK.
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-brand-100 animate-fade-up">
-              Ihre Spedition aus Stuttgart - mit eigenem Netzwerk in
-              Grossbritannien. Persoenlich, zuverlaessig und europaweit
+              Ihre Spedition aus Stuttgart – mit eigenem Netzwerk in
+              Großbritannien. Persönlich, zuverlässig und europaweit
               vernetzt.
             </p>
             <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center animate-fade-up">

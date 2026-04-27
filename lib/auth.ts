@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import type { SessionPayload } from '@/types/user';
 
 export const SESSION_COOKIE_NAME = 'ked_session';
-const SESSION_LIFETIME_SECONDS = 24 * 60 * 60; // 24h
+const SESSION_LIFETIME_SECONDS = 8 * 60 * 60; // 8h - kürzer = sicherer
 
 function getSecret(): Uint8Array {
   const secret = process.env.JWT_SECRET;
@@ -33,9 +33,21 @@ export async function verifySession(token: string): Promise<SessionPayload | nul
   }
 }
 
+/**
+ * Cookie-Optionen für die Portal-Session.
+ *
+ * - httpOnly      kein JS-Zugriff (XSS-Schutz)
+ * - sameSite=strict   strenger als 'lax' - Cookie wird auf
+ *                     keinem Cross-Site-Navigationsweg mitgesendet
+ * - secure        nur über HTTPS in Production
+ * - path=/        muss / sein, damit der Logout (POST /api/auth/logout)
+ *                 das Cookie auch löschen darf. /portal-Scope wäre
+ *                 strenger, würde aber API-Routes ausschließen.
+ * - maxAge        8h erzwungene Re-Authentifizierung
+ */
 export const SESSION_COOKIE_OPTIONS = {
   httpOnly: true,
-  sameSite: 'lax' as const,
+  sameSite: 'strict' as const,
   secure: process.env.NODE_ENV === 'production',
   path: '/',
   maxAge: SESSION_LIFETIME_SECONDS,

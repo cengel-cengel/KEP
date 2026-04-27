@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,12 +16,16 @@ import { ROUTES } from '@/lib/constants';
 import { buildLeadSchema, type LeadMessages } from '@/lib/validators';
 import { SERVICE_TYPES } from '@/types/lead';
 
+/** Mindestzeit zwischen Mount und Submit. Bots submitten i.d.R. <2s. */
+const MIN_FILL_TIME_MS = 2000;
+
 export function ContactForm() {
   const t = useTranslations('ContactPage');
   const tOptions = useTranslations('ContactPage.service_options');
   const tErrors = useTranslations('ContactPage.errors');
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const mountedAtRef = useRef<number>(Date.now());
 
   const messages: LeadMessages = {
     first_name_required: tErrors('first_name_required'),
@@ -53,11 +57,23 @@ export function ContactForm() {
       serviceType: undefined,
       message: '',
       consent: false as unknown as true,
+      website: '',
     },
   });
 
   async function onSubmit(values: FormValues) {
     setSubmitError(null);
+
+    // Honeypot-Check (clientseitig): wenn Wert oder zu schnell → fake success.
+    const filledTooFast = Date.now() - mountedAtRef.current < MIN_FILL_TIME_MS;
+    const honeypotFilled = Boolean(values.website && values.website.length > 0);
+
+    if (honeypotFilled || filledTooFast) {
+      // Bot bekommt Danke-Seite, aber kein API-Call passiert.
+      router.push(ROUTES.kontaktDanke);
+      return;
+    }
+
     try {
       const res = await fetch('/api/leads', {
         method: 'POST',
@@ -88,6 +104,31 @@ export function ContactForm() {
       <div className="space-y-1">
         <h2 className="text-xl font-semibold text-brand">{t('form_title')}</h2>
         <p className="text-sm text-slate-600">{t('form_intro')}</p>
+      </div>
+
+      {/*
+        Honeypot - visuell und für Screenreader unsichtbar, aber im DOM.
+        Bots tragen häufig automatisch alle sichtbaren/typischen Felder
+        aus. Wenn 'website' ausgefüllt zurückkommt, ist es ein Bot.
+      */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: '-9999px',
+          width: '1px',
+          height: '1px',
+          overflow: 'hidden',
+        }}
+      >
+        <label htmlFor="ked-website-trap">Website (bitte leer lassen)</label>
+        <input
+          id="ked-website-trap"
+          type="text"
+          tabIndex={-1}
+          autoComplete="off"
+          {...register('website')}
+        />
       </div>
 
       <div className="mt-6 space-y-5">

@@ -16,21 +16,47 @@ export interface LeadMessages {
   consent_required: string;
 }
 
+/**
+ * Telefon-Pattern: Ziffern, Leerzeichen, +, (, ), -, max 30 Zeichen.
+ * Greift sowohl für DE/EU als auch internationale Formate.
+ */
+const PHONE_REGEX = /^[\d\s+()-]{6,30}$/;
+
+/**
+ * Verbietet HTML-Tags und schützt grob vor XSS-Versuchen
+ * in Freitextfeldern. (Server-Side parst kein HTML, das ist
+ * Defense-in-Depth gegen Echo in Logs/Mails.)
+ */
+const NO_HTML_REGEX = /^[^<>]*$/;
+
 export function buildLeadSchema(m: LeadMessages) {
   return z.object({
-    firstName: z.string().trim().min(1, m.first_name_required),
-    lastName: z.string().trim().min(1, m.last_name_required),
-    company: z.string().trim().min(1, m.company_required),
-    position: z.string().trim().optional().or(z.literal('')),
+    firstName: z.string().trim().min(1, m.first_name_required).max(100).regex(NO_HTML_REGEX),
+    lastName: z.string().trim().min(1, m.last_name_required).max(100).regex(NO_HTML_REGEX),
+    company: z.string().trim().min(1, m.company_required).max(200).regex(NO_HTML_REGEX),
+    position: z.string().trim().max(100).regex(NO_HTML_REGEX).optional().or(z.literal('')),
     email: z
       .string()
       .trim()
       .min(1, m.email_required)
+      .max(254) // RFC 5321
       .email(m.email_invalid),
-    phone: z.string().trim().optional().or(z.literal('')),
+    phone: z
+      .string()
+      .trim()
+      .regex(PHONE_REGEX)
+      .optional()
+      .or(z.literal('')),
     serviceType: z.enum(SERVICE_TYPES, { message: m.service_required }),
-    message: z.string().trim().min(10, m.message_required),
+    message: z
+      .string()
+      .trim()
+      .min(10, m.message_required)
+      .max(5000)
+      .regex(NO_HTML_REGEX),
     consent: z.literal(true, { message: m.consent_required }),
+    // Honeypot: muss leer sein, sonst Bot
+    website: z.string().max(0).optional().or(z.literal('')),
   });
 }
 

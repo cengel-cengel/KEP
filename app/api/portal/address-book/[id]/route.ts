@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/session';
-import { MOCK_ADDRESS_BOOK } from '@/mocks/addressBook';
 
 const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === 'true';
 const TMS_API_URL = process.env.TMS_API_URL ?? 'http://localhost:3001';
@@ -19,37 +18,16 @@ const entrySchema = z.object({
   notes: z.string().optional().or(z.literal('')),
 });
 
-export async function GET() {
+export async function PATCH(
+  request: Request,
+  ctx: { params: Promise<{ id: string }> },
+) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
   }
 
-  if (USE_MOCKS) {
-    return NextResponse.json({ success: true, entries: MOCK_ADDRESS_BOOK });
-  }
-
-  try {
-    const tmsRes = await fetch(`${TMS_API_URL}/api/portal/address-book`, {
-      headers: { 'X-Customer-Id': session.customerId },
-      cache: 'no-store',
-    });
-    if (!tmsRes.ok) {
-      return NextResponse.json({ success: false, error: 'tms_error' }, { status: 502 });
-    }
-    const data = await tmsRes.json();
-    return NextResponse.json({ success: true, ...data });
-  } catch {
-    return NextResponse.json({ success: false, error: 'network_error' }, { status: 503 });
-  }
-}
-
-export async function POST(request: Request) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
-  }
-
+  const { id } = await ctx.params;
   let body: unknown;
   try {
     body = await request.json();
@@ -64,13 +42,12 @@ export async function POST(request: Request) {
 
   if (USE_MOCKS) {
     await new Promise((r) => setTimeout(r, 300));
-    const id = `addr-${Date.now().toString(36)}`;
     return NextResponse.json({ success: true, entry: { id, ...parsed.data } });
   }
 
   try {
-    const tmsRes = await fetch(`${TMS_API_URL}/api/portal/address-book`, {
-      method: 'POST',
+    const tmsRes = await fetch(`${TMS_API_URL}/api/portal/address-book/${id}`, {
+      method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
         'X-Customer-Id': session.customerId,
@@ -81,8 +58,37 @@ export async function POST(request: Request) {
     if (!tmsRes.ok) {
       return NextResponse.json({ success: false, error: 'tms_error' }, { status: tmsRes.status });
     }
-    const data = await tmsRes.json();
-    return NextResponse.json({ success: true, ...data });
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json({ success: false, error: 'network_error' }, { status: 503 });
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  ctx: { params: Promise<{ id: string }> },
+) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
+  }
+  const { id } = await ctx.params;
+
+  if (USE_MOCKS) {
+    await new Promise((r) => setTimeout(r, 200));
+    return NextResponse.json({ success: true, id });
+  }
+
+  try {
+    const tmsRes = await fetch(`${TMS_API_URL}/api/portal/address-book/${id}`, {
+      method: 'DELETE',
+      headers: { 'X-Customer-Id': session.customerId },
+      cache: 'no-store',
+    });
+    if (!tmsRes.ok) {
+      return NextResponse.json({ success: false, error: 'tms_error' }, { status: tmsRes.status });
+    }
+    return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ success: false, error: 'network_error' }, { status: 503 });
   }

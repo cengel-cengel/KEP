@@ -1077,6 +1077,127 @@
       "confirm_correct": "Ich bestätige, dass alle Angaben korrekt sind."
     }
   },
+  "PortalDocuments": {
+    "page_title": "Dokumente",
+    "subtitle": "Alle Dokumente zu Ihren Sendungen.",
+    "all_zip_button": "Alle als ZIP",
+    "filter_types": {
+      "all": "Alle",
+      "cmr": "CMR",
+      "delivery_note": "Lieferschein",
+      "invoice": "Rechnung",
+      "notice": "Avis"
+    },
+    "filter_search_placeholder": "Sendung oder Dokumentname …",
+    "filter_period": "Zeitraum",
+    "filter_period_all": "Alle",
+    "filter_period_30d": "30 Tage",
+    "filter_period_90d": "90 Tage",
+    "filter_period_year": "12 Monate",
+    "filter_sort": "Sortierung",
+    "sort_newest": "Neueste zuerst",
+    "sort_oldest": "Älteste zuerst",
+    "sort_shipment": "Sendungsnummer",
+    "table_columns": {
+      "type": "Typ",
+      "shipment": "Sendung",
+      "document": "Dokument",
+      "date": "Datum",
+      "size": "Größe",
+      "actions": "Aktionen"
+    },
+    "preview": "Vorschau",
+    "download": "Herunterladen",
+    "preview_modal_title": "Dokument-Vorschau",
+    "preview_close": "Schließen",
+    "preview_unavailable": "Vorschau im Demo-Modus nicht verfügbar – bitte herunterladen.",
+    "empty_state_title": "Noch keine Dokumente vorhanden",
+    "empty_state_text": "Dokumente erscheinen hier nach Abholung Ihrer Sendung.",
+    "showing_count": "{count} Dokumente"
+  },
+  "PortalProfile": {
+    "page_title": "Profil",
+    "subtitle": "Stammdaten, Ansprechpartner und Adressbuch.",
+    "section_master": {
+      "title": "Stammdaten",
+      "subtitle": "Änderungen bitte beim Disponenten anfragen.",
+      "contact_dispatcher": "Disponent kontaktieren",
+      "company": "Firma",
+      "customer_number": "Kundennummer",
+      "street": "Straße + Hausnummer",
+      "zip_city": "PLZ / Ort",
+      "country": "Land",
+      "ust_id": "USt-ID",
+      "industry": "Branche",
+      "customer_since": "Kunde seit"
+    },
+    "section_contact": {
+      "title": "Ansprechpartner",
+      "subtitle": "Ihre persönlichen Login-Daten.",
+      "edit": "Bearbeiten",
+      "save": "Speichern",
+      "saving": "Wird gespeichert …",
+      "cancel": "Abbrechen",
+      "salutation": "Anrede",
+      "salutation_options": {
+        "mr": "Herr",
+        "mrs": "Frau",
+        "diverse": "Divers"
+      },
+      "first_name": "Vorname",
+      "last_name": "Nachname",
+      "position": "Position",
+      "email": "E-Mail (Login)",
+      "email_hint": "E-Mail kann nicht geändert werden – bitte beim Disponenten anfragen.",
+      "phone": "Telefon",
+      "mobile": "Mobil",
+      "preferred_locale": "Sprache",
+      "success_toast": "Profil aktualisiert.",
+      "error_toast": "Speichern fehlgeschlagen.",
+      "errors": {
+        "first_name_required": "Bitte Vornamen angeben.",
+        "last_name_required": "Bitte Nachnamen angeben."
+      }
+    },
+    "section_address_book": {
+      "title": "Adressbuch",
+      "subtitle": "Empfänger für die schnelle Sendungserfassung.",
+      "new_address": "Neue Adresse",
+      "search_placeholder": "Suche im Adressbuch …",
+      "edit": "Bearbeiten",
+      "delete": "Löschen",
+      "delete_confirm_title": "Adresse löschen?",
+      "delete_confirm_text": "Bestehende Sendungen mit dieser Adresse bleiben erhalten.",
+      "delete_confirm_button": "Endgültig löschen",
+      "no_entries": "Noch keine Adressen gespeichert.",
+      "no_results": "Keine Treffer.",
+      "modal_new_title": "Neue Adresse anlegen",
+      "modal_edit_title": "Adresse bearbeiten",
+      "save_success": "Adresse gespeichert.",
+      "delete_success": "Adresse gelöscht."
+    },
+    "section_security": {
+      "title": "Sicherheit",
+      "subtitle": "Passwort und Login-Verlauf.",
+      "change_password": "Passwort ändern",
+      "logout_all": "Alle Sessions abmelden",
+      "recent_logins_title": "Letzte Anmeldungen",
+      "modal_title": "Passwort ändern",
+      "current_password": "Aktuelles Passwort",
+      "new_password": "Neues Passwort",
+      "confirm_password": "Passwort bestätigen",
+      "min_8_chars_hint": "Mindestens 8 Zeichen.",
+      "submit": "Ändern",
+      "submitting": "Wird geändert …",
+      "success_toast": "Passwort erfolgreich geändert.",
+      "errors": {
+        "current_required": "Bitte aktuelles Passwort eingeben.",
+        "new_min": "Neues Passwort muss mindestens 8 Zeichen haben.",
+        "mismatch": "Passwörter stimmen nicht überein.",
+        "wrong_current": "Aktuelles Passwort ist falsch."
+      }
+    }
+  },
   "Cookie": {
     "title": "Wir verwenden Cookies",
     "intro_html": "Wir nutzen Cookies, um unsere Website und unseren Service zu optimieren. Notwendige Cookies sind für den Betrieb der Seite erforderlich. Statistik- und Marketing-Cookies setzen wir nur mit Ihrer Zustimmung ein. Mehr in unserer",

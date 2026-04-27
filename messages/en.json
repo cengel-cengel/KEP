@@ -1077,6 +1077,127 @@
       "confirm_correct": "I confirm that all data is correct."
     }
   },
+  "PortalDocuments": {
+    "page_title": "Documents",
+    "subtitle": "All documents related to your shipments.",
+    "all_zip_button": "Download all (ZIP)",
+    "filter_types": {
+      "all": "All",
+      "cmr": "CMR",
+      "delivery_note": "Delivery note",
+      "invoice": "Invoice",
+      "notice": "Notice"
+    },
+    "filter_search_placeholder": "Shipment or document name …",
+    "filter_period": "Period",
+    "filter_period_all": "All",
+    "filter_period_30d": "30 days",
+    "filter_period_90d": "90 days",
+    "filter_period_year": "12 months",
+    "filter_sort": "Sort",
+    "sort_newest": "Newest first",
+    "sort_oldest": "Oldest first",
+    "sort_shipment": "Tracking number",
+    "table_columns": {
+      "type": "Type",
+      "shipment": "Shipment",
+      "document": "Document",
+      "date": "Date",
+      "size": "Size",
+      "actions": "Actions"
+    },
+    "preview": "Preview",
+    "download": "Download",
+    "preview_modal_title": "Document preview",
+    "preview_close": "Close",
+    "preview_unavailable": "Preview not available in demo mode – please download.",
+    "empty_state_title": "No documents yet",
+    "empty_state_text": "Documents will appear here after pickup of your shipment.",
+    "showing_count": "{count} documents"
+  },
+  "PortalProfile": {
+    "page_title": "Profile",
+    "subtitle": "Master data, contact and address book.",
+    "section_master": {
+      "title": "Master data",
+      "subtitle": "For changes please contact your dispatcher.",
+      "contact_dispatcher": "Contact dispatcher",
+      "company": "Company",
+      "customer_number": "Customer number",
+      "street": "Street + number",
+      "zip_city": "Postcode / City",
+      "country": "Country",
+      "ust_id": "VAT ID",
+      "industry": "Industry",
+      "customer_since": "Customer since"
+    },
+    "section_contact": {
+      "title": "Contact",
+      "subtitle": "Your personal login details.",
+      "edit": "Edit",
+      "save": "Save",
+      "saving": "Saving …",
+      "cancel": "Cancel",
+      "salutation": "Salutation",
+      "salutation_options": {
+        "mr": "Mr.",
+        "mrs": "Mrs.",
+        "diverse": "Diverse"
+      },
+      "first_name": "First name",
+      "last_name": "Last name",
+      "position": "Position",
+      "email": "Email (login)",
+      "email_hint": "Email cannot be changed – please contact your dispatcher.",
+      "phone": "Phone",
+      "mobile": "Mobile",
+      "preferred_locale": "Language",
+      "success_toast": "Profile updated.",
+      "error_toast": "Saving failed.",
+      "errors": {
+        "first_name_required": "Please enter your first name.",
+        "last_name_required": "Please enter your last name."
+      }
+    },
+    "section_address_book": {
+      "title": "Address book",
+      "subtitle": "Recipients for quick shipment creation.",
+      "new_address": "New address",
+      "search_placeholder": "Search address book …",
+      "edit": "Edit",
+      "delete": "Delete",
+      "delete_confirm_title": "Delete address?",
+      "delete_confirm_text": "Existing shipments with this address will remain.",
+      "delete_confirm_button": "Delete permanently",
+      "no_entries": "No addresses saved yet.",
+      "no_results": "No matches.",
+      "modal_new_title": "New address",
+      "modal_edit_title": "Edit address",
+      "save_success": "Address saved.",
+      "delete_success": "Address deleted."
+    },
+    "section_security": {
+      "title": "Security",
+      "subtitle": "Password and login history.",
+      "change_password": "Change password",
+      "logout_all": "Sign out all sessions",
+      "recent_logins_title": "Recent logins",
+      "modal_title": "Change password",
+      "current_password": "Current password",
+      "new_password": "New password",
+      "confirm_password": "Confirm password",
+      "min_8_chars_hint": "At least 8 characters.",
+      "submit": "Change",
+      "submitting": "Changing …",
+      "success_toast": "Password changed successfully.",
+      "errors": {
+        "current_required": "Please enter your current password.",
+        "new_min": "New password must be at least 8 characters.",
+        "mismatch": "Passwords do not match.",
+        "wrong_current": "Current password is incorrect."
+      }
+    }
+  },
   "Cookie": {
     "title": "We use cookies",
     "intro_html": "We use cookies to optimise our website and our service. Necessary cookies are required for site operation. Statistics and marketing cookies are only set with your consent. Read more in our",

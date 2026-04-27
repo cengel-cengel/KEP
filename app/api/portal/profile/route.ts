@@ -1,22 +1,19 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/session';
-import { MOCK_ADDRESS_BOOK } from '@/mocks/addressBook';
+import { DEMO_USER } from '@/mocks/user';
 
 const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === 'true';
 const TMS_API_URL = process.env.TMS_API_URL ?? 'http://localhost:3001';
 
-const entrySchema = z.object({
-  company: z.string().trim().min(1),
-  contact: z.string().trim().min(1),
-  street: z.string().trim().min(1),
-  addressAddition: z.string().optional().or(z.literal('')),
-  zip: z.string().trim().min(2),
-  city: z.string().trim().min(1),
-  country: z.string().trim().length(2),
-  phone: z.string().optional().or(z.literal('')),
-  email: z.string().email().optional().or(z.literal('')),
-  notes: z.string().optional().or(z.literal('')),
+const patchSchema = z.object({
+  salutation: z.enum(['mr', 'mrs', 'diverse']).optional(),
+  firstName: z.string().trim().min(1),
+  lastName: z.string().trim().min(1),
+  position: z.string().trim().optional().or(z.literal('')),
+  phone: z.string().trim().optional().or(z.literal('')),
+  mobile: z.string().trim().optional().or(z.literal('')),
+  preferredLocale: z.enum(['de', 'en']).optional(),
 });
 
 export async function GET() {
@@ -26,11 +23,22 @@ export async function GET() {
   }
 
   if (USE_MOCKS) {
-    return NextResponse.json({ success: true, entries: MOCK_ADDRESS_BOOK });
+    return NextResponse.json({
+      success: true,
+      profile: {
+        ...DEMO_USER,
+        salutation: 'mr',
+        mobile: '+49 171 1234567',
+        industry: 'Maschinenbau',
+        customerSince: '2018-04',
+        ustId: 'DE123456789',
+        preferredLocale: 'de',
+      },
+    });
   }
 
   try {
-    const tmsRes = await fetch(`${TMS_API_URL}/api/portal/address-book`, {
+    const tmsRes = await fetch(`${TMS_API_URL}/api/portal/profile`, {
       headers: { 'X-Customer-Id': session.customerId },
       cache: 'no-store',
     });
@@ -44,7 +52,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function PATCH(request: Request) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
@@ -57,20 +65,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: 'invalid_body' }, { status: 400 });
   }
 
-  const parsed = entrySchema.safeParse(body);
+  const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ success: false, error: 'validation' }, { status: 422 });
   }
 
   if (USE_MOCKS) {
-    await new Promise((r) => setTimeout(r, 300));
-    const id = `addr-${Date.now().toString(36)}`;
-    return NextResponse.json({ success: true, entry: { id, ...parsed.data } });
+    await new Promise((r) => setTimeout(r, 500));
+    return NextResponse.json({ success: true });
   }
 
   try {
-    const tmsRes = await fetch(`${TMS_API_URL}/api/portal/address-book`, {
-      method: 'POST',
+    const tmsRes = await fetch(`${TMS_API_URL}/api/portal/profile`, {
+      method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
         'X-Customer-Id': session.customerId,
@@ -81,8 +88,7 @@ export async function POST(request: Request) {
     if (!tmsRes.ok) {
       return NextResponse.json({ success: false, error: 'tms_error' }, { status: tmsRes.status });
     }
-    const data = await tmsRes.json();
-    return NextResponse.json({ success: true, ...data });
+    return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ success: false, error: 'network_error' }, { status: 503 });
   }

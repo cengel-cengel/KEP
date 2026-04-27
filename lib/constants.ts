@@ -161,14 +161,16 @@ export const LOCATION_KEYS = ['stuttgart', 'uk'] as const;
 export const TRUST_KEYS = ['adsp', 'ids', 'aeo', 'iso'] as const;
 
 /**
- * Team-Mitglieder: nur strukturelle Daten (id, initials).
+ * Team-Mitglieder: nur strukturelle Daten (id, initials, photo).
  * Texte (Name, Rolle, Bio, Schwerpunkte) in messages/About.members.<id>.
  */
 export const TEAM_MEMBERS = [
-  { id: 'thenavi', initials: 'DTN' },
-  { id: 'kempf', initials: 'MLJK' },
-  { id: 'engel', initials: 'CE' },
+  { id: 'thenavi', initials: 'DTN', photo: '/images/team-dawoud.jpg' },
+  { id: 'kempf', initials: 'MLJK', photo: '/images/team-markus.jpg' },
+  { id: 'engel', initials: 'CE', photo: '/images/team-carlos.jpg' },
 ] as const;
+
+export type TeamMember = (typeof TEAM_MEMBERS)[number];
 
 export const VALUE_KEYS = ['fast', 'flexible', 'transparent', 'digital', 'whatever'] as const;
 

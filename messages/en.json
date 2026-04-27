@@ -367,6 +367,9 @@
     "team_title": "Our Management",
     "team_description": "Three profiles, three areas of responsibility – one shared line: logistics that delivers.",
     "focus_label": "Focus areas",
+    "team_photo_alt_thenavi": "Dawoud The Navi – Head of Operations – KED Global Logistics",
+    "team_photo_alt_kempf": "Markus Long John Kempf – Head of Business Development & Solutions – KED Global Logistics",
+    "team_photo_alt_engel": "Carlos Engel – Head of Digital Business Services – KED Global Logistics",
     "members": {
       "thenavi": {
         "name": "Dawoud The Navi",

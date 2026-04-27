@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Container } from '@/components/ui/Container';
 import { Section, SectionHeader } from '@/components/ui/Section';
 import { PageHero } from '@/components/marketing/PageHero';
-import { AvatarInitials } from '@/components/marketing/AvatarInitials';
+import { TeamPhoto } from '@/components/marketing/TeamPhoto';
 import { CtaBlock } from '@/components/marketing/CtaBlock';
 import { SITE, TEAM_MEMBERS, VALUE_KEYS } from '@/lib/constants';
 import { buildLocaleMetadata } from '@/lib/seo';
@@ -75,6 +75,7 @@ export default async function UeberUnsPage({
         name: tMembers(`${m.id}.name`),
         jobTitle: tMembers(`${m.id}.role`),
         worksFor: { '@type': 'Organization', name: t('hero_title') },
+        image: m.photo ? `${SITE.url}${m.photo}` : undefined,
         knowsAbout: [...focus],
       };
     }),
@@ -170,11 +171,12 @@ function TeamSection() {
                 key={member.id}
                 className="rounded-2xl bg-white p-8 ring-1 ring-slate-200 sm:p-10"
               >
-                <div className="grid gap-8 md:grid-cols-[auto,1fr] md:gap-10">
-                  <AvatarInitials
+                <div className="grid gap-8 md:grid-cols-[280px,1fr] md:gap-10">
+                  <TeamPhoto
+                    photo={member.photo}
                     initials={member.initials}
                     name={tMembers(`${member.id}.name`)}
-                    size="xl"
+                    alt={t(`team_photo_alt_${member.id}`)}
                   />
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold-700">

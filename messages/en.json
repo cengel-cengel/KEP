@@ -76,6 +76,112 @@
       }
     }
   },
+  "ServicesPage": {
+    "page_title": "Services – Groupage, Direct, UK, Warehousing",
+    "page_description": "Our services at a glance: groupage Germany, direct shipments across Europe, UK logistics with our own network, and warehousing & handling in Stuttgart.",
+    "hero_eyebrow": "Services",
+    "hero_title": "Four pillars for your logistics.",
+    "hero_subtitle": "From daily groupage to the strategic UK trunk – all from a single source. Personally guided, digitally handled, connected across Europe.",
+    "block_offer_label": "What we offer",
+    "block_for_label": "Who it's for",
+    "block_benefits_label": "Benefits",
+    "block_transit_label": "Transit times",
+    "details": {
+      "sammelgut": {
+        "intro": "Daily groupage lines on a fixed schedule across all German economic regions. Consolidation and cross-docking in our Stuttgart hub.",
+        "offer": [
+          "Fixed line schedule with set departure times",
+          "Consolidation in our Stuttgart hub",
+          "Picking and labelling on request",
+          "Digital POD return (CMR via QR code)"
+        ],
+        "for": "Industrial and trade customers with regular LCL volume, SMEs that need predictable lead times.",
+        "benefits": [
+          "24–48 h standard transit within Germany",
+          "Live tracking of every position",
+          "Damage rate below 0.1%",
+          "A direct dispatcher as your contact"
+        ],
+        "transit": "Standard 24–48 hours. Same-day express options available."
+      },
+      "direkt": {
+        "intro": "Direct shipments for part and full loads across Europe – no transhipment, no waiting time. Own fleet and long-term contracted subcontractors.",
+        "offer": [
+          "FTL and LTL across Europe",
+          "Special trips, urgent freight and direct routes",
+          "Refrigerated, ADR and special transports on request",
+          "Telematics-supported route optimisation"
+        ],
+        "for": "Shippers with time-critical consignments, just-in-time deliveries, project business and special loads.",
+        "benefits": [
+          "Planned ETA with driver contact",
+          "No transhipment = no damage risk",
+          "24/7 availability for special trips",
+          "Our own equipment reserve"
+        ],
+        "transit": "Direct from shipper to consignee – usually within 24–72 hours across Europe."
+      },
+      "uk": {
+        "intro": "Daily trunks to Great Britain via our UK subsidiary \"England Logistics\". Complete customs clearance and last-mile distribution from a single source.",
+        "offer": [
+          "Daily lines Stuttgart ↔ Witham/Stoke",
+          "Full customs clearance (DE export / UK import)",
+          "Brexit-compliant documentation",
+          "UK-wide last-mile distribution via partner hubs"
+        ],
+        "for": "Exporters and importers looking for reliable UK connections – without Brexit risk and with transparent cost calculation.",
+        "benefits": [
+          "EORI, ENS and customs handling included",
+          "Our own UK network instead of anonymous partners",
+          "English-speaking dispatch in Witham",
+          "Fixed line days instead of spot market"
+        ],
+        "transit": "Stuttgart → Witham/Stoke from 48 h, then UK-wide distribution within 24–48 h."
+      },
+      "lager": {
+        "intro": "Warehousing and handling space in Stuttgart – modern, scalable and fully digital. From pure cross-docking volumes to value-added services.",
+        "offer": [
+          "Cross-docking and pick-and-pack",
+          "Mid- and long-term storage (block and rack)",
+          "Picking, labelling and assembly",
+          "Modern WMS with ERP integration"
+        ],
+        "for": "Manufacturers and retailers needing external storage, cross-docking points or consolidation before trunking.",
+        "benefits": [
+          "Daily inventory reconciliation, ERP integration possible",
+          "Flexible contracts starting at one pallet",
+          "ADR-licensed areas available",
+          "Direct integration into groupage lines"
+        ],
+        "transit": "Goods receipt booked on day of arrival, dispatch the same or next working day."
+      }
+    },
+    "faq_eyebrow": "FAQ",
+    "faq_title": "Frequently asked questions",
+    "faq_description": "Answers to the questions we hear most often.",
+    "faq": [
+      {
+        "q": "How fast do I get a quote?",
+        "a": "Usually within 24 hours on working days. For standard lanes often within just a few hours – simply use the inquiry form or call us directly."
+      },
+      {
+        "q": "Do you also deliver to the UK?",
+        "a": "Yes, with our own daily lines to Witham (Essex) and Stoke-on-Trent. We handle full customs clearance, including EORI, ENS and Brexit documentation."
+      },
+      {
+        "q": "How does shipment tracking work?",
+        "a": "Every shipment gets a KED tracking number. In the customer portal you see status, location and ETA in real time. On request you receive automatic status emails at key milestones."
+      },
+      {
+        "q": "Do you offer ADR or dangerous goods transports?",
+        "a": "Yes, with ADR-certified vehicles, trained staff and corresponding warehouse space. Please provide the UN number and class with your inquiry."
+      },
+      {
+        "q": "What payment terms apply?",
+        "a": "Standard is 30 days net from invoice date. For new customers we run a quick credit check; for ongoing relationships individual terms are possible."
+      }
+    ]
+  },
   "Locations": {
     "eyebrow": "Locations",
     "title": "Stuttgart meets Great Britain.",

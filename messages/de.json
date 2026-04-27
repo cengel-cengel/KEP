@@ -76,6 +76,112 @@
       }
     }
   },
+  "ServicesPage": {
+    "page_title": "Leistungen – Sammelgut, Direkt, UK, Lager",
+    "page_description": "Unsere Leistungen im Überblick: Sammelgut Deutschland, Direktverkehre Europa, UK-Logistik mit eigenem Netzwerk und Lager & Umschlag in Stuttgart.",
+    "hero_eyebrow": "Leistungen",
+    "hero_title": "Vier Säulen für Ihre Logistik.",
+    "hero_subtitle": "Vom täglichen Sammelgutverkehr bis zum strategischen UK-Hauptlauf – alles aus einer Hand. Persönlich begleitet, digital abgewickelt, europaweit vernetzt.",
+    "block_offer_label": "Was wir bieten",
+    "block_for_label": "Für wen",
+    "block_benefits_label": "Vorteile",
+    "block_transit_label": "Laufzeiten",
+    "details": {
+      "sammelgut": {
+        "intro": "Tägliche Sammelgut-Linien mit fester Tagestaktung in alle deutschen Wirtschaftsräume. Bündelung und Cross-Docking in unserem Stuttgarter Hub.",
+        "offer": [
+          "Festes Linienschema mit Abfahrtszeiten",
+          "Konsolidierung im Stuttgarter Hub",
+          "Kommissionierung und Etikettierung auf Wunsch",
+          "POD-Rückführung digital (CMR via QR-Code)"
+        ],
+        "for": "Industrie- und Handelskunden mit regelmäßigem Stückgut-Aufkommen, KMU mit Bedarf an planbaren Laufzeiten.",
+        "benefits": [
+          "24–48 h Standardlaufzeit innerhalb Deutschland",
+          "Live-Tracking jeder Position",
+          "Schadensquote unter 0,1 %",
+          "Direkter Disponent als Ansprechpartner"
+        ],
+        "transit": "Standard 24–48 Stunden. Express-Optionen tagesgleich verfügbar."
+      },
+      "direkt": {
+        "intro": "Direktverkehre für Teil- und Komplettladungen quer durch Europa – ohne Umschlag, ohne Wartezeit. Eigener Fuhrpark und langjährig gebundene Subunternehmer.",
+        "offer": [
+          "FTL und LTL europaweit",
+          "Sonderfahrten, Eilfracht und Direkttouren",
+          "Kühl-, ADR- und Sondertransporte auf Anfrage",
+          "Telematik-gestützte Tour-Optimierung"
+        ],
+        "for": "Versender mit zeitkritischen Sendungen, Just-in-Time-Belieferungen, Projektgeschäft und Sonderladungen.",
+        "benefits": [
+          "Geplante ETA mit Fahrer-Kontakt",
+          "Kein Umschlag = keine Schadensrisiken",
+          "Verfügbarkeit 24/7 für Sonderfahrten",
+          "Eigene Equipment-Reserve"
+        ],
+        "transit": "Direkt vom Versender zum Empfänger – europaweit meist innerhalb 24–72 h."
+      },
+      "uk": {
+        "intro": "Tägliche Hauptläufe nach Großbritannien mit eigener UK-Tochter \"England Logistics\". Komplette Zollabwicklung und Last-Mile-Distribution aus einer Hand.",
+        "offer": [
+          "Tägliche Linien Stuttgart ↔ Witham/Stoke",
+          "Komplette Zollabwicklung (Export DE / Import UK)",
+          "Brexit-konforme Dokumentation",
+          "Last-Mile-Distribution UK-weit über Partner-Hubs"
+        ],
+        "for": "Exporteure und Importeure, die zuverlässige UK-Verbindungen suchen – ohne Brexit-Risiko und mit transparenter Kostenkalkulation.",
+        "benefits": [
+          "EORI-, ENS- und Customs-Handling inklusive",
+          "Eigenes UK-Netzwerk statt anonymer Partner",
+          "Englischsprachige Disposition in Witham",
+          "Fixe Linientage statt Spot-Markt"
+        ],
+        "transit": "Stuttgart → Witham/Stoke ab 48 h, danach UK-weite Distribution innerhalb 24–48 h."
+      },
+      "lager": {
+        "intro": "Lager- und Umschlagsflächen in Stuttgart – modern, skalierbar und voll digital. Für reine Cross-Docking-Volumen ebenso wie für Mehrwertdienstleistungen.",
+        "offer": [
+          "Cross-Docking und Pick-and-Pack",
+          "Mittel- und Langzeitlagerung (Block- und Regallager)",
+          "Kommissionierung, Etikettierung und Konfektionierung",
+          "Modernes WMS mit ERP-Anbindung"
+        ],
+        "for": "Hersteller und Händler mit Bedarf an externer Lagerung, Cross-Docking-Punkten oder Konsolidierung vor Hauptlauf.",
+        "benefits": [
+          "Tägliche Bestandsabgleiche, ERP-Anbindung möglich",
+          "Flexible Vertragsmodelle ab 1 Palette",
+          "ADR-zugelassene Flächen verfügbar",
+          "Direkte Einbindung in Sammelgut-Linien"
+        ],
+        "transit": "Wareneingang am Tag der Anlieferung gebucht, Versand am gleichen oder nächsten Werktag möglich."
+      }
+    },
+    "faq_eyebrow": "FAQ",
+    "faq_title": "Häufige Fragen",
+    "faq_description": "Antworten auf die Fragen, die uns am häufigsten gestellt werden.",
+    "faq": [
+      {
+        "q": "Wie schnell bekomme ich ein Angebot?",
+        "a": "In der Regel innerhalb von 24 Stunden an Werktagen. Für Standardrelationen oft schon binnen weniger Stunden – einfach das Anfrageformular nutzen oder direkt anrufen."
+      },
+      {
+        "q": "Liefern Sie auch nach Großbritannien?",
+        "a": "Ja, mit eigenen täglichen Linien nach Witham (Essex) und Stoke-on-Trent. Die komplette Zollabwicklung übernehmen wir, einschließlich EORI-, ENS- und Brexit-Dokumentation."
+      },
+      {
+        "q": "Wie funktioniert das Tracking meiner Sendung?",
+        "a": "Jede Sendung erhält eine KED-Trackingnummer. Im Kundenportal sehen Sie Status, Standort und ETA in Echtzeit. Auf Wunsch erhalten Sie automatische Status-E-Mails an wichtigen Meilensteinen."
+      },
+      {
+        "q": "Bieten Sie ADR- oder Gefahrgut-Transporte an?",
+        "a": "Ja, mit ADR-zertifizierten Fahrzeugen, geschultem Personal und entsprechender Lagerfläche. Bitte geben Sie UN-Nummer und Klasse direkt bei der Anfrage an."
+      },
+      {
+        "q": "Welche Zahlungsbedingungen gelten?",
+        "a": "Standard sind 30 Tage netto nach Rechnungsstellung. Für Neukunden klären wir die Bonität vorab; für laufende Geschäftsbeziehungen sind individuelle Konditionen möglich."
+      }
+    ]
+  },
   "Locations": {
     "eyebrow": "Standorte",
     "title": "Stuttgart trifft Großbritannien.",

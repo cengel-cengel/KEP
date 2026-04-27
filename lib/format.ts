@@ -48,3 +48,16 @@ export function formatNumber(value: number): string {
 export function formatTrackingNumber(value: string): string {
   return value.toUpperCase().replace(/(.{4})/g, '$1-').replace(/-$/, '');
 }
+
+/**
+ * Locale-spezifische Datumsformatierung.
+ * DE: DD.MM.YYYY, EN: MM/DD/YYYY (US-Style)
+ */
+export function formatDateForLocale(date: Date, locale: string): string {
+  const tag = locale === 'en' ? 'en-US' : 'de-DE';
+  return new Intl.DateTimeFormat(tag, {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date);
+}

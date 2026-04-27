@@ -522,6 +522,277 @@
     "back_home": "Zurück zur Startseite",
     "see_services": "Leistungen ansehen"
   },
+  "Legal": {
+    "toc_label": "Inhalt",
+    "last_updated_label": "Letzte Aktualisierung",
+    "todo_notice": "Hinweis: Mit [PLATZHALTER] gekennzeichnete Stellen werden vor Go-Live mit echten Daten ersetzt."
+  },
+  "ImprintPage": {
+    "page_title": "Impressum",
+    "page_description": "Impressum der KED Global Logistics GmbH gemäß § 5 TMG, mit Angaben zu Geschäftsführung, Handelsregister und Kontakt.",
+    "hero_eyebrow": "Rechtliches",
+    "hero_title": "Impressum",
+    "hero_subtitle": "Angaben gemäß § 5 TMG.",
+    "sections": [
+      {
+        "id": "tmg",
+        "title": "Angaben gemäß § 5 TMG",
+        "paragraphs": [
+          "KED Global Logistics GmbH\n[Straße + Hausnummer]\n70173 Stuttgart\nDeutschland"
+        ]
+      },
+      {
+        "id": "vertretung",
+        "title": "Vertreten durch",
+        "paragraphs": [
+          "Geschäftsführer:\nCarlos Engel\nDawoud The Navi\nMarkus Long John Kempf"
+        ]
+      },
+      {
+        "id": "kontakt",
+        "title": "Kontakt",
+        "paragraphs": [
+          "Telefon: +49 711 [PLATZHALTER]\nE-Mail: info@ked-global-logistics.de"
+        ]
+      },
+      {
+        "id": "register",
+        "title": "Registereintrag",
+        "paragraphs": [
+          "Eintragung im Handelsregister.\nRegistergericht: Amtsgericht Stuttgart\nRegisternummer: HRB [PLATZHALTER]"
+        ]
+      },
+      {
+        "id": "ust",
+        "title": "Umsatzsteuer-ID",
+        "paragraphs": [
+          "Umsatzsteuer-Identifikationsnummer gemäß § 27 a Umsatzsteuergesetz:\nDE [PLATZHALTER]"
+        ]
+      },
+      {
+        "id": "beruf",
+        "title": "Berufsbezeichnung und berufsrechtliche Regelungen",
+        "paragraphs": [
+          "Berufsbezeichnung: Spedition\nZuständige Kammer: IHK Region Stuttgart, Jägerstraße 30, 70174 Stuttgart\nVerliehen in: Deutschland\nEs gelten die Allgemeinen Deutschen Spediteurbedingungen 2017 (ADSp 2017)."
+        ]
+      },
+      {
+        "id": "odr",
+        "title": "Streitschlichtung",
+        "paragraphs": [
+          "Die Europäische Kommission stellt eine Plattform zur Online-Streitbeilegung (OS) bereit: https://ec.europa.eu/consumers/odr/.",
+          "Wir sind nicht bereit oder verpflichtet, an Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle teilzunehmen."
+        ]
+      },
+      {
+        "id": "haftung_inhalte",
+        "title": "Haftung für Inhalte",
+        "paragraphs": [
+          "Als Diensteanbieter sind wir gemäß § 7 Abs. 1 TMG für eigene Inhalte auf diesen Seiten nach den allgemeinen Gesetzen verantwortlich. Nach §§ 8 bis 10 TMG sind wir als Diensteanbieter jedoch nicht verpflichtet, übermittelte oder gespeicherte fremde Informationen zu überwachen.",
+          "Verpflichtungen zur Entfernung oder Sperrung der Nutzung von Informationen nach den allgemeinen Gesetzen bleiben hiervon unberührt."
+        ]
+      },
+      {
+        "id": "haftung_links",
+        "title": "Haftung für Links",
+        "paragraphs": [
+          "Unser Angebot enthält Links zu externen Websites Dritter, auf deren Inhalte wir keinen Einfluss haben. Deshalb können wir für diese fremden Inhalte auch keine Gewähr übernehmen.",
+          "Bei Bekanntwerden von Rechtsverletzungen werden wir derartige Links umgehend entfernen."
+        ]
+      },
+      {
+        "id": "urheberrecht",
+        "title": "Urheberrecht",
+        "paragraphs": [
+          "Die durch die Seitenbetreiber erstellten Inhalte und Werke auf diesen Seiten unterliegen dem deutschen Urheberrecht. Die Vervielfältigung, Bearbeitung, Verbreitung und jede Art der Verwertung außerhalb der Grenzen des Urheberrechtes bedürfen der schriftlichen Zustimmung des jeweiligen Autors bzw. Erstellers."
+        ]
+      }
+    ]
+  },
+  "PrivacyPage": {
+    "page_title": "Datenschutzerklärung",
+    "page_description": "Informationen zum Umgang mit Ihren personenbezogenen Daten bei KED Global Logistics gemäß DSGVO.",
+    "hero_eyebrow": "Rechtliches",
+    "hero_title": "Datenschutzerklärung",
+    "hero_subtitle": "Informationen zur Verarbeitung Ihrer Daten gemäß DSGVO.",
+    "sections": [
+      {
+        "id": "ueberblick",
+        "title": "1. Datenschutz auf einen Blick",
+        "paragraphs": [
+          "Die folgenden Hinweise geben einen einfachen Überblick darüber, was mit Ihren personenbezogenen Daten passiert, wenn Sie diese Website besuchen. Personenbezogene Daten sind alle Daten, mit denen Sie persönlich identifiziert werden können.",
+          "Detaillierte Informationen zum Thema Datenschutz entnehmen Sie den nachfolgenden Abschnitten."
+        ]
+      },
+      {
+        "id": "verantwortlich",
+        "title": "2. Verantwortliche Stelle",
+        "paragraphs": [
+          "Verantwortlich für die Datenverarbeitung auf dieser Website ist:\nKED Global Logistics GmbH\n[Straße + Hausnummer], 70173 Stuttgart, Deutschland\nE-Mail: datenschutz@ked-global-logistics.de\nTelefon: +49 711 [PLATZHALTER]"
+        ]
+      },
+      {
+        "id": "hosting",
+        "title": "3. Hosting",
+        "paragraphs": [
+          "Wir hosten die Inhalte unserer Website bei Vercel Inc., 340 S Lemon Ave #4133, Walnut CA 91789, USA. Beim Aufruf werden technische Daten (IP-Adresse, Datum, Browser) übertragen.",
+          "Vercel ist nach den Standardvertragsklauseln zertifiziert. Datenverarbeitung erfolgt nach Möglichkeit in der Region eu-central-1 (Frankfurt). Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an einer zuverlässigen Bereitstellung)."
+        ]
+      },
+      {
+        "id": "logfiles",
+        "title": "4. Server-Logfiles",
+        "paragraphs": [
+          "Beim Aufruf der Website werden automatisch Daten in sogenannten Logfiles gespeichert: IP-Adresse, Datum und Uhrzeit, aufgerufene Seite, übertragene Datenmenge, Browser, Betriebssystem.",
+          "Diese Daten werden maximal 7 Tage gespeichert und dienen der Sicherheit und Stabilität des Betriebs. Eine Zusammenführung mit anderen Datenquellen erfolgt nicht."
+        ]
+      },
+      {
+        "id": "cookies",
+        "title": "5. Cookies",
+        "paragraphs": [
+          "Wir verwenden technisch notwendige Cookies (Session, Sicherheit) sowie – nach Ihrer Zustimmung – Cookies für Statistik und Marketing.",
+          "Sie können Ihre Einstellungen jederzeit über das Cookie-Banner ändern. Rechtsgrundlage für nicht notwendige Cookies: Art. 6 Abs. 1 lit. a DSGVO."
+        ]
+      },
+      {
+        "id": "kontakt",
+        "title": "6. Kontaktformular",
+        "paragraphs": [
+          "Wenn Sie uns über das Kontaktformular Anfragen zukommen lassen, werden Ihre Angaben zur Bearbeitung der Anfrage und für mögliche Anschlussfragen gespeichert.",
+          "Verarbeitete Daten: Name, Firma, E-Mail, Telefon (optional), Verkehrsart, Nachricht.\nZweck: Anfragebearbeitung.\nSpeicherdauer: 6 Monate nach letztem Kontakt, sofern keine geschäftliche Beziehung entsteht.\nRechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO (Vertragsanbahnung)."
+        ]
+      },
+      {
+        "id": "portal",
+        "title": "7. Kundenportal",
+        "paragraphs": [
+          "Im Kundenportal verarbeiten wir Login-Daten, Sitzungs-Cookies und sendungsbezogene Informationen, die für die Erfüllung Ihres Auftrags erforderlich sind.",
+          "Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung)."
+        ]
+      },
+      {
+        "id": "rechte",
+        "title": "8. Ihre Rechte",
+        "paragraphs": [
+          "Sie haben jederzeit das Recht auf:",
+          "• Auskunft (Art. 15 DSGVO)\n• Berichtigung (Art. 16 DSGVO)\n• Löschung (Art. 17 DSGVO)\n• Einschränkung der Verarbeitung (Art. 18 DSGVO)\n• Datenübertragbarkeit (Art. 20 DSGVO)\n• Widerspruch (Art. 21 DSGVO)\n• Widerruf erteilter Einwilligungen (Art. 7 Abs. 3 DSGVO)"
+        ]
+      },
+      {
+        "id": "beschwerde",
+        "title": "9. Beschwerderecht",
+        "paragraphs": [
+          "Unbeschadet eines anderweitigen Rechtsbehelfs steht Ihnen das Recht auf Beschwerde bei einer Aufsichtsbehörde zu, insbesondere am gewöhnlichen Aufenthaltsort:",
+          "Landesbeauftragte für den Datenschutz und die Informationsfreiheit Baden-Württemberg\nKönigstraße 10a, 70173 Stuttgart\nhttps://www.baden-wuerttemberg.datenschutz.de"
+        ]
+      },
+      {
+        "id": "tls",
+        "title": "10. SSL/TLS-Verschlüsselung",
+        "paragraphs": [
+          "Diese Seite nutzt aus Sicherheitsgründen eine SSL- bzw. TLS-Verschlüsselung. Sie erkennen eine verschlüsselte Verbindung an „https://\" in der Adresszeile Ihres Browsers."
+        ]
+      },
+      {
+        "id": "aenderung",
+        "title": "11. Änderung dieser Datenschutzerklärung",
+        "paragraphs": [
+          "Wir behalten uns vor, diese Datenschutzerklärung anzupassen, damit sie stets den aktuellen rechtlichen Anforderungen entspricht. Es gilt jeweils die zum Zeitpunkt Ihres Besuchs abrufbare Version."
+        ]
+      }
+    ]
+  },
+  "TermsPage": {
+    "page_title": "Allgemeine Geschäftsbedingungen",
+    "page_description": "AGB der KED Global Logistics GmbH auf Grundlage der ADSp 2017 sowie unserer Speditions- und Lagerleistungen.",
+    "hero_eyebrow": "Rechtliches",
+    "hero_title": "Allgemeine Geschäftsbedingungen",
+    "hero_subtitle": "Geschäftsbeziehungen auf Grundlage der ADSp 2017.",
+    "adsp_callout_title": "Anwendbarkeit ADSp 2017",
+    "adsp_callout_body": "Wir arbeiten ausschließlich auf Grundlage der Allgemeinen Deutschen Spediteurbedingungen 2017 (ADSp 2017). Diese beschränken in Ziffer 23.1.2 die gesetzliche Haftung für Güterschäden nach § 431 HGB für Schäden im Lager- und Transportbereich auf EUR 1,00 pro Kilogramm und in jedem Schadenfall auf EUR 1.000.000,00 bzw. 2 SZR pro Kilogramm, wobei der höhere Betrag maßgeblich ist.",
+    "adsp_callout_link": "ADSp 2017 (PDF beim DSLV)",
+    "adsp_callout_url": "https://www.dslv.org/dslv/web.nsf/id/li_de_adsp.html",
+    "sections": [
+      {
+        "id": "geltungsbereich",
+        "title": "1. Geltungsbereich",
+        "paragraphs": [
+          "Diese Allgemeinen Geschäftsbedingungen gelten für alle Verträge zwischen der KED Global Logistics GmbH (im Folgenden „KED\") und ihren Auftraggebern über Speditions-, Transport-, Lager- und Logistikleistungen.",
+          "Abweichende Bedingungen des Auftraggebers werden nicht anerkannt, es sei denn, KED stimmt ihrer Geltung ausdrücklich schriftlich zu."
+        ]
+      },
+      {
+        "id": "speditionsleistungen",
+        "title": "2. Speditionsleistungen",
+        "paragraphs": [
+          "KED erbringt Sammelgut-, Direkt- und UK-Verkehre sowie Lager- und Umschlagsleistungen. Eine Übernahme als Frachtführer erfolgt nur, soweit ausdrücklich vereinbart.",
+          "Im Übrigen handelt KED als Spediteur im Sinne der §§ 453 ff. HGB."
+        ]
+      },
+      {
+        "id": "frachtraten",
+        "title": "3. Frachtraten und Konditionen",
+        "paragraphs": [
+          "Angebote sind freibleibend bis zur schriftlichen Auftragsbestätigung. Tarife und Treibstoffzuschläge können bei wesentlichen Marktveränderungen nach vorheriger Mitteilung angepasst werden.",
+          "Sondertarife (z. B. ADR, Sondermaße, Express) sind separat ausgewiesen."
+        ]
+      },
+      {
+        "id": "zahlung",
+        "title": "4. Zahlungsbedingungen",
+        "paragraphs": [
+          "Rechnungen sind innerhalb von 14 Tagen ab Rechnungsdatum ohne Abzug zur Zahlung fällig. Bei Verzug werden Verzugszinsen in gesetzlicher Höhe berechnet.",
+          "Aufrechnung mit Gegenforderungen ist nur mit unbestrittenen oder rechtskräftig festgestellten Forderungen zulässig. Eine Abtretung von Forderungen gegen KED bedarf der schriftlichen Zustimmung."
+        ]
+      },
+      {
+        "id": "haftung",
+        "title": "5. Haftung",
+        "paragraphs": [
+          "Die Haftung von KED bestimmt sich nach den ADSp 2017, insbesondere Ziffer 23 (Haftungsbegrenzung). Über die ADSp hinausgehende Haftung wird nicht übernommen.",
+          "Wir empfehlen den Abschluss einer Transport- und Speditionsversicherung (z. B. „SLVS\")."
+        ]
+      },
+      {
+        "id": "gefahrgut",
+        "title": "6. Gefahrgut",
+        "paragraphs": [
+          "Gefahrgüter sind vor Auftragserteilung schriftlich anzumelden (UN-Nummer, Klasse, Verpackungsgruppe, Menge). Die Sendungen müssen ADR-konform verpackt, gekennzeichnet und dokumentiert übergeben werden.",
+          "Ohne ordnungsgemäße Voravisierung sind wir berechtigt, die Annahme zu verweigern."
+        ]
+      },
+      {
+        "id": "hoehere_gewalt",
+        "title": "7. Höhere Gewalt",
+        "paragraphs": [
+          "Bei höherer Gewalt (z. B. Streiks, Naturkatastrophen, behördliche Anordnungen) ruhen die vertraglichen Pflichten für die Dauer der Behinderung. Daraus resultierende Verzögerungen begründen keine Haftung."
+        ]
+      },
+      {
+        "id": "datenschutz",
+        "title": "8. Datenschutz",
+        "paragraphs": [
+          "Die Verarbeitung personenbezogener Daten erfolgt nach unserer Datenschutzerklärung."
+        ]
+      },
+      {
+        "id": "gerichtsstand",
+        "title": "9. Gerichtsstand und anwendbares Recht",
+        "paragraphs": [
+          "Ausschließlicher Gerichtsstand für sämtliche Streitigkeiten ist Stuttgart, soweit der Auftraggeber Kaufmann ist.",
+          "Es gilt deutsches Recht unter Ausschluss des UN-Kaufrechts. Für grenzüberschreitende Straßentransporte gelten ergänzend die Regelungen der CMR."
+        ]
+      },
+      {
+        "id": "salvatorisch",
+        "title": "10. Salvatorische Klausel",
+        "paragraphs": [
+          "Sollten einzelne Bestimmungen dieser AGB ganz oder teilweise unwirksam sein oder werden, bleibt die Wirksamkeit der übrigen Bestimmungen unberührt. An die Stelle der unwirksamen Bestimmung tritt eine Regelung, die dem wirtschaftlichen Zweck der unwirksamen Bestimmung am nächsten kommt."
+        ]
+      }
+    ]
+  },
   "Cookie": {
     "title": "Wir verwenden Cookies",
     "intro_html": "Wir nutzen Cookies, um unsere Website und unseren Service zu optimieren. Notwendige Cookies sind für den Betrieb der Seite erforderlich. Statistik- und Marketing-Cookies setzen wir nur mit Ihrer Zustimmung ein. Mehr in unserer",

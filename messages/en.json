@@ -522,6 +522,277 @@
     "back_home": "Back to homepage",
     "see_services": "Explore services"
   },
+  "Legal": {
+    "toc_label": "Contents",
+    "last_updated_label": "Last updated",
+    "todo_notice": "Note: items marked [PLACEHOLDER] will be replaced with real data before go-live."
+  },
+  "ImprintPage": {
+    "page_title": "Imprint",
+    "page_description": "Legal imprint of KED Global Logistics GmbH pursuant to § 5 TMG, with details on management, commercial register and contact.",
+    "hero_eyebrow": "Legal",
+    "hero_title": "Imprint",
+    "hero_subtitle": "Information pursuant to § 5 of the German Telemedia Act (TMG).",
+    "sections": [
+      {
+        "id": "tmg",
+        "title": "Information pursuant to § 5 TMG",
+        "paragraphs": [
+          "KED Global Logistics GmbH\n[Street + number]\n70173 Stuttgart\nGermany"
+        ]
+      },
+      {
+        "id": "vertretung",
+        "title": "Represented by",
+        "paragraphs": [
+          "Managing Directors:\nCarlos Engel\nDawoud The Navi\nMarkus Long John Kempf"
+        ]
+      },
+      {
+        "id": "kontakt",
+        "title": "Contact",
+        "paragraphs": [
+          "Phone: +49 711 [PLACEHOLDER]\nEmail: info@ked-global-logistics.de"
+        ]
+      },
+      {
+        "id": "register",
+        "title": "Register entry",
+        "paragraphs": [
+          "Entry in the Commercial Register.\nRegistry court: Stuttgart Local Court (Amtsgericht Stuttgart)\nRegister number: HRB [PLACEHOLDER]"
+        ]
+      },
+      {
+        "id": "ust",
+        "title": "VAT identification number",
+        "paragraphs": [
+          "VAT identification number pursuant to § 27 a of the German VAT Act:\nDE [PLACEHOLDER]"
+        ]
+      },
+      {
+        "id": "beruf",
+        "title": "Professional title and regulations",
+        "paragraphs": [
+          "Professional title: Forwarding agent (Spedition)\nResponsible chamber: IHK Region Stuttgart, Jägerstraße 30, 70174 Stuttgart\nGranted in: Germany\nWe operate exclusively on the basis of the German Forwarders' Standard Terms (ADSp 2017)."
+        ]
+      },
+      {
+        "id": "odr",
+        "title": "Online dispute resolution",
+        "paragraphs": [
+          "The European Commission provides a platform for online dispute resolution (ODR): https://ec.europa.eu/consumers/odr/.",
+          "We are not willing or obliged to participate in dispute resolution proceedings before a consumer arbitration board."
+        ]
+      },
+      {
+        "id": "haftung_inhalte",
+        "title": "Liability for content",
+        "paragraphs": [
+          "As a service provider we are responsible for our own content on these pages in accordance with general laws under § 7 (1) TMG. According to §§ 8 to 10 TMG we are not obliged to monitor transmitted or stored third-party information.",
+          "Obligations to remove or block the use of information under general laws remain unaffected."
+        ]
+      },
+      {
+        "id": "haftung_links",
+        "title": "Liability for links",
+        "paragraphs": [
+          "Our website contains links to external third-party websites whose content we cannot influence. We therefore cannot accept any liability for this third-party content.",
+          "We will remove such links immediately upon becoming aware of any legal violations."
+        ]
+      },
+      {
+        "id": "urheberrecht",
+        "title": "Copyright",
+        "paragraphs": [
+          "The content and works on these pages created by the site operators are subject to German copyright law. Reproduction, processing, distribution and any kind of use outside the limits of copyright require the written consent of the respective author or creator."
+        ]
+      }
+    ]
+  },
+  "PrivacyPage": {
+    "page_title": "Privacy Policy",
+    "page_description": "Information on how KED Global Logistics handles your personal data in accordance with GDPR.",
+    "hero_eyebrow": "Legal",
+    "hero_title": "Privacy Policy",
+    "hero_subtitle": "Information on the processing of your data under the GDPR.",
+    "sections": [
+      {
+        "id": "ueberblick",
+        "title": "1. Privacy at a glance",
+        "paragraphs": [
+          "The following notes provide a simple overview of what happens to your personal data when you visit this website. Personal data is any data that can be used to identify you personally.",
+          "For detailed information please refer to the sections below."
+        ]
+      },
+      {
+        "id": "verantwortlich",
+        "title": "2. Controller",
+        "paragraphs": [
+          "Responsible for data processing on this website is:\nKED Global Logistics GmbH\n[Street + number], 70173 Stuttgart, Germany\nEmail: datenschutz@ked-global-logistics.de\nPhone: +49 711 [PLACEHOLDER]"
+        ]
+      },
+      {
+        "id": "hosting",
+        "title": "3. Hosting",
+        "paragraphs": [
+          "We host our website with Vercel Inc., 340 S Lemon Ave #4133, Walnut CA 91789, USA. When the site is accessed, technical data (IP address, date, browser) are transmitted.",
+          "Vercel is certified under the Standard Contractual Clauses. Where possible, processing takes place in the eu-central-1 region (Frankfurt). Legal basis: Art. 6 (1) lit. f GDPR (legitimate interest in reliable provision)."
+        ]
+      },
+      {
+        "id": "logfiles",
+        "title": "4. Server log files",
+        "paragraphs": [
+          "When you visit the website, data are automatically stored in so-called log files: IP address, date and time, page accessed, data volume, browser, operating system.",
+          "These data are stored for a maximum of 7 days and serve the security and stability of the operation. They are not merged with other data sources."
+        ]
+      },
+      {
+        "id": "cookies",
+        "title": "5. Cookies",
+        "paragraphs": [
+          "We use technically necessary cookies (session, security) as well as – with your consent – cookies for statistics and marketing.",
+          "You can change your settings at any time via the cookie banner. Legal basis for non-essential cookies: Art. 6 (1) lit. a GDPR."
+        ]
+      },
+      {
+        "id": "kontakt",
+        "title": "6. Contact form",
+        "paragraphs": [
+          "If you send us inquiries via the contact form, your details will be stored to process the request and for any follow-up questions.",
+          "Processed data: name, company, email, phone (optional), service type, message.\nPurpose: handling your inquiry.\nRetention: 6 months after last contact, unless a business relationship arises.\nLegal basis: Art. 6 (1) lit. b GDPR (pre-contractual measures)."
+        ]
+      },
+      {
+        "id": "portal",
+        "title": "7. Customer portal",
+        "paragraphs": [
+          "In the customer portal we process login data, session cookies and shipment-related information that is necessary to fulfil your order.",
+          "Legal basis: Art. 6 (1) lit. b GDPR (contract performance)."
+        ]
+      },
+      {
+        "id": "rechte",
+        "title": "8. Your rights",
+        "paragraphs": [
+          "You have the right at any time to:",
+          "• Access (Art. 15 GDPR)\n• Rectification (Art. 16 GDPR)\n• Erasure (Art. 17 GDPR)\n• Restriction of processing (Art. 18 GDPR)\n• Data portability (Art. 20 GDPR)\n• Objection (Art. 21 GDPR)\n• Withdrawal of consent (Art. 7 (3) GDPR)"
+        ]
+      },
+      {
+        "id": "beschwerde",
+        "title": "9. Right to lodge a complaint",
+        "paragraphs": [
+          "Without prejudice to any other remedy, you have the right to lodge a complaint with a supervisory authority, in particular at your habitual residence:",
+          "Landesbeauftragte für den Datenschutz und die Informationsfreiheit Baden-Württemberg\nKönigstraße 10a, 70173 Stuttgart, Germany\nhttps://www.baden-wuerttemberg.datenschutz.de"
+        ]
+      },
+      {
+        "id": "tls",
+        "title": "10. SSL/TLS encryption",
+        "paragraphs": [
+          "For security reasons this site uses SSL/TLS encryption. You can recognise an encrypted connection by the \"https://\" in the address bar of your browser."
+        ]
+      },
+      {
+        "id": "aenderung",
+        "title": "11. Changes to this privacy policy",
+        "paragraphs": [
+          "We reserve the right to amend this privacy policy so that it always meets current legal requirements. The version available at the time of your visit applies."
+        ]
+      }
+    ]
+  },
+  "TermsPage": {
+    "page_title": "General Terms and Conditions",
+    "page_description": "General Terms and Conditions of KED Global Logistics GmbH based on ADSp 2017 and our forwarding and warehousing services.",
+    "hero_eyebrow": "Legal",
+    "hero_title": "General Terms and Conditions",
+    "hero_subtitle": "Business relationships based on ADSp 2017.",
+    "adsp_callout_title": "Applicability of ADSp 2017",
+    "adsp_callout_body": "We work exclusively on the basis of the German Forwarders' Standard Terms (Allgemeine Deutsche Spediteurbedingungen 2017, ADSp 2017). Clause 23.1.2 limits statutory liability for cargo damage under § 431 HGB for damages in the warehouse and transport area to EUR 1.00 per kilogram and per loss event to EUR 1,000,000.00 or 2 SDR per kilogram, whichever is higher.",
+    "adsp_callout_link": "ADSp 2017 (PDF at DSLV)",
+    "adsp_callout_url": "https://www.dslv.org/dslv/web.nsf/id/li_de_adsp.html",
+    "sections": [
+      {
+        "id": "geltungsbereich",
+        "title": "1. Scope",
+        "paragraphs": [
+          "These General Terms and Conditions apply to all contracts between KED Global Logistics GmbH (\"KED\") and its customers regarding forwarding, transport, warehousing and logistics services.",
+          "Deviating terms of the customer are not accepted unless KED expressly agrees to their applicability in writing."
+        ]
+      },
+      {
+        "id": "speditionsleistungen",
+        "title": "2. Forwarding services",
+        "paragraphs": [
+          "KED provides groupage, direct and UK shipments as well as warehousing and handling services. Acceptance as a carrier only takes place if expressly agreed.",
+          "Otherwise KED acts as a forwarder within the meaning of §§ 453 et seq. HGB."
+        ]
+      },
+      {
+        "id": "frachtraten",
+        "title": "3. Rates and conditions",
+        "paragraphs": [
+          "Quotations are non-binding until written order confirmation. Tariffs and fuel surcharges may be adjusted in case of significant market changes after prior notice.",
+          "Special tariffs (e.g. ADR, oversize, express) are listed separately."
+        ]
+      },
+      {
+        "id": "zahlung",
+        "title": "4. Payment terms",
+        "paragraphs": [
+          "Invoices are payable without deduction within 14 days of the invoice date. In case of default, statutory default interest will be charged.",
+          "Set-off with counterclaims is only permitted with undisputed or legally established claims. Assignment of claims against KED requires written consent."
+        ]
+      },
+      {
+        "id": "haftung",
+        "title": "5. Liability",
+        "paragraphs": [
+          "KED's liability is governed by ADSp 2017, in particular Clause 23 (limitation of liability). No liability beyond the ADSp is assumed.",
+          "We recommend taking out a transport and forwarding insurance (e.g. \"SLVS\")."
+        ]
+      },
+      {
+        "id": "gefahrgut",
+        "title": "6. Dangerous goods",
+        "paragraphs": [
+          "Dangerous goods must be reported in writing prior to the order (UN number, class, packaging group, quantity). Shipments must be packed, labelled and documented in accordance with ADR.",
+          "Without proper prior notification we are entitled to refuse acceptance."
+        ]
+      },
+      {
+        "id": "hoehere_gewalt",
+        "title": "7. Force majeure",
+        "paragraphs": [
+          "In the event of force majeure (e.g. strikes, natural disasters, official orders), contractual obligations are suspended for the duration of the impediment. Resulting delays do not give rise to liability."
+        ]
+      },
+      {
+        "id": "datenschutz",
+        "title": "8. Data protection",
+        "paragraphs": [
+          "The processing of personal data is carried out in accordance with our privacy policy."
+        ]
+      },
+      {
+        "id": "gerichtsstand",
+        "title": "9. Place of jurisdiction and applicable law",
+        "paragraphs": [
+          "Exclusive place of jurisdiction for all disputes is Stuttgart, provided that the customer is a merchant.",
+          "German law applies, excluding the UN Convention on Contracts for the International Sale of Goods (CISG). For cross-border road transports the provisions of the CMR apply additionally."
+        ]
+      },
+      {
+        "id": "salvatorisch",
+        "title": "10. Severability",
+        "paragraphs": [
+          "Should individual provisions of these terms be or become invalid in whole or in part, the validity of the remaining provisions shall not be affected. The invalid provision shall be replaced by a regulation that comes closest to the economic purpose of the invalid provision."
+        ]
+      }
+    ]
+  },
   "Cookie": {
     "title": "We use cookies",
     "intro_html": "We use cookies to optimise our website and our service. Necessary cookies are required for site operation. Statistics and marketing cookies are only set with your consent. Read more in our",

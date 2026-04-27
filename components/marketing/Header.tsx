@@ -100,7 +100,7 @@ export function Header() {
         </div>
       </Container>
 
-      {/* Mobile-Drawer */}
+      {/* Mobile-Drawer - Grid-Layout für deterministische Row-Höhen */}
       <div
         className={cn(
           'fixed inset-0 z-50 md:hidden',
@@ -115,17 +115,26 @@ export function Header() {
           )}
           onClick={() => setMobileOpen(false)}
         />
-        <nav
+        {/*
+          Drawer als CSS-Grid: 4 Reihen mit deterministischen
+          Höhen - Header / LangSwitcher / Nav (1fr, scrollt) / Footer.
+          Vermeidet Flexbox-Quirks auf iOS Safari.
+          h-[100dvh] mit Fallback auf 100vh für ältere Browser.
+        */}
+        <div
           id="mobile-nav"
           aria-label="Mobile Navigation"
           className={cn(
-            'absolute right-0 top-0 flex h-full w-[88%] max-w-sm flex-col bg-white',
+            'absolute right-0 top-0 grid w-[88%] max-w-sm bg-white',
+            'h-[100vh] supports-[height:100dvh]:h-[100dvh]',
+            'grid-rows-[auto_auto_minmax(0,1fr)_auto]',
             'shadow-[-12px_0_40px_-12px_rgba(0,0,0,0.4)]',
             'transition-transform duration-300 ease-out',
             mobileOpen ? 'translate-x-0' : 'translate-x-full',
           )}
         >
-          <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-100 bg-white px-4">
+          {/* 1. Header-Bar */}
+          <div className="flex h-16 items-center justify-between border-b border-slate-100 bg-white px-4">
             <LogoKED />
             <button
               type="button"
@@ -137,13 +146,15 @@ export function Header() {
             </button>
           </div>
 
-          <div className="shrink-0 border-b border-slate-100 bg-white px-4 py-3">
+          {/* 2. Sprachumschalter */}
+          <div className="border-b border-slate-100 bg-white px-4 py-3">
             <LanguageSwitcher variant="mobile" />
           </div>
 
+          {/* 3. Hauptnavigation - scrollt bei Bedarf */}
           <nav
             aria-label="Hauptnavigation mobil"
-            className="min-h-0 flex-1 overflow-y-auto bg-white p-4"
+            className="overflow-y-auto bg-white p-4"
           >
             <ul className="flex flex-col gap-1">
               {NAV_PRIMARY.map((item) => (
@@ -156,7 +167,8 @@ export function Header() {
             </ul>
           </nav>
 
-          <div className="shrink-0 border-t border-slate-100 bg-white p-4">
+          {/* 4. CTAs */}
+          <div className="border-t border-slate-100 bg-white p-4">
             <div className="flex flex-col gap-2">
               <Button asChild variant="outline" size="md" className="w-full">
                 <Link href={ROUTES.portal.login}>{t('portal')}</Link>
@@ -166,7 +178,7 @@ export function Header() {
               </Button>
             </div>
           </div>
-        </nav>
+        </div>
       </div>
     </header>
   );

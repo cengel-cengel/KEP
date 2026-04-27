@@ -67,6 +67,10 @@ export const routing = defineRouting({
       de: '/portal/sendungen',
       en: '/portal/shipments',
     },
+    '/portal/sendungen/[id]': {
+      de: '/portal/sendungen/[id]',
+      en: '/portal/shipments/[id]',
+    },
     '/portal/sendungen/neu': {
       de: '/portal/sendungen/neu',
       en: '/portal/shipments/new',
@@ -84,6 +88,12 @@ export const routing = defineRouting({
 
 export type Locale = (typeof routing.locales)[number];
 export type AppPathname = keyof typeof routing.pathnames;
+
+/**
+ * Statische Pfade ohne Dynamic-Segment - geeignet für Metadata,
+ * Sitemaps, Sprachumschalter etc., wo keine params verfügbar sind.
+ */
+export type StaticPathname = Exclude<AppPathname, `${string}[${string}]${string}`>;
 
 export const { Link, redirect, usePathname, useRouter, getPathname } =
   createNavigation(routing);

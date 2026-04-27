@@ -796,6 +796,104 @@
       }
     ]
   },
+  "PortalCommon": {
+    "demo_banner": "Demo mode active – sign in with demo@ked.de / demo1234. Shipments are mock data.",
+    "logout": "Sign out",
+    "loading": "Loading …",
+    "no_data": "No data available.",
+    "open_menu": "Open portal menu",
+    "close_menu": "Close portal menu",
+    "user_menu": "User menu",
+    "status": {
+      "erfasst": "Created",
+      "abgeholt": "Picked up",
+      "in_transit": "In transit",
+      "zugestellt": "Delivered",
+      "klaerung": "On hold",
+      "storniert": "Cancelled"
+    },
+    "service_type": {
+      "sammelgut": "Groupage",
+      "direkt": "Direct",
+      "uk": "UK",
+      "lager": "Warehouse",
+      "other": "Other"
+    }
+  },
+  "PortalNavigation": {
+    "dashboard": "Dashboard",
+    "shipments": "Shipments",
+    "new_shipment": "New shipment",
+    "documents": "Documents",
+    "profile": "Profile"
+  },
+  "PortalLogin": {
+    "page_title": "Sign in to the customer portal",
+    "page_description": "Sign in to the KED customer portal to track your shipments and create new orders.",
+    "title": "Sign in",
+    "subtitle": "Welcome back. Please enter your credentials.",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in",
+    "submitting": "Signing in …",
+    "forgot": "Forgot password?",
+    "no_access_question": "No access yet?",
+    "no_access_link": "Get in touch",
+    "no_access_hint": "Access to the customer portal is reserved for existing customers.",
+    "demo_title": "Demo sign-in",
+    "demo_text": "Email: demo@ked.de · Password: demo1234",
+    "errors": {
+      "email_required": "Please enter your email.",
+      "email_invalid": "Please enter a valid email address.",
+      "password_required": "Please enter your password.",
+      "invalid_credentials": "Email or password is incorrect.",
+      "network_error": "Network error. Please try again."
+    }
+  },
+  "PortalDashboard": {
+    "page_title": "Dashboard",
+    "welcome_back": "Welcome back, {firstName}!",
+    "welcome_subtitle": "Here is your logistics overview.",
+    "kpi_total": "Shipments (month)",
+    "kpi_in_transit": "In transit",
+    "kpi_delivered": "Delivered (month)",
+    "kpi_recent_7d": "Last 7 days",
+    "recent_title": "Recent shipments",
+    "recent_view_all": "View all shipments",
+    "actions_title": "Quick actions",
+    "action_new_shipment": "Create new shipment",
+    "action_address_book": "Manage address book",
+    "action_documents": "Download documents"
+  },
+  "PortalShipments": {
+    "page_title": "Shipments",
+    "subtitle": "All your shipments at a glance.",
+    "filter_status": "Status",
+    "filter_status_all": "All statuses",
+    "filter_period": "Period",
+    "filter_period_all": "All periods",
+    "filter_period_7d": "Last 7 days",
+    "filter_period_30d": "Last 30 days",
+    "filter_period_90d": "Last 90 days",
+    "filter_period_year": "Current year",
+    "search_placeholder": "Tracking no., recipient, postcode …",
+    "table": {
+      "tracking": "Shipment",
+      "date": "Date",
+      "route": "Route",
+      "recipient": "Recipient",
+      "status": "Status",
+      "action": "Action"
+    },
+    "view_detail": "Details",
+    "new_shipment_button": "New shipment",
+    "showing": "{count} shipments",
+    "no_results": "No shipments found. Reset filters or create a new shipment.",
+    "reset_filters": "Reset filters",
+    "page_label": "Page {page} of {total}",
+    "prev": "Previous",
+    "next": "Next"
+  },
   "Cookie": {
     "title": "We use cookies",
     "intro_html": "We use cookies to optimise our website and our service. Necessary cookies are required for site operation. Statistics and marketing cookies are only set with your consent. Read more in our",

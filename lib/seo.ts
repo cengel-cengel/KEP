@@ -1,12 +1,12 @@
 import type { Metadata } from 'next';
 import { SITE } from './constants';
-import { routing, getPathname, type AppPathname, type Locale } from '@/i18n/routing';
+import { routing, getPathname, type StaticPathname, type Locale } from '@/i18n/routing';
 
 interface LocaleMetadataOptions {
   locale: string;
   title: string;
   description: string;
-  pathname: AppPathname;
+  pathname: StaticPathname;
   keywords?: string[];
   noIndex?: boolean;
 }

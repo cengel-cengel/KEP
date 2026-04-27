@@ -796,6 +796,104 @@
       }
     ]
   },
+  "PortalCommon": {
+    "demo_banner": "Demo-Modus aktiv – Anmeldung mit demo@ked.de / demo1234. Sendungen sind Mock-Daten.",
+    "logout": "Abmelden",
+    "loading": "Lädt …",
+    "no_data": "Keine Daten vorhanden.",
+    "open_menu": "Portal-Menü öffnen",
+    "close_menu": "Portal-Menü schließen",
+    "user_menu": "Benutzermenü",
+    "status": {
+      "erfasst": "Erfasst",
+      "abgeholt": "Abgeholt",
+      "in_transit": "Im Transit",
+      "zugestellt": "Zugestellt",
+      "klaerung": "Klärung",
+      "storniert": "Storniert"
+    },
+    "service_type": {
+      "sammelgut": "Sammelgut",
+      "direkt": "Direkt",
+      "uk": "UK",
+      "lager": "Lager",
+      "other": "Sonstiges"
+    }
+  },
+  "PortalNavigation": {
+    "dashboard": "Dashboard",
+    "shipments": "Sendungen",
+    "new_shipment": "Neue Sendung",
+    "documents": "Dokumente",
+    "profile": "Profil"
+  },
+  "PortalLogin": {
+    "page_title": "Anmelden zum Kundenportal",
+    "page_description": "Melden Sie sich im KED Kundenportal an, um Ihre Sendungen zu verfolgen und neue Aufträge zu erfassen.",
+    "title": "Anmelden",
+    "subtitle": "Willkommen zurück. Bitte geben Sie Ihre Zugangsdaten ein.",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "submit": "Anmelden",
+    "submitting": "Wird angemeldet …",
+    "forgot": "Passwort vergessen?",
+    "no_access_question": "Noch kein Zugang?",
+    "no_access_link": "Kontakt aufnehmen",
+    "no_access_hint": "Der Zugang zum Kundenportal ist Bestandskunden vorbehalten.",
+    "demo_title": "Demo-Login",
+    "demo_text": "E-Mail: demo@ked.de · Passwort: demo1234",
+    "errors": {
+      "email_required": "Bitte E-Mail-Adresse angeben.",
+      "email_invalid": "Bitte gültige E-Mail-Adresse eingeben.",
+      "password_required": "Bitte Passwort angeben.",
+      "invalid_credentials": "E-Mail oder Passwort sind nicht korrekt.",
+      "network_error": "Verbindungsfehler. Bitte versuchen Sie es erneut."
+    }
+  },
+  "PortalDashboard": {
+    "page_title": "Dashboard",
+    "welcome_back": "Willkommen zurück, {firstName}!",
+    "welcome_subtitle": "Hier ist Ihre Logistik-Übersicht.",
+    "kpi_total": "Sendungen (Monat)",
+    "kpi_in_transit": "Im Transit",
+    "kpi_delivered": "Zugestellt (Monat)",
+    "kpi_recent_7d": "Letzte 7 Tage",
+    "recent_title": "Letzte Sendungen",
+    "recent_view_all": "Alle Sendungen ansehen",
+    "actions_title": "Schnellaktionen",
+    "action_new_shipment": "Neue Sendung erfassen",
+    "action_address_book": "Adressbuch verwalten",
+    "action_documents": "Dokumente herunterladen"
+  },
+  "PortalShipments": {
+    "page_title": "Sendungen",
+    "subtitle": "Alle Ihre Sendungen im Überblick.",
+    "filter_status": "Status",
+    "filter_status_all": "Alle Status",
+    "filter_period": "Zeitraum",
+    "filter_period_all": "Alle Zeiträume",
+    "filter_period_7d": "Letzte 7 Tage",
+    "filter_period_30d": "Letzte 30 Tage",
+    "filter_period_90d": "Letzte 90 Tage",
+    "filter_period_year": "Aktuelles Jahr",
+    "search_placeholder": "Sendungsnr., Empfänger, PLZ …",
+    "table": {
+      "tracking": "Sendung",
+      "date": "Datum",
+      "route": "Strecke",
+      "recipient": "Empfänger",
+      "status": "Status",
+      "action": "Aktion"
+    },
+    "view_detail": "Details",
+    "new_shipment_button": "Neue Sendung",
+    "showing": "{count} Sendungen",
+    "no_results": "Keine Sendungen gefunden. Filter zurücksetzen oder neue Sendung erfassen.",
+    "reset_filters": "Filter zurücksetzen",
+    "page_label": "Seite {page} von {total}",
+    "prev": "Zurück",
+    "next": "Weiter"
+  },
   "Cookie": {
     "title": "Wir verwenden Cookies",
     "intro_html": "Wir nutzen Cookies, um unsere Website und unseren Service zu optimieren. Notwendige Cookies sind für den Betrieb der Seite erforderlich. Statistik- und Marketing-Cookies setzen wir nur mit Ihrer Zustimmung ein. Mehr in unserer",

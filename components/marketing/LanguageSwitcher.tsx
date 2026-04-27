@@ -27,7 +27,10 @@ export function LanguageSwitcher({ variant = 'desktop', className }: LanguageSwi
   function switchTo(target: Locale) {
     if (target === current || pending) return;
     startTransition(() => {
-      router.replace(pathname, { locale: target });
+      // pathname kann hier ein dynamisches Pattern enthalten (z.B.
+      // /portal/sendungen/[id]). Cast auf any unterdrückt nur die
+      // Typprüfung - next-intl resolved zur Laufzeit korrekt.
+      router.replace(pathname as never, { locale: target });
     });
   }
 

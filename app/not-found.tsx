@@ -1,37 +1,34 @@
-import Link from 'next/link';
-import { ROUTES } from '@/lib/constants';
+import { Inter } from 'next/font/google';
 
-export default function NotFound() {
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
+
+/**
+ * Root-Fallback (englisch) für Routen außerhalb des [locale]-Trees.
+ * In der Regel wird durch die Middleware locale-prefixed und die
+ * locale-spezifische /[locale]/not-found.tsx greift.
+ */
+export default function RootNotFound() {
   return (
-    <main
-      id="main-content"
-      className="flex flex-1 items-center justify-center px-6 py-24"
-    >
-      <div className="max-w-lg text-center">
-        <p className="text-sm font-semibold uppercase tracking-wider text-gold">
-          Fehler 404
-        </p>
-        <h1 className="mt-4 text-display-md text-brand">
-          Seite nicht gefunden
-        </h1>
-        <p className="mt-4 text-slate-600">
-          Die angeforderte Seite existiert nicht oder wurde verschoben.
-        </p>
-        <div className="mt-8 flex items-center justify-center gap-4">
-          <Link
-            href={ROUTES.home}
-            className="rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-800 transition"
-          >
-            Zur Startseite
-          </Link>
-          <Link
-            href={ROUTES.kontakt}
-            className="rounded-md px-5 py-2.5 text-sm font-medium text-brand hover:bg-slate-100 transition"
-          >
-            Kontakt aufnehmen
-          </Link>
-        </div>
-      </div>
-    </main>
+    <html lang="en" className={inter.variable}>
+      <body className="min-h-screen flex flex-col antialiased bg-white text-slate-900">
+        <main className="flex flex-1 items-center justify-center px-6 py-24">
+          <div className="max-w-lg text-center">
+            <p className="text-sm font-semibold uppercase tracking-wider text-amber-600">
+              Error 404
+            </p>
+            <h1 className="mt-4 text-3xl font-bold text-slate-900">Page not found</h1>
+            <p className="mt-4 text-slate-600">
+              The page you requested does not exist or has been moved.
+            </p>
+            <a
+              href="/"
+              className="mt-8 inline-block rounded-md bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-700 transition"
+            >
+              Back to home
+            </a>
+          </div>
+        </main>
+      </body>
+    </html>
   );
 }

@@ -1,0 +1,279 @@
+{
+  "Common": {
+    "skip_to_content": "Zum Hauptinhalt springen",
+    "menu_open": "Menü öffnen",
+    "menu_close": "Menü schließen",
+    "close": "Schließen"
+  },
+  "Site": {
+    "name": "KED Global Logistics",
+    "full_name": "Engel, The Navi & Kempf Global Logistics GmbH",
+    "tagline": "Sammelgut. Direktverkehre. UK.",
+    "description": "KED Global Logistics ist Ihr Partner für Sammelgutverkehre, Direktverkehre und UK-Logistik aus Stuttgart. Mit jahrzehntelanger Erfahrung und einem starken europäischen Netzwerk."
+  },
+  "Navigation": {
+    "services": "Leistungen",
+    "network": "Netzwerk",
+    "about": "Über uns",
+    "contact": "Kontakt",
+    "portal": "Kundenportal",
+    "quote": "Angebot anfordern"
+  },
+  "LanguageSwitcher": {
+    "label": "Sprache wechseln",
+    "de_short": "DE",
+    "en_short": "EN",
+    "de_long": "Deutsch",
+    "en_long": "English"
+  },
+  "Landing": {
+    "page_title": "Spedition Stuttgart – Sammelgut, Direktverkehre, UK",
+    "page_description": "KED Global Logistics ist Ihre Spedition aus Stuttgart für Sammelgut, Direktverkehre Europa und UK-Logistik. Eigene UK-Hubs in Witham und Stoke. Persönlich, zuverlässig, digital."
+  },
+  "Hero": {
+    "eyebrow": "We move. You grow.",
+    "title": "Sammelgut. Direktverkehre. UK.",
+    "subtitle": "Ihre Spedition aus Stuttgart – mit eigenem Netzwerk in Großbritannien. Persönlich, zuverlässig und europaweit vernetzt.",
+    "cta_primary": "Angebot anfordern",
+    "cta_secondary": "Leistungen ansehen"
+  },
+  "Stats": {
+    "experience": "Jahre Erfahrung",
+    "uk_hubs": "UK-Hubs (Witham + Stoke)",
+    "network": "Eigenes Netzwerk",
+    "tracking": "Live-Tracking"
+  },
+  "Services": {
+    "section_eyebrow": "Leistungen",
+    "section_title": "Vier Säulen. Ein Versprechen: Ihre Ware kommt an.",
+    "section_description": "Vom täglichen Sammelgutverkehr bis zum strategischen UK-Hauptlauf – alles aus einer Hand.",
+    "see_all": "Alle Leistungen",
+    "more": "Mehr erfahren",
+    "items": {
+      "sammelgut": {
+        "title": "Sammelgut Deutschland",
+        "short": "Tägliche Sammelgut-Linien zu allen deutschen Wirtschaftsräumen.",
+        "long": "Schnelle und zuverlässige Stückgutlogistik mit fester Linientaktung. Bündelung in unserem Stuttgarter Hub, kurze Laufzeiten dank dichtem Partnernetzwerk.",
+        "alt": "KED-LKW-Flotte mit beleuchteter Stadtskyline im Hintergrund"
+      },
+      "direkt": {
+        "title": "Direktverkehre Europa",
+        "short": "Schnelle Direktverkehre mit eigenem Equipment durch ganz Europa.",
+        "long": "Teil- und Komplettladungen direkt vom Versender zum Empfänger. Eigener Fuhrpark und feste Subunternehmer für planbare Laufzeiten.",
+        "alt": "KED-Sattelzug an einer Hallenrampe im Sonnenuntergang"
+      },
+      "uk": {
+        "title": "UK-Logistik",
+        "short": "Tagesaktuelle Linien nach Großbritannien – inkl. Zollabwicklung.",
+        "long": "Tägliche Hauptläufe nach Witham und Stoke – mit eigener UK-Tochter „England Logistics\" und kompletter Zollabwicklung aus einer Hand.",
+        "alt": "Beleuchtetes KED-Hub bei Nacht mit Stadtskyline"
+      },
+      "lager": {
+        "title": "Lager & Umschlag",
+        "short": "Moderne Umschlagsflächen in Stuttgart für Ihre Logistik.",
+        "long": "Cross-Docking, Kommissionierung und Lagerhaltung in unserem Stuttgarter Hub. Modernes WMS, tägliche Bestandsabgleiche, flexible Skalierung.",
+        "alt": "KED-Lagerhalle mit Gabelstaplern und Mitarbeitern"
+      }
+    }
+  },
+  "Locations": {
+    "eyebrow": "Standorte",
+    "title": "Stuttgart trifft Großbritannien.",
+    "description": "Unser Hauptstandort in Stuttgart ist das Drehkreuz für Deutschland und Europa. Auf der Insel sorgt unser exklusiver Partner England Logistics für flächendeckende Distribution.",
+    "items": {
+      "stuttgart": {
+        "label": "Hauptstandort",
+        "name": "Stuttgart",
+        "role": "Headquarter & Hub Deutschland",
+        "address": "Musterstraße 1, 70173 Stuttgart",
+        "phone": "+49 711 000 000",
+        "description": "Unser Hauptstandort und zentrale Drehscheibe für Sammelgut, Direktverkehre und UK-Linien."
+      },
+      "uk": {
+        "label": "Strategischer Partner",
+        "name": "England Logistics",
+        "role": "Hubs Witham & Stoke-on-Trent",
+        "address": "Witham, Essex / Stoke-on-Trent, Staffordshire",
+        "phone": "+44 ...",
+        "description": "Unser exklusiver UK-Partner mit zwei Hubs. Komplette Distribution, Zollabwicklung und Last-Mile auf der Insel."
+      }
+    }
+  },
+  "Tech": {
+    "eyebrow": "Disposition & Technik",
+    "title": "Modern. Digital. Transparent.",
+    "description": "Unsere Disposition arbeitet mit modernem TMS, digitalen Frachtbriefen und einem Kundenportal, das alle Sendungen in Echtzeit zeigt.",
+    "image_alt": "Disposition mit Mitarbeitern an Monitoren – moderne Logistiksteuerung",
+    "features": {
+      "tracking": { "title": "Live-Tracking", "description": "Sendungsstatus in Echtzeit – im Web und mobil." },
+      "documents": { "title": "Digitale Dokumente", "description": "CMR, Lieferscheine und Rechnungen jederzeit verfügbar." },
+      "qr": { "title": "CMR per QR-Code", "description": "Papierloser Frachtbrief direkt am Smartphone." },
+      "portal": { "title": "Kundenportal 24/7", "description": "Alle Sendungen, Dokumente und Aufträge an einem Ort." }
+    },
+    "cta": "Kundenportal kennenlernen"
+  },
+  "Trust": {
+    "label": "Vertrauen seit 1980",
+    "items": {
+      "adsp": "ADSp 2017",
+      "ids": "IDS-Netzwerk",
+      "aeo": "Zugelassener Wirtschaftsbeteiligter (AEO)",
+      "iso": "ISO-zertifizierte Prozesse"
+    }
+  },
+  "CtaBlock": {
+    "default_eyebrow": "Sprechen wir",
+    "default_title": "Bereit für Ihre nächste Sendung?",
+    "default_description": "Erhalten Sie binnen 24 Stunden ein maßgeschneidertes Angebot – persönlich und unverbindlich.",
+    "default_primary": "Jetzt Angebot anfordern"
+  },
+  "Footer": {
+    "slogan": "We move. You grow.",
+    "description": "Spedition aus Stuttgart mit Schwerpunkt Sammelgut, Direktverkehre und UK-Logistik. Persönlich, zuverlässig, europaweit vernetzt.",
+    "section_services": "Leistungen",
+    "section_company": "Unternehmen",
+    "section_legal": "Rechtliches",
+    "copyright_suffix": "Alle Rechte vorbehalten.",
+    "linkedin_label": "KED auf LinkedIn",
+    "links": {
+      "sammelgut": "Sammelgut",
+      "direkt": "Direktverkehre",
+      "uk": "UK-Logistik",
+      "lager": "Lager & Umschlag",
+      "about": "Über uns",
+      "network": "Netzwerk",
+      "contact": "Kontakt",
+      "portal": "Kundenportal",
+      "imprint": "Impressum",
+      "privacy": "Datenschutz",
+      "terms": "AGB"
+    }
+  },
+  "About": {
+    "page_title": "Über uns – Geschäftsführung & Werte",
+    "page_description": "Lernen Sie das Team von KED Global Logistics kennen: Dawoud The Navi (Operations), Markus Long John Kempf (Business Development), Carlos Engel (Digital Services). Stuttgart, 20+ Jahre Erfahrung, eigenes UK-Netzwerk.",
+    "hero_eyebrow": "Über uns",
+    "hero_title": "Engel, The Navi & Kempf",
+    "hero_description": "Eine Spedition aus Stuttgart – inhabergeführt, persönlich, technologisch. Wir verbinden klassische Speditionskompetenz mit konsequenter Digitalisierung und einem starken UK-Netzwerk.",
+    "story_eyebrow": "Unsere Geschichte",
+    "story_title": "Drei Namen. Eine Mission.",
+    "story_p1": "Hinter KED Global Logistics stehen drei Geschäftsführer, die über Jahrzehnte hinweg Speditionserfahrung in Stuttgart, Europa und Großbritannien aufgebaut haben.",
+    "story_p2": "Was uns auszeichnet: kurze Wege, persönliche Ansprechpartner und ein klarer Anspruch an Qualität und Digitalisierung. Wir betreiben ein eigenes Transport-Management-System, ein Kundenportal und ein exklusives UK-Netzwerk – damit Ihre Sendungen jederzeit transparent und planbar sind.",
+    "story_image_alt": "Disposition von KED Global Logistics: Mitarbeiter an Monitoren mit Live-Tracking",
+    "team_eyebrow": "Geschäftsführung",
+    "team_title": "Unsere Geschäftsführung",
+    "team_description": "Drei Profile, drei Verantwortungsbereiche – eine gemeinsame Linie: Logistik, die liefert.",
+    "focus_label": "Schwerpunkte",
+    "members": {
+      "thenavi": {
+        "name": "Dawoud The Navi",
+        "role": "Head of Operations",
+        "description": "Mit über 20 Jahren internationaler Speditionserfahrung verantwortet Dawoud The Navi den operativen Kernbereich von KED Global Logistics. Sein Fokus liegt auf der durchgängigen Prozessoptimierung, Logistikautomatisierung und der konsequenten Digitalisierung sämtlicher Transport- und Hallenprozesse. Als treibende Kraft hinter der Internationalisierung des Unternehmens hat er strategische Partnerschaften – darunter das exklusive UK-Netzwerk mit England Logistics in Witham und Stoke – aufgebaut und zur betrieblichen Reife geführt. Seine Verantwortungsbereiche umfassen Disposition, Hallenmanagement, Subunternehmer-Steuerung, Qualitätsmanagement nach DIN EN ISO 9001, Compliance (ADR/Gefahrgut, Zollabwicklung) sowie die operative Skalierung für Sendungsvolumen bis 100.000 Sendungen täglich.",
+        "focus": [
+          "Prozessoptimierung",
+          "Logistikautomatisierung",
+          "Digitalisierung",
+          "Internationalisierung",
+          "Operations Excellence",
+          "Lean Logistics"
+        ]
+      },
+      "kempf": {
+        "name": "Markus Long John Kempf",
+        "role": "Head of Business Development & Solutions",
+        "description": "Markus Long John Kempf entwickelt maßgeschneiderte Logistik-Lösungen für anspruchsvolle Industrie- und Handelskunden. Als Experte für Supply-Chain-Management gestaltet er ganzheitliche Konzepte, die weit über klassischen Transport hinausgehen: von Lieferantenanbindung über Lagerstrategien bis zur letzten Meile. Sein Anspruch ist es, jedem Kunden eine planbare, transparente und skalierbare Supply Chain zu bieten – integriert in dessen ERP-Systeme, mit Echtzeit-Sichtbarkeit und klaren KPIs. Im Vertrieb verbindet er tiefes operatives Verständnis mit strategischer Beratungskompetenz.",
+        "focus": [
+          "Supply-Chain-Management",
+          "Vertrieb & Key Account",
+          "Tarifgestaltung",
+          "Kundenintegration",
+          "Lösungsentwicklung",
+          "Strategische Partnerschaften"
+        ]
+      },
+      "engel": {
+        "name": "Carlos Engel",
+        "role": "Head of Digital Business Services",
+        "description": "Carlos Engel verantwortet die digitale Transformation und das kaufmännische Rückgrat von KED Global Logistics. Als Schnittstelle zwischen IT, Finance und Operations sorgt er dafür, dass jede Sendung nicht nur physisch, sondern auch digital lückenlos abgebildet ist – vom Auftrag über das selbst entwickelte Transport-Management-System (TMS) bis zur DATEV-konformen Faktura. Seine Verantwortung umfasst die IT-Infrastruktur, Cybersicherheit, DSGVO-Compliance, das Reporting sowie die Weiterentwicklung der digitalen Kundenservices wie Kundenportal, Live-Tracking und API-Integrationen.",
+        "focus": [
+          "IT-Strategie",
+          "Finance & Controlling",
+          "Digitalisierung",
+          "TMS-Entwicklung",
+          "DATEV/Buchhaltung",
+          "DSGVO & IT-Security",
+          "Kundenportal",
+          "API-Integration"
+        ]
+      }
+    },
+    "values_eyebrow": "Unsere Werte",
+    "values_title": "Wofür KED steht",
+    "values_description": "Fünf Prinzipien, an denen wir uns jeden Tag messen lassen.",
+    "values": {
+      "fast": {
+        "title": "Schnell.",
+        "description": "Kurze Reaktionszeiten, direkte Entscheidungswege. Bei uns bekommen Sie ein Angebot in unter 24 Stunden – nicht in einer Woche. Sendungen werden taggleich disponiert, Klärfälle sofort bearbeitet."
+      },
+      "flexible": {
+        "title": "Flexibel.",
+        "description": "Eilsendung, ADR, Sondermaße, Direktfahrt, Kühltransport oder Krangut – wir lösen, was andere ablehnen. Unsere Disposition denkt mit, nicht nur in Schablonen. Jede Anfrage wird individuell geprüft, jede Lösung passt zum Kunden."
+      },
+      "transparent": {
+        "title": "Transparent.",
+        "description": "Sie wissen jederzeit, wo Ihre Ware ist. Live-Tracking per QR-Code, digitale CMR-Dokumente, sofortiger POD-Zugriff im Kundenportal. Keine Anrufe nötig – alles digital, immer aktuell."
+      },
+      "digital": {
+        "title": "Digital.",
+        "description": "Wir nutzen unser eigenes Transport-Management-System: vom ersten Anruf bis zur Faktura komplett digital. Keine Excel-Listen, keine Papierberge, kein Medienbruch. Das spart Zeit – Ihre und unsere."
+      },
+      "whatever": {
+        "title": "Geht nicht, gibt's nicht.",
+        "description": "Das ist mehr als ein Spruch. Wir kümmern uns um Ihre gesamte Supply Chain – von der Abholung beim Lieferanten bis zur Zustellung beim Endkunden, inklusive Zollabwicklung, Lagerung, Cross-Docking und Retouren. Damit Sie sich auf das konzentrieren können, was zählt: Ihr Wachstum."
+      }
+    },
+    "slogan": "WE MOVE. YOU GROW.",
+    "cta_eyebrow": "Persönlich. Direkt.",
+    "cta_title": "Sprechen wir über Ihre Logistik.",
+    "cta_description": "Sie erreichen unsere Geschäftsführung und Disposition direkt – ohne Callcenter, ohne Umwege.",
+    "cta_primary": "Anfrage senden"
+  },
+  "Cookie": {
+    "title": "Wir verwenden Cookies",
+    "intro_html": "Wir nutzen Cookies, um unsere Website und unseren Service zu optimieren. Notwendige Cookies sind für den Betrieb der Seite erforderlich. Statistik- und Marketing-Cookies setzen wir nur mit Ihrer Zustimmung ein. Mehr in unserer",
+    "privacy_link": "Datenschutzerklärung",
+    "settings": "Einstellungen",
+    "necessary_only": "Nur notwendige",
+    "accept_all": "Alle akzeptieren",
+    "modal_title": "Cookie-Einstellungen",
+    "modal_intro": "Verwalten Sie hier Ihre Präferenzen. Sie können die Einstellungen jederzeit ändern.",
+    "save_selection": "Auswahl speichern",
+    "categories": {
+      "necessary": {
+        "title": "Notwendig",
+        "description": "Erforderlich für den Betrieb der Website (Sitzung, Sicherheit). Kann nicht deaktiviert werden."
+      },
+      "statistics": {
+        "title": "Statistik",
+        "description": "Hilft uns, die Nutzung der Website anonymisiert auszuwerten und zu verbessern."
+      },
+      "marketing": {
+        "title": "Marketing",
+        "description": "Ermöglicht personalisierte Inhalte und Reichweitenmessung."
+      }
+    }
+  },
+  "NotFound": {
+    "code": "Fehler 404",
+    "title": "Seite nicht gefunden",
+    "description": "Die angeforderte Seite existiert nicht oder wurde verschoben.",
+    "primary": "Zur Startseite",
+    "secondary": "Kontakt aufnehmen"
+  },
+  "Error": {
+    "label": "Etwas ist schiefgelaufen",
+    "title": "Ein unerwarteter Fehler ist aufgetreten",
+    "description": "Bitte versuchen Sie es erneut. Falls das Problem bestehen bleibt, kontaktieren Sie uns bitte.",
+    "retry": "Erneut versuchen"
+  }
+}

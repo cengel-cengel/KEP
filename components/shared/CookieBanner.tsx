@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
-import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { Cookie, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
+import { Link } from '@/i18n/routing';
 import { ROUTES } from '@/lib/constants';
 
 const STORAGE_KEY = 'ked_cookie_consent_v1';
@@ -12,7 +13,7 @@ const COOKIE_NAME = 'ked_cookie_consent';
 const COOKIE_MAX_AGE_DAYS = 365;
 
 interface ConsentState {
-  necessary: true; // immer true
+  necessary: true;
   statistics: boolean;
   marketing: boolean;
   setAt: string;
@@ -37,6 +38,8 @@ function readStoredConsent(): ConsentState | null {
 }
 
 export function CookieBanner() {
+  const t = useTranslations('Cookie');
+  const tCommon = useTranslations('Common');
   const [visible, setVisible] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [statistics, setStatistics] = useState(false);
@@ -44,7 +47,6 @@ export function CookieBanner() {
   const dialogRef = useRef<HTMLDivElement>(null);
   const headingId = useId();
 
-  // Beim Mount: Consent-Status laden
   useEffect(() => {
     const stored = readStoredConsent();
     if (!stored) {
@@ -55,7 +57,6 @@ export function CookieBanner() {
     }
   }, []);
 
-  // Bei offenem Settings-Dialog: ESC = schließen
   useEffect(() => {
     if (!showSettings) return;
     const onKey = (e: KeyboardEvent) => {
@@ -90,7 +91,6 @@ export function CookieBanner() {
 
   return (
     <>
-      {/* Banner unten */}
       <div
         role="dialog"
         aria-modal="false"
@@ -107,18 +107,15 @@ export function CookieBanner() {
             </span>
             <div className="flex-1">
               <h2 id={headingId} className="text-base font-semibold text-brand">
-                Wir verwenden Cookies
+                {t('title')}
               </h2>
               <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
-                Wir nutzen Cookies, um unsere Website und unseren Service zu
-                optimieren. Notwendige Cookies sind für den Betrieb der Seite
-                erforderlich. Statistik- und Marketing-Cookies setzen wir nur
-                mit Ihrer Zustimmung ein. Mehr in unserer{' '}
+                {t('intro_html')}{' '}
                 <Link
                   href={ROUTES.datenschutz}
                   className="font-medium text-accent hover:underline"
                 >
-                  Datenschutzerklärung
+                  {t('privacy_link')}
                 </Link>
                 .
               </p>
@@ -126,28 +123,19 @@ export function CookieBanner() {
           </div>
 
           <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowSettings(true)}
-            >
-              Einstellungen
+            <Button variant="ghost" size="sm" onClick={() => setShowSettings(true)}>
+              {t('settings')}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={acceptNecessary}
-            >
-              Nur notwendige
+            <Button variant="outline" size="sm" onClick={acceptNecessary}>
+              {t('necessary_only')}
             </Button>
             <Button size="sm" onClick={acceptAll}>
-              Alle akzeptieren
+              {t('accept_all')}
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Settings-Modal */}
       {showSettings && (
         <div
           role="dialog"
@@ -160,17 +148,14 @@ export function CookieBanner() {
             onClick={() => setShowSettings(false)}
             aria-hidden="true"
           />
-          <div
-            ref={dialogRef}
-            className="relative w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl"
-          >
+          <div ref={dialogRef} className="relative w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl">
             <div className="flex items-start justify-between">
               <h3 id={`${headingId}-settings`} className="text-lg font-semibold text-brand">
-                Cookie-Einstellungen
+                {t('modal_title')}
               </h3>
               <button
                 type="button"
-                aria-label="Schließen"
+                aria-label={tCommon('close')}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100"
                 onClick={() => setShowSettings(false)}
               >
@@ -178,27 +163,24 @@ export function CookieBanner() {
               </button>
             </div>
 
-            <p className="mt-2 text-sm text-slate-600">
-              Verwalten Sie hier Ihre Präferenzen. Sie können die Einstellungen
-              jederzeit ändern.
-            </p>
+            <p className="mt-2 text-sm text-slate-600">{t('modal_intro')}</p>
 
             <div className="mt-5 space-y-3">
               <ConsentRow
-                title="Notwendig"
-                description="Erforderlich für den Betrieb der Website (Sitzung, Sicherheit). Kann nicht deaktiviert werden."
+                title={t('categories.necessary.title')}
+                description={t('categories.necessary.description')}
                 checked
                 disabled
               />
               <ConsentRow
-                title="Statistik"
-                description="Hilft uns, die Nutzung der Website anonymisiert auszuwerten und zu verbessern."
+                title={t('categories.statistics.title')}
+                description={t('categories.statistics.description')}
                 checked={statistics}
                 onChange={setStatistics}
               />
               <ConsentRow
-                title="Marketing"
-                description="Ermöglicht personalisierte Inhalte und Reichweitenmessung."
+                title={t('categories.marketing.title')}
+                description={t('categories.marketing.description')}
                 checked={marketing}
                 onChange={setMarketing}
               />
@@ -206,10 +188,10 @@ export function CookieBanner() {
 
             <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
               <Button variant="outline" size="sm" onClick={acceptNecessary}>
-                Nur notwendige
+                {t('necessary_only')}
               </Button>
               <Button size="sm" onClick={saveCustom}>
-                Auswahl speichern
+                {t('save_selection')}
               </Button>
             </div>
           </div>
@@ -238,7 +220,7 @@ function ConsentRow({ title, description, checked, disabled, onChange }: Consent
         type="button"
         role="switch"
         aria-checked={checked}
-        aria-label={`${title} ${checked ? 'aktiviert' : 'deaktiviert'}`}
+        aria-label={`${title} ${checked ? 'on' : 'off'}`}
         disabled={disabled}
         onClick={() => onChange?.(!checked)}
         className={cn(

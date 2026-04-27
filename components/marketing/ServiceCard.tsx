@@ -1,6 +1,7 @@
 import Image from 'next/image';
-import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { Link } from '@/i18n/routing';
 import { cn } from '@/lib/utils';
 
 interface ServiceCardProps {
@@ -8,7 +9,8 @@ interface ServiceCardProps {
   description: string;
   image: string;
   imageAlt: string;
-  href: string;
+  href: '/leistungen';
+  hash?: string;
   className?: string;
 }
 
@@ -18,11 +20,14 @@ export function ServiceCard({
   image,
   imageAlt,
   href,
+  hash,
   className,
 }: ServiceCardProps) {
+  const t = useTranslations('Services');
+
   return (
     <Link
-      href={href}
+      href={hash ? { pathname: href, hash } : { pathname: href }}
       className={cn(
         'group relative flex flex-col overflow-hidden rounded-xl bg-white',
         'ring-1 ring-slate-200 transition duration-300',
@@ -46,11 +51,9 @@ export function ServiceCard({
       </div>
       <div className="flex flex-1 flex-col p-6">
         <h3 className="text-lg font-semibold text-brand">{title}</h3>
-        <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-600">
-          {description}
-        </p>
+        <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-600">{description}</p>
         <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-accent">
-          Mehr erfahren
+          {t('more')}
           <ArrowRight
             className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
             aria-hidden="true"

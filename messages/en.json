@@ -1,0 +1,279 @@
+{
+  "Common": {
+    "skip_to_content": "Skip to main content",
+    "menu_open": "Open menu",
+    "menu_close": "Close menu",
+    "close": "Close"
+  },
+  "Site": {
+    "name": "KED Global Logistics",
+    "full_name": "Engel, The Navi & Kempf Global Logistics GmbH",
+    "tagline": "Groupage. Direct. UK.",
+    "description": "KED Global Logistics is your forwarding partner from Stuttgart for groupage, direct shipments and UK logistics. Decades of experience and a strong European network."
+  },
+  "Navigation": {
+    "services": "Services",
+    "network": "Network",
+    "about": "About",
+    "contact": "Contact",
+    "portal": "Customer Portal",
+    "quote": "Get a quote"
+  },
+  "LanguageSwitcher": {
+    "label": "Switch language",
+    "de_short": "DE",
+    "en_short": "EN",
+    "de_long": "Deutsch",
+    "en_long": "English"
+  },
+  "Landing": {
+    "page_title": "Forwarding Stuttgart – Groupage, Direct, UK",
+    "page_description": "KED Global Logistics is your Stuttgart-based forwarder for groupage, European direct shipments and UK logistics. Own UK hubs in Witham and Stoke. Personal, reliable, digital."
+  },
+  "Hero": {
+    "eyebrow": "We move. You grow.",
+    "title": "Groupage. Direct. UK.",
+    "subtitle": "Your forwarding agent from Stuttgart – with our own network in Great Britain. Personal, reliable and connected across Europe.",
+    "cta_primary": "Get a quote",
+    "cta_secondary": "Explore services"
+  },
+  "Stats": {
+    "experience": "Years of experience",
+    "uk_hubs": "UK hubs (Witham + Stoke)",
+    "network": "Owned network",
+    "tracking": "Live tracking"
+  },
+  "Services": {
+    "section_eyebrow": "Services",
+    "section_title": "Four pillars. One promise: your goods arrive.",
+    "section_description": "From daily groupage lines to the strategic UK trunking – all from a single source.",
+    "see_all": "All services",
+    "more": "Learn more",
+    "items": {
+      "sammelgut": {
+        "title": "Groupage Germany",
+        "short": "Daily groupage lines to all German economic regions.",
+        "long": "Fast and reliable LCL logistics with fixed line schedules. Consolidation in our Stuttgart hub, short transit times thanks to a dense partner network.",
+        "alt": "KED truck fleet with illuminated city skyline in the background"
+      },
+      "direkt": {
+        "title": "Direct Shipments Europe",
+        "short": "Fast direct shipments with our own equipment across Europe.",
+        "long": "Part and full loads directly from shipper to consignee. Own fleet and dedicated subcontractors for predictable transit times.",
+        "alt": "KED articulated truck at a warehouse ramp at sunset"
+      },
+      "uk": {
+        "title": "UK Logistics",
+        "short": "Daily lines to Great Britain – including customs clearance.",
+        "long": "Daily trunks to Witham and Stoke – with our own UK subsidiary \"England Logistics\" and complete customs clearance from a single source.",
+        "alt": "Illuminated KED hub at night with city skyline"
+      },
+      "lager": {
+        "title": "Warehousing & Handling",
+        "short": "Modern handling space in Stuttgart for your logistics.",
+        "long": "Cross-docking, picking and warehousing in our Stuttgart hub. Modern WMS, daily inventory reconciliation, flexible scaling.",
+        "alt": "KED warehouse with forklifts and staff"
+      }
+    }
+  },
+  "Locations": {
+    "eyebrow": "Locations",
+    "title": "Stuttgart meets Great Britain.",
+    "description": "Our headquarters in Stuttgart is the hub for Germany and Europe. On the island, our exclusive partner England Logistics provides full distribution coverage.",
+    "items": {
+      "stuttgart": {
+        "label": "Headquarters",
+        "name": "Stuttgart",
+        "role": "Headquarter & Germany hub",
+        "address": "Musterstraße 1, 70173 Stuttgart, Germany",
+        "phone": "+49 711 000 000",
+        "description": "Our headquarters and central hub for groupage, direct shipments and UK lines."
+      },
+      "uk": {
+        "label": "Strategic partner",
+        "name": "England Logistics",
+        "role": "Hubs Witham & Stoke-on-Trent",
+        "address": "Witham, Essex / Stoke-on-Trent, Staffordshire, UK",
+        "phone": "+44 ...",
+        "description": "Our exclusive UK partner with two hubs. Full distribution, customs clearance and last-mile delivery on the island."
+      }
+    }
+  },
+  "Tech": {
+    "eyebrow": "Dispatch & Technology",
+    "title": "Modern. Digital. Transparent.",
+    "description": "Our dispatch operates with a modern TMS, digital waybills and a customer portal that shows every shipment in real time.",
+    "image_alt": "Dispatch with staff at monitors – modern logistics control",
+    "features": {
+      "tracking": { "title": "Live tracking", "description": "Shipment status in real time – on web and mobile." },
+      "documents": { "title": "Digital documents", "description": "CMR, delivery notes and invoices available anytime." },
+      "qr": { "title": "CMR via QR code", "description": "Paperless waybill directly on the smartphone." },
+      "portal": { "title": "Customer portal 24/7", "description": "All shipments, documents and orders in one place." }
+    },
+    "cta": "Discover the customer portal"
+  },
+  "Trust": {
+    "label": "Trusted since 1980",
+    "items": {
+      "adsp": "ADSp 2017",
+      "ids": "IDS network",
+      "aeo": "Authorized Economic Operator (AEO)",
+      "iso": "ISO-certified processes"
+    }
+  },
+  "CtaBlock": {
+    "default_eyebrow": "Let's talk",
+    "default_title": "Ready for your next shipment?",
+    "default_description": "Receive a tailored quote within 24 hours – personal and without obligation.",
+    "default_primary": "Request a quote now"
+  },
+  "Footer": {
+    "slogan": "We move. You grow.",
+    "description": "Forwarding agent from Stuttgart specialised in groupage, direct shipments and UK logistics. Personal, reliable and connected across Europe.",
+    "section_services": "Services",
+    "section_company": "Company",
+    "section_legal": "Legal",
+    "copyright_suffix": "All rights reserved.",
+    "linkedin_label": "KED on LinkedIn",
+    "links": {
+      "sammelgut": "Groupage",
+      "direkt": "Direct shipments",
+      "uk": "UK logistics",
+      "lager": "Warehousing & Handling",
+      "about": "About",
+      "network": "Network",
+      "contact": "Contact",
+      "portal": "Customer Portal",
+      "imprint": "Imprint",
+      "privacy": "Privacy",
+      "terms": "Terms"
+    }
+  },
+  "About": {
+    "page_title": "About – Management & Values",
+    "page_description": "Meet the team of KED Global Logistics: Dawoud The Navi (Operations), Markus Long John Kempf (Business Development), Carlos Engel (Digital Services). Stuttgart, 20+ years of experience, our own UK network.",
+    "hero_eyebrow": "About us",
+    "hero_title": "Engel, The Navi & Kempf",
+    "hero_description": "A forwarding company from Stuttgart – owner-led, personal, technological. We combine classic forwarding expertise with consistent digitalization and a strong UK network.",
+    "story_eyebrow": "Our story",
+    "story_title": "Three names. One mission.",
+    "story_p1": "Behind KED Global Logistics stand three managing directors who have built decades of forwarding experience in Stuttgart, Europe and Great Britain.",
+    "story_p2": "What sets us apart: short paths, personal contacts and a clear commitment to quality and digitalization. We operate our own Transport Management System, a customer portal and an exclusive UK network – so your shipments are transparent and predictable at all times.",
+    "story_image_alt": "KED Global Logistics dispatch: staff at monitors with live tracking",
+    "team_eyebrow": "Management",
+    "team_title": "Our Management",
+    "team_description": "Three profiles, three areas of responsibility – one shared line: logistics that delivers.",
+    "focus_label": "Focus areas",
+    "members": {
+      "thenavi": {
+        "name": "Dawoud The Navi",
+        "role": "Head of Operations",
+        "description": "With over 20 years of international forwarding experience, Dawoud The Navi is responsible for the operational core of KED Global Logistics. His focus is on end-to-end process optimization, logistics automation and the consistent digitalization of all transport and warehouse operations. As the driving force behind the company's internationalization, he has built strategic partnerships – including the exclusive UK network with England Logistics in Witham and Stoke – and brought them to operational maturity. His areas of responsibility include dispatch, warehouse management, subcontractor coordination, quality management according to DIN EN ISO 9001, compliance (ADR/dangerous goods, customs clearance) and operational scaling for shipment volumes of up to 100,000 shipments per day.",
+        "focus": [
+          "Process Optimization",
+          "Logistics Automation",
+          "Digitalization",
+          "Internationalization",
+          "Operations Excellence",
+          "Lean Logistics"
+        ]
+      },
+      "kempf": {
+        "name": "Markus Long John Kempf",
+        "role": "Head of Business Development & Solutions",
+        "description": "Markus Long John Kempf develops tailored logistics solutions for demanding industrial and commercial customers. As an expert in supply chain management, he designs holistic concepts that go far beyond classic transport: from supplier integration to warehouse strategies and last-mile delivery. His goal is to provide every customer with a predictable, transparent and scalable supply chain – integrated into their ERP systems, with real-time visibility and clear KPIs. In sales, he combines deep operational understanding with strategic consulting expertise.",
+        "focus": [
+          "Supply Chain Management",
+          "Sales & Key Account",
+          "Pricing",
+          "Customer Integration",
+          "Solution Development",
+          "Strategic Partnerships"
+        ]
+      },
+      "engel": {
+        "name": "Carlos Engel",
+        "role": "Head of Digital Business Services",
+        "description": "Carlos Engel is responsible for digital transformation and the financial backbone of KED Global Logistics. As the interface between IT, Finance and Operations, he ensures that every shipment is seamlessly mapped not only physically but also digitally – from order entry through our proprietary Transport Management System (TMS) to DATEV-compliant invoicing. His responsibilities include IT infrastructure, cybersecurity, GDPR compliance, reporting and the continuous development of digital customer services such as the customer portal, live tracking and API integrations.",
+        "focus": [
+          "IT Strategy",
+          "Finance & Controlling",
+          "Digitalization",
+          "TMS Development",
+          "DATEV / Accounting",
+          "GDPR & IT Security",
+          "Customer Portal",
+          "API Integration"
+        ]
+      }
+    },
+    "values_eyebrow": "Our values",
+    "values_title": "What KED stands for",
+    "values_description": "Five principles we measure ourselves against every day.",
+    "values": {
+      "fast": {
+        "title": "Fast.",
+        "description": "Short response times, direct decision-making. With us you get a quote in under 24 hours – not in a week. Shipments are dispatched same-day, issues resolved immediately."
+      },
+      "flexible": {
+        "title": "Flexible.",
+        "description": "Express shipments, ADR, oversized cargo, direct delivery, refrigerated transport or crane goods – we solve what others reject. Our dispatch thinks ahead, not just by the book. Every inquiry is reviewed individually, every solution fits the customer."
+      },
+      "transparent": {
+        "title": "Transparent.",
+        "description": "You know where your goods are at all times. Live tracking via QR code, digital CMR documents, instant POD access in the customer portal. No phone calls needed – everything digital, always up to date."
+      },
+      "digital": {
+        "title": "Digital.",
+        "description": "We use our own Transport Management System: from the first call to invoicing, fully digital. No Excel sheets, no paperwork, no media disruption. That saves time – yours and ours."
+      },
+      "whatever": {
+        "title": "Whatever it takes.",
+        "description": "This is more than a slogan. We take care of your entire supply chain – from supplier pickup to end customer delivery, including customs clearance, warehousing, cross-docking and returns. So you can focus on what matters: your growth."
+      }
+    },
+    "slogan": "WE MOVE. YOU GROW.",
+    "cta_eyebrow": "Personal. Direct.",
+    "cta_title": "Let's talk about your logistics.",
+    "cta_description": "You can reach our management and dispatch directly – no call centre, no detours.",
+    "cta_primary": "Send inquiry"
+  },
+  "Cookie": {
+    "title": "We use cookies",
+    "intro_html": "We use cookies to optimise our website and our service. Necessary cookies are required for site operation. Statistics and marketing cookies are only set with your consent. Read more in our",
+    "privacy_link": "Privacy policy",
+    "settings": "Settings",
+    "necessary_only": "Only necessary",
+    "accept_all": "Accept all",
+    "modal_title": "Cookie settings",
+    "modal_intro": "Manage your preferences here. You can change settings at any time.",
+    "save_selection": "Save selection",
+    "categories": {
+      "necessary": {
+        "title": "Necessary",
+        "description": "Required for the operation of the site (session, security). Cannot be disabled."
+      },
+      "statistics": {
+        "title": "Statistics",
+        "description": "Helps us evaluate and improve site usage anonymously."
+      },
+      "marketing": {
+        "title": "Marketing",
+        "description": "Enables personalised content and reach measurement."
+      }
+    }
+  },
+  "NotFound": {
+    "code": "Error 404",
+    "title": "Page not found",
+    "description": "The requested page does not exist or has been moved.",
+    "primary": "Back to home",
+    "secondary": "Contact us"
+  },
+  "Error": {
+    "label": "Something went wrong",
+    "title": "An unexpected error occurred",
+    "description": "Please try again. If the problem persists, please contact us.",
+    "retry": "Retry"
+  }
+}

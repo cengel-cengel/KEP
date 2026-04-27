@@ -1,32 +1,62 @@
 import type { Metadata } from 'next';
 import { SITE } from './constants';
+import { routing, getPathname, type AppPathname, type Locale } from '@/i18n/routing';
 
-interface SeoOptions {
-  title?: string;
-  description?: string;
-  path?: string;
+interface LocaleMetadataOptions {
+  locale: string;
+  title: string;
+  description: string;
+  pathname: AppPathname;
+  keywords?: string[];
   noIndex?: boolean;
 }
 
-export function buildMetadata({
+/**
+ * Erzeugt vollständige Metadata inkl. hreflang-Alternates für eine
+ * lokalisierte Seite. Verwendet next-intl getPathname() für korrekte
+ * Übersetzungen der URL-Slugs (z.B. /ueber-uns <-> /en/about).
+ */
+export function buildLocaleMetadata({
+  locale,
   title,
-  description = SITE.description,
-  path = '/',
+  description,
+  pathname,
+  keywords,
   noIndex = false,
-}: SeoOptions = {}): Metadata {
-  const fullTitle = title ? `${title} | ${SITE.name}` : SITE.name;
-  const url = `${SITE.url}${path}`;
+}: LocaleMetadataOptions): Metadata {
+  const fullTitle = `${title} | ${SITE.name}`;
+
+  const canonicalLocale = (locale as Locale) ?? routing.defaultLocale;
+  const canonicalPath = getPathname({ locale: canonicalLocale, href: pathname });
+  const canonicalUrl = `${SITE.url}${canonicalPath}`;
+
+  const languages = Object.fromEntries(
+    routing.locales.map((loc) => [
+      loc,
+      `${SITE.url}${getPathname({ locale: loc, href: pathname })}`,
+    ]),
+  );
 
   return {
     title: fullTitle,
     description,
-    alternates: { canonical: url },
+    keywords,
+    alternates: {
+      canonical: canonicalUrl,
+      languages: {
+        ...languages,
+        'x-default': `${SITE.url}${getPathname({
+          locale: routing.defaultLocale,
+          href: pathname,
+        })}`,
+      },
+    },
     openGraph: {
       title: fullTitle,
       description,
-      url,
+      url: canonicalUrl,
       siteName: SITE.name,
-      locale: 'de_DE',
+      locale: canonicalLocale === 'de' ? 'de_DE' : 'en_GB',
       type: 'website',
     },
     twitter: {

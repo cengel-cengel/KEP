@@ -2,7 +2,11 @@
 
 import { useEffect } from 'react';
 
-export default function GlobalError({
+/**
+ * Root-Error-Fallback (englisch). Locale-spezifisch greift
+ * /[locale]/error.tsx mit Übersetzungen.
+ */
+export default function RootError({
   error,
   reset,
 }: {
@@ -17,21 +21,15 @@ export default function GlobalError({
   return (
     <main className="flex flex-1 items-center justify-center px-6 py-24">
       <div className="max-w-lg text-center">
-        <p className="text-sm font-semibold uppercase tracking-wider text-gold">
-          Etwas ist schiefgelaufen
-        </p>
-        <h1 className="mt-4 text-display-md text-brand">
-          Ein unerwarteter Fehler ist aufgetreten
-        </h1>
+        <h1 className="text-3xl font-bold text-slate-900">Something went wrong</h1>
         <p className="mt-4 text-slate-600">
-          Bitte versuchen Sie es erneut. Falls das Problem bestehen bleibt,
-          kontaktieren Sie uns bitte.
+          Please try again. If the problem persists, please contact us.
         </p>
         <button
           onClick={reset}
-          className="mt-8 rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-800 transition"
+          className="mt-8 rounded-md bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-700 transition"
         >
-          Erneut versuchen
+          Retry
         </button>
       </div>
     </main>

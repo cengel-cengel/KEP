@@ -120,19 +120,82 @@ export const SERVICES = [
 
 export const TEAM = [
   {
-    name: 'Engel',
-    role: 'Geschaeftsfuehrung',
-    focus: 'Strategie & Netzwerkentwicklung',
+    id: 'denawi',
+    initials: 'DD',
+    name: 'Dawoud Denawi',
+    role: 'Head of Operations',
+    description:
+      'Mit ueber 20 Jahren internationaler Speditionserfahrung verantwortet Dawoud Denawi den operativen Kernbereich von KED Global Logistics. Sein Fokus liegt auf der durchgaengigen Prozessoptimierung, Logistikautomatisierung und der konsequenten Digitalisierung saemtlicher Transport- und Hallenprozesse. Als treibende Kraft hinter der Internationalisierung des Unternehmens hat er strategische Partnerschaften - darunter das exklusive UK-Netzwerk mit England Logistics in Witham und Stoke - aufgebaut und zur betrieblichen Reife gefuehrt. Seine Verantwortungsbereiche umfassen Disposition, Hallenmanagement, Subunternehmer-Steuerung, Qualitaetsmanagement nach DIN EN ISO 9001, Compliance (ADR/Gefahrgut, Zollabwicklung) sowie die operative Skalierung fuer Sendungsvolumen bis 100.000 Sendungen taeglich.',
+    focus: [
+      'Prozessoptimierung',
+      'Logistikautomatisierung',
+      'Digitalisierung',
+      'Internationalisierung',
+      'Operations Excellence',
+      'Lean Logistics',
+    ],
   },
   {
-    name: 'Dehnavi',
-    role: 'Geschaeftsfuehrung',
-    focus: 'Operations & UK-Verkehre',
+    id: 'kempf',
+    initials: 'MK',
+    name: 'Markus Kempf',
+    role: 'Head of Business Development & Solutions',
+    description:
+      'Markus Kempf entwickelt massgeschneiderte Logistik-Loesungen fuer anspruchsvolle Industrie- und Handelskunden. Als Experte fuer Supply-Chain-Management gestaltet er ganzheitliche Konzepte, die weit ueber klassischen Transport hinausgehen: von Lieferantenanbindung ueber Lagerstrategien bis zur letzten Meile. Sein Anspruch ist es, jedem Kunden eine planbare, transparente und skalierbare Supply Chain zu bieten - integriert in dessen ERP-Systeme, mit Echtzeit-Sichtbarkeit und klaren KPIs. Im Vertrieb verbindet er tiefes operatives Verstaendnis mit strategischer Beratungskompetenz.',
+    focus: [
+      'Supply-Chain-Management',
+      'Vertrieb & Key Account',
+      'Tarifgestaltung',
+      'Kundenintegration',
+      'Loesungsentwicklung',
+      'Strategische Partnerschaften',
+    ],
   },
   {
-    name: 'Kempf',
-    role: 'Geschaeftsfuehrung',
-    focus: 'Vertrieb & Kundenbeziehungen',
+    id: 'engel',
+    initials: 'CE',
+    name: 'Carlos Engel',
+    role: 'Head of Digital Business Services',
+    description:
+      'Carlos Engel verantwortet die digitale Transformation und das kaufmaennische Rueckgrat von KED Global Logistics. Als Schnittstelle zwischen IT, Finance und Operations sorgt er dafuer, dass jede Sendung nicht nur physisch, sondern auch digital lueckenlos abgebildet ist - vom Auftrag ueber das selbst entwickelte Transport-Management-System (TMS) bis zur DATEV-konformen Faktura. Seine Verantwortung umfasst die IT-Infrastruktur, Cybersicherheit, DSGVO-Compliance, das Reporting sowie die Weiterentwicklung der digitalen Kundenservices wie Kundenportal, Live-Tracking und API-Integrationen.',
+    focus: [
+      'IT-Strategie',
+      'Finance & Controlling',
+      'Digitalisierung',
+      'TMS-Entwicklung',
+      'DATEV/Buchhaltung',
+      'DSGVO & IT-Security',
+      'Kundenportal',
+      'API-Integration',
+    ],
+  },
+] as const;
+
+export const VALUES = [
+  {
+    title: 'Schnell.',
+    description:
+      'Kurze Reaktionszeiten, direkte Entscheidungswege. Bei uns bekommen Sie ein Angebot in unter 24 Stunden - nicht in einer Woche. Sendungen werden taggleich disponiert, Klaerfaelle sofort bearbeitet.',
+  },
+  {
+    title: 'Flexibel.',
+    description:
+      'Eilsendung, ADR, Sondermasse, Direktfahrt, Kuehltransport oder Krangut - wir loesen, was andere ablehnen. Unsere Disposition denkt mit, nicht nur in Schablonen. Jede Anfrage wird individuell geprueft, jede Loesung passt zum Kunden.',
+  },
+  {
+    title: 'Transparent.',
+    description:
+      'Sie wissen jederzeit wo Ihre Ware ist. Live-Tracking per QR-Code, digitale CMR-Dokumente, sofortiger POD-Zugriff im Kundenportal. Keine Anrufe noetig - alles digital, immer aktuell.',
+  },
+  {
+    title: 'Digital.',
+    description:
+      'Wir nutzen unser eigenes Transport-Management-System: vom ersten Anruf bis zur Faktura komplett digital. Keine Excel-Listen, keine Papierberge, kein Medienbruch. Das spart Zeit - Ihre und unsere.',
+  },
+  {
+    title: 'Geht nicht, gibt’s nicht.',
+    description:
+      'Das ist mehr als ein Spruch. Wir kuemmern uns um Ihre gesamte Supply Chain - von der Abholung beim Lieferanten bis zur Zustellung beim Endkunden, inklusive Zollabwicklung, Lagerung, Cross-Docking und Retouren. Damit Sie sich auf das konzentrieren koennen, was zaehlt: Ihr Wachstum.',
   },
 ] as const;
 

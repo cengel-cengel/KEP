@@ -64,7 +64,9 @@ export type PrimaryHref =
   | '/netzwerk'
   | '/branchen'
   | '/ueber-uns'
-  | '/kontakt';
+  | '/kontakt'
+  | '/tracking'
+  | '/nachhaltigkeit';
 
 export type NavSubmenuItem = {
   pathname: PrimaryHref;
@@ -118,6 +120,7 @@ export const NAV_PRIMARY: ReadonlyArray<NavPrimaryItem> = [
     submenu: [
       { pathname: '/ueber-uns', hash: 'team', labelKey: 'submenu_about_team' },
       { pathname: '/ueber-uns', hash: 'values', labelKey: 'submenu_about_values' },
+      { pathname: '/nachhaltigkeit', labelKey: 'submenu_about_sustainability' },
       { pathname: '/ueber-uns', hash: 'history', labelKey: 'submenu_about_history' },
     ],
   },

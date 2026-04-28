@@ -36,7 +36,158 @@
     "submenu_industries_industrial": "Industrial & B2B",
     "submenu_about_team": "Management",
     "submenu_about_values": "Values",
+    "submenu_about_sustainability": "Sustainability",
     "submenu_about_history": "Story"
+  },
+  "SubHeader": {
+    "tracking": "Track shipment",
+    "transit": "Transit calculator",
+    "portal": "Customer portal",
+    "contact": "Contact"
+  },
+  "PublicTracking": {
+    "page_title": "Track shipment | KED Global Logistics",
+    "page_description": "Track your shipment in real time. Tracking number, delivery note or reference – no login. Live updates, POD status, share tracking link.",
+    "hero_eyebrow": "Tracking & Tracing",
+    "hero_title": "Where is my shipment?",
+    "hero_subtitle": "Enter your tracking number or reference. No login required, always up to date.",
+    "search_placeholder": "e.g. KED-2026-0042, delivery note, order number …",
+    "search_button": "Track",
+    "searching": "Searching …",
+    "help_label": "Where do I find my tracking number?",
+    "help_text": "You'll find the tracking number on our order confirmation, the CMR waybill or in the customer portal. Format: KED-YEAR-XXXX. Alternatively we accept your own order or delivery note number.",
+    "stats_text": "Over [200,000] shipments tracked per year",
+    "result_title": "Shipment found",
+    "result_route": "Route",
+    "result_pickup": "Pickup",
+    "result_status": "Status",
+    "result_packages": "Packages",
+    "result_weight": "Weight",
+    "result_delivered_label": "Delivered to",
+    "result_delivered_at": "Delivered on",
+    "result_signature": "Acknowledged with signature",
+    "actions_share": "Share tracking link",
+    "actions_qr": "QR code",
+    "not_found_title": "No shipment found",
+    "not_found_text": "Please check your input. The shipment may be older than 6 months. For questions, please use the contact page.",
+    "not_found_cta": "Get in touch",
+    "rate_limited": "Too many requests. Please try again in a minute.",
+    "privacy_note": "For privacy reasons we only show minimal shipment data here. Full details are available after login in the customer portal."
+  },
+  "TrackingShare": {
+    "modal_title": "Share tracking link",
+    "tab_url": "Copy link",
+    "tab_email": "By email",
+    "tab_qr": "QR code",
+    "url_label": "Tracking URL",
+    "url_copy": "Copy",
+    "url_copied": "Link copied!",
+    "email_to_label": "Recipient email",
+    "email_subject_label": "Subject",
+    "email_subject_default": "Tracking your shipment from [Sender]",
+    "email_body_default": "You can track the current status of your shipment at any time at the following link:\n\n{url}\n\nKind regards",
+    "email_send": "Open email",
+    "qr_help": "QR code for stickers, delivery notes or mobile scan.",
+    "qr_download": "Download as PNG",
+    "close": "Close"
+  },
+  "TransitCalculator": {
+    "eyebrow": "Transit calculator",
+    "title": "When will your shipment arrive?",
+    "subtitle": "Enter postcodes, get the transit time. Direct, no inquiry needed.",
+    "from_label": "From",
+    "to_label": "To",
+    "country_label": "Country",
+    "zip_label": "Postcode",
+    "service_label": "Service type",
+    "service_sammelgut": "Groupage",
+    "service_direkt": "Direct",
+    "service_uk": "UK groupage",
+    "calculate": "Calculate transit time",
+    "calculating": "Calculating …",
+    "result_title": "Estimated transit time",
+    "result_transit_label": "Transit time",
+    "result_transit_days_one": "{count} working day",
+    "result_transit_days_other": "{count} working days",
+    "result_transit_range": "{min}–{max} working days",
+    "result_cutoff": "Cut-off",
+    "result_frequency": "Frequency",
+    "result_zone": "Zone",
+    "notes": {
+      "note_daily_lines": "Daily line services Mon–Fri",
+      "note_no_transhipment": "Direct from sender to recipient",
+      "note_customs_included": "Customs clearance included",
+      "note_live_tracking": "Live tracking included",
+      "note_individual_quote": "Individual quote recommended"
+    },
+    "result_cta": "Request a quote",
+    "errors": {
+      "from_zip_required": "Please enter the sender postcode.",
+      "to_zip_required": "Please enter the recipient postcode.",
+      "network_error": "Calculation failed. Please try again."
+    }
+  },
+  "SustainabilityPage": {
+    "page_title": "Sustainability – CO2 reporting & Green Logistics | KED",
+    "page_description": "Logistics with responsibility. Route optimisation, Euro 6 fleet, GHG emission reports for your ESG accounting. KED Global Logistics from Stuttgart.",
+    "hero_eyebrow": "Sustainability",
+    "hero_title": "Logistics with responsibility.",
+    "hero_subtitle": "We know: logistics is one of the top CO2 emitters. We take this seriously and work on concrete measures for a more sustainable supply chain.",
+    "measures_eyebrow": "Measures",
+    "measures_title": "Concrete. Measurable. Step by step.",
+    "measures": [
+      {
+        "title": "Maximum utilisation instead of empty miles",
+        "text": "Our groupage system bundles shipments optimally. We save up to 35% of empty miles compared to direct transport."
+      },
+      {
+        "title": "Smart route planning",
+        "text": "Our TMS calculates optimal routes daily. Fewer kilometres, less CO2, more punctuality."
+      },
+      {
+        "title": "Euro 6 + alternative drivetrains",
+        "text": "Our subcontractors operate Euro 6 only. Pilot projects with Bio-LNG and HVO fuel are running."
+      },
+      {
+        "title": "Trunk consolidation with IDS",
+        "text": "Within the IDS network we share trunks with partner forwarders. Fewer trucks on motorways, same service level."
+      },
+      {
+        "title": "Paperless through digitalisation",
+        "text": "Digital CMR, e-invoice, online creation. We save an estimated [200,000] sheets of paper per year."
+      }
+    ],
+    "ghg_eyebrow": "For your ESG report",
+    "ghg_title": "CO2 reporting at the push of a button",
+    "ghg_subtitle": "From 2025 the CSRD obliges many companies to report Scope-3 emissions. We provide your transport-related CO2 data – automated, audited, exportable.",
+    "ghg_features": [
+      "Per-shipment CO2 calculation (kg CO2-eq)",
+      "GLEC-compliant (Global Logistics Emissions Council)",
+      "Export as CSV/Excel for ESG reports",
+      "Available in the customer portal",
+      "API integration with SAP, Microsoft, etc. possible"
+    ],
+    "ghg_status": "🚧 We're currently building this feature. Planned launch: Q3 2026. Get in touch for pilot programmes.",
+    "goals_eyebrow": "Goals",
+    "goals_title": "Our roadmap",
+    "goals": [
+      { "value": "-25%", "label": "CO2 by 2030", "hint": "vs. 2024" },
+      { "value": "100%", "label": "Euro 6 fleet", "hint": "today" },
+      { "value": "ISO 14001", "label": "targeted", "hint": "process started" }
+    ],
+    "cta_title": "Want to learn more?",
+    "cta_description": "Get in touch – we're happy to share concrete numbers and pilot projects.",
+    "cta_button": "Contact us"
+  },
+  "PortalSearchExtended": {
+    "field_label": "Search in",
+    "field_all": "All fields",
+    "field_tracking": "Tracking",
+    "field_delivery": "Delivery note",
+    "field_order": "Order",
+    "field_recipient": "Recipient",
+    "field_reference": "Reference",
+    "match_label": "Match in"
   },
   "LanguageSwitcher": {
     "label": "Switch language",

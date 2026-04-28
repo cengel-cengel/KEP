@@ -24,6 +24,12 @@ export const routing = defineRouting({
   pathnames: {
     '/': '/',
 
+    // Tools (öffentlich, locale-prefixed wenn EN)
+    '/tracking': {
+      de: '/tracking',
+      en: '/tracking',
+    },
+
     // Marketing
     '/leistungen': {
       de: '/leistungen',
@@ -36,6 +42,10 @@ export const routing = defineRouting({
     '/branchen': {
       de: '/branchen',
       en: '/industries',
+    },
+    '/nachhaltigkeit': {
+      de: '/nachhaltigkeit',
+      en: '/sustainability',
     },
     '/ueber-uns': {
       de: '/ueber-uns',

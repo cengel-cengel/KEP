@@ -40,6 +40,9 @@ export interface ShipmentEvent {
 export interface Shipment {
   id: string;
   trackingNumber: string;
+  customerReference?: string;
+  deliveryNoteNumber?: string;
+  orderNumber?: string;
   createdAt: string;
   status: ShipmentStatus;
   serviceType: 'sammelgut' | 'direkt' | 'uk' | 'lager' | 'other';

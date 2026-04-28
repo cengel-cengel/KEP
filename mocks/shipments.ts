@@ -22,6 +22,9 @@ export const MOCK_SHIPMENTS: Shipment[] = [
   {
     id: 'shp-1',
     trackingNumber: 'KED-2026-0042',
+    customerReference: 'PO-2026-A1042',
+    deliveryNoteNumber: 'LS-2026-1042',
+    orderNumber: 'BST-91042',
     createdAt: isoDaysAgo(1, 8),
     status: 'in_transit',
     serviceType: 'uk',
@@ -53,6 +56,9 @@ export const MOCK_SHIPMENTS: Shipment[] = [
   {
     id: 'shp-2',
     trackingNumber: 'KED-2026-0041',
+    customerReference: 'PO-2026-A1041',
+    deliveryNoteNumber: 'LS-2026-1041',
+    orderNumber: 'BST-91041',
     createdAt: isoDaysAgo(3),
     status: 'zugestellt',
     serviceType: 'sammelgut',
@@ -82,6 +88,9 @@ export const MOCK_SHIPMENTS: Shipment[] = [
   {
     id: 'shp-3',
     trackingNumber: 'KED-2026-0040',
+    customerReference: 'PO-2026-A1040',
+    deliveryNoteNumber: 'LS-2026-1040',
+    orderNumber: 'BST-91040',
     createdAt: isoDaysAgo(5),
     status: 'zugestellt',
     serviceType: 'direkt',
@@ -111,6 +120,9 @@ export const MOCK_SHIPMENTS: Shipment[] = [
   {
     id: 'shp-4',
     trackingNumber: 'KED-2026-0039',
+    customerReference: 'PO-2026-A1039',
+    deliveryNoteNumber: 'LS-2026-1039',
+    orderNumber: 'BST-91039',
     createdAt: isoDaysAgo(2),
     status: 'abgeholt',
     serviceType: 'sammelgut',
@@ -138,6 +150,9 @@ export const MOCK_SHIPMENTS: Shipment[] = [
   {
     id: 'shp-5',
     trackingNumber: 'KED-2026-0038',
+    customerReference: 'PO-2026-A1038',
+    deliveryNoteNumber: 'LS-2026-1038',
+    orderNumber: 'BST-91038',
     createdAt: isoDaysAgo(0, 7),
     status: 'erfasst',
     serviceType: 'uk',
@@ -162,6 +177,9 @@ export const MOCK_SHIPMENTS: Shipment[] = [
   {
     id: 'shp-6',
     trackingNumber: 'KED-2026-0037',
+    customerReference: 'PO-2026-A1037',
+    deliveryNoteNumber: 'LS-2026-1037',
+    orderNumber: 'BST-91037',
     createdAt: isoDaysAgo(7),
     status: 'zugestellt',
     serviceType: 'sammelgut',
@@ -191,6 +209,9 @@ export const MOCK_SHIPMENTS: Shipment[] = [
   {
     id: 'shp-7',
     trackingNumber: 'KED-2026-0036',
+    customerReference: 'PO-2026-A1036',
+    deliveryNoteNumber: 'LS-2026-1036',
+    orderNumber: 'BST-91036',
     createdAt: isoDaysAgo(10),
     status: 'klaerung',
     serviceType: 'direkt',
@@ -221,6 +242,9 @@ export const MOCK_SHIPMENTS: Shipment[] = [
   {
     id: 'shp-8',
     trackingNumber: 'KED-2026-0035',
+    customerReference: 'PO-2026-A1035',
+    deliveryNoteNumber: 'LS-2026-1035',
+    orderNumber: 'BST-91035',
     createdAt: isoDaysAgo(14),
     status: 'zugestellt',
     serviceType: 'sammelgut',
@@ -250,6 +274,9 @@ export const MOCK_SHIPMENTS: Shipment[] = [
   {
     id: 'shp-9',
     trackingNumber: 'KED-2026-0034',
+    customerReference: 'PO-2026-A1034',
+    deliveryNoteNumber: 'LS-2026-1034',
+    orderNumber: 'BST-91034',
     createdAt: isoDaysAgo(18),
     status: 'zugestellt',
     serviceType: 'lager',
@@ -277,6 +304,9 @@ export const MOCK_SHIPMENTS: Shipment[] = [
   {
     id: 'shp-10',
     trackingNumber: 'KED-2026-0033',
+    customerReference: 'PO-2026-A1033',
+    deliveryNoteNumber: 'LS-2026-1033',
+    orderNumber: 'BST-91033',
     createdAt: isoDaysAgo(21),
     status: 'zugestellt',
     serviceType: 'uk',
@@ -306,6 +336,9 @@ export const MOCK_SHIPMENTS: Shipment[] = [
   {
     id: 'shp-11',
     trackingNumber: 'KED-2026-0032',
+    customerReference: 'PO-2026-A1032',
+    deliveryNoteNumber: 'LS-2026-1032',
+    orderNumber: 'BST-91032',
     createdAt: isoDaysAgo(25),
     status: 'storniert',
     serviceType: 'sammelgut',
@@ -334,6 +367,9 @@ export const MOCK_SHIPMENTS: Shipment[] = [
   {
     id: 'shp-12',
     trackingNumber: 'KED-2026-0031',
+    customerReference: 'PO-2026-A1031',
+    deliveryNoteNumber: 'LS-2026-1031',
+    orderNumber: 'BST-91031',
     createdAt: isoDaysAgo(29),
     status: 'zugestellt',
     serviceType: 'direkt',

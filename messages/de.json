@@ -36,7 +36,158 @@
     "submenu_industries_industrial": "Industrie & B2B",
     "submenu_about_team": "Geschäftsführung",
     "submenu_about_values": "Werte",
+    "submenu_about_sustainability": "Nachhaltigkeit",
     "submenu_about_history": "Geschichte"
+  },
+  "SubHeader": {
+    "tracking": "Sendung verfolgen",
+    "transit": "Laufzeit berechnen",
+    "portal": "Kundenportal",
+    "contact": "Kontakt"
+  },
+  "PublicTracking": {
+    "page_title": "Sendung verfolgen | KED Global Logistics",
+    "page_description": "Verfolgen Sie Ihre Sendung in Echtzeit. Sendungsnummer, Lieferschein oder Referenz eingeben – ohne Login. Live-Updates, POD-Status, Tracking-Link teilen.",
+    "hero_eyebrow": "Tracking & Tracing",
+    "hero_title": "Wo ist meine Sendung?",
+    "hero_subtitle": "Geben Sie Ihre Sendungsnummer oder Referenz ein. Kein Login erforderlich, immer aktuell.",
+    "search_placeholder": "z.B. KED-2026-0042, Lieferschein, Auftragsnummer …",
+    "search_button": "Verfolgen",
+    "searching": "Wird gesucht …",
+    "help_label": "Wo finde ich meine Sendungsnummer?",
+    "help_text": "Sie finden die Sendungsnummer auf unserer Auftragsbestätigung, dem CMR-Frachtbrief oder im Kundenportal. Format: KED-JAHR-XXXX. Alternativ akzeptieren wir Ihre eigene Auftrags- oder Lieferscheinnummer.",
+    "stats_text": "Über [200.000] Sendungen pro Jahr verfolgt",
+    "result_title": "Sendung gefunden",
+    "result_route": "Strecke",
+    "result_pickup": "Abholung",
+    "result_status": "Status",
+    "result_packages": "Packstücke",
+    "result_weight": "Gewicht",
+    "result_delivered_label": "Zugestellt an",
+    "result_delivered_at": "Zugestellt am",
+    "result_signature": "Mit Unterschrift quittiert",
+    "actions_share": "Tracking-Link teilen",
+    "actions_qr": "QR-Code",
+    "not_found_title": "Keine Sendung gefunden",
+    "not_found_text": "Bitte prüfen Sie Ihre Eingabe. Möglicherweise ist die Sendung älter als 6 Monate. Bei Fragen erreichen Sie uns über die Kontakt-Seite.",
+    "not_found_cta": "Kontakt aufnehmen",
+    "rate_limited": "Zu viele Anfragen. Bitte versuchen Sie es in einer Minute erneut.",
+    "privacy_note": "Aus Datenschutzgründen werden hier nur minimale Sendungsdaten angezeigt. Vollständige Details finden Sie nach Login im Kundenportal."
+  },
+  "TrackingShare": {
+    "modal_title": "Tracking-Link teilen",
+    "tab_url": "Link kopieren",
+    "tab_email": "Per E-Mail",
+    "tab_qr": "QR-Code",
+    "url_label": "Tracking-URL",
+    "url_copy": "Kopieren",
+    "url_copied": "Link kopiert!",
+    "email_to_label": "Empfänger-E-Mail",
+    "email_subject_label": "Betreff",
+    "email_subject_default": "Tracking Ihrer Sendung von [Versender]",
+    "email_body_default": "Sie können den aktuellen Status Ihrer Sendung jederzeit unter folgendem Link verfolgen:\n\n{url}\n\nViele Grüße",
+    "email_send": "E-Mail öffnen",
+    "qr_help": "QR-Code für Aufkleber, Lieferschein oder Mobile-Scan.",
+    "qr_download": "Als PNG herunterladen",
+    "close": "Schließen"
+  },
+  "TransitCalculator": {
+    "eyebrow": "Laufzeit-Rechner",
+    "title": "Wann kommt Ihre Sendung an?",
+    "subtitle": "PLZ eingeben, Laufzeit erfahren. Direkt, ohne Anfrage.",
+    "from_label": "Von",
+    "to_label": "Nach",
+    "country_label": "Land",
+    "zip_label": "PLZ",
+    "service_label": "Verkehrsart",
+    "service_sammelgut": "Sammelgut",
+    "service_direkt": "Direktverkehr",
+    "service_uk": "UK-Sammelgut",
+    "calculate": "Laufzeit berechnen",
+    "calculating": "Berechnung …",
+    "result_title": "Geschätzte Laufzeit",
+    "result_transit_label": "Laufzeit",
+    "result_transit_days_one": "{count} Werktag",
+    "result_transit_days_other": "{count} Werktage",
+    "result_transit_range": "{min}–{max} Werktage",
+    "result_cutoff": "Cut-off",
+    "result_frequency": "Frequenz",
+    "result_zone": "Zone",
+    "notes": {
+      "note_daily_lines": "Tägliche Linienverkehre Mo–Fr",
+      "note_no_transhipment": "Direkt vom Versender zum Empfänger",
+      "note_customs_included": "Inkl. Zollabwicklung",
+      "note_live_tracking": "Live-Tracking inklusive",
+      "note_individual_quote": "Individuelles Angebot empfohlen"
+    },
+    "result_cta": "Angebot anfordern",
+    "errors": {
+      "from_zip_required": "Bitte Versand-PLZ angeben.",
+      "to_zip_required": "Bitte Empfangs-PLZ angeben.",
+      "network_error": "Berechnung fehlgeschlagen. Bitte erneut versuchen."
+    }
+  },
+  "SustainabilityPage": {
+    "page_title": "Nachhaltigkeit – CO2-Bilanz & Green Logistics | KED",
+    "page_description": "Logistik mit Verantwortung. Routenoptimierung, Euro 6 Flotte, GHG-Emission-Reports für Ihre ESG-Bilanz. KED Global Logistics aus Stuttgart.",
+    "hero_eyebrow": "Nachhaltigkeit",
+    "hero_title": "Logistik mit Verantwortung.",
+    "hero_subtitle": "Wir wissen: Logistik gehört zu den CO2-Emittenten Nr. 1. Wir nehmen das ernst und arbeiten an konkreten Maßnahmen für eine nachhaltigere Lieferkette.",
+    "measures_eyebrow": "Maßnahmen",
+    "measures_title": "Konkret. Messbar. Schritt für Schritt.",
+    "measures": [
+      {
+        "title": "Maximale Auslastung statt Leerfahrten",
+        "text": "Unser Sammelgutsystem bündelt Sendungen optimal. So sparen wir bis zu 35 % Leerfahrten gegenüber Direktverkehr."
+      },
+      {
+        "title": "Intelligente Tourenplanung",
+        "text": "Unser TMS-System berechnet täglich optimale Touren. Weniger Kilometer, weniger CO2, mehr Pünktlichkeit."
+      },
+      {
+        "title": "Euro 6 + alternative Antriebe",
+        "text": "Unsere Subunternehmer fahren ausschließlich Euro 6. Pilotprojekte mit Bio-LNG und HVO-Treibstoff laufen."
+      },
+      {
+        "title": "Hauptlauf-Bündelung mit IDS",
+        "text": "Im IDS-Netzwerk teilen wir Hauptläufe mit Partner-Speditionen. Weniger LKWs auf der Autobahn bei gleicher Leistung."
+      },
+      {
+        "title": "Papierlos durch Digitalisierung",
+        "text": "Digitales CMR, e-Rechnung, Online-Erfassung. Wir sparen geschätzt [200.000] Blatt Papier pro Jahr."
+      }
+    ],
+    "ghg_eyebrow": "Für Ihre ESG-Bilanz",
+    "ghg_title": "CO2-Bilanz auf Knopfdruck",
+    "ghg_subtitle": "Ab 2025 verpflichtet die CSRD-Richtlinie viele Unternehmen zur Berichterstattung über Scope-3-Emissionen. Wir liefern Ihre transportbezogenen CO2-Daten – automatisiert, geprüft, exportierbar.",
+    "ghg_features": [
+      "Pro-Sendung CO2-Berechnung (kg CO2-eq)",
+      "GLEC-konform (Global Logistics Emissions Council)",
+      "Export als CSV/Excel für ESG-Reports",
+      "Im Kundenportal verfügbar",
+      "API-Anbindung an SAP, Microsoft, etc. möglich"
+    ],
+    "ghg_status": "🚧 Diese Funktion entwickeln wir aktuell. Geplanter Launch: Q3 2026. Sprechen Sie uns an für Pilot-Programme.",
+    "goals_eyebrow": "Ziele",
+    "goals_title": "Unsere Roadmap",
+    "goals": [
+      { "value": "-25 %", "label": "CO2 bis 2030", "hint": "gegenüber 2024" },
+      { "value": "100 %", "label": "Euro 6 Flotte", "hint": "bereits heute" },
+      { "value": "ISO 14001", "label": "angestrebt", "hint": "Prozess gestartet" }
+    ],
+    "cta_title": "Möchten Sie mehr erfahren?",
+    "cta_description": "Sprechen Sie uns an – wir teilen unsere konkreten Zahlen und Pilotprojekte gerne.",
+    "cta_button": "Kontakt aufnehmen"
+  },
+  "PortalSearchExtended": {
+    "field_label": "Suche in",
+    "field_all": "Alle Felder",
+    "field_tracking": "Sendungsnr.",
+    "field_delivery": "Lieferschein",
+    "field_order": "Bestellung",
+    "field_recipient": "Empfänger",
+    "field_reference": "Eigene Referenz",
+    "match_label": "Treffer in"
   },
   "LanguageSwitcher": {
     "label": "Sprache wechseln",

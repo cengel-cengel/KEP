@@ -14,6 +14,8 @@ const ENTRIES: SitemapEntry[] = [
   { pathname: '/netzwerk', changeFrequency: 'monthly', priority: 0.8 },
   { pathname: '/branchen', changeFrequency: 'monthly', priority: 0.8 },
   { pathname: '/ueber-uns', changeFrequency: 'monthly', priority: 0.8 },
+  { pathname: '/nachhaltigkeit', changeFrequency: 'monthly', priority: 0.7 },
+  { pathname: '/tracking', changeFrequency: 'weekly', priority: 0.7 },
   { pathname: '/kontakt', changeFrequency: 'monthly', priority: 0.8 },
   { pathname: '/impressum', changeFrequency: 'yearly', priority: 0.3 },
   { pathname: '/datenschutz', changeFrequency: 'yearly', priority: 0.3 },

@@ -19,6 +19,7 @@ import { Hero } from '@/components/marketing/Hero';
 import { StatsStrip } from '@/components/marketing/StatsStrip';
 import { ServiceCard } from '@/components/marketing/ServiceCard';
 import { CtaBlock } from '@/components/marketing/CtaBlock';
+import { TransitCalculator } from '@/components/marketing/TransitCalculator';
 import {
   LOCATION_KEYS,
   ROUTES,
@@ -78,6 +79,7 @@ export default async function LandingPage({
       <Hero />
       <StatsStrip />
       <ServicesSection />
+      <TransitCalculator />
       <LocationsSection />
       <TechSection />
       <DigitalSelfServiceSection />

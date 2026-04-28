@@ -33,6 +33,10 @@ export const routing = defineRouting({
       de: '/netzwerk',
       en: '/network',
     },
+    '/branchen': {
+      de: '/branchen',
+      en: '/industries',
+    },
     '/ueber-uns': {
       de: '/ueber-uns',
       en: '/about',

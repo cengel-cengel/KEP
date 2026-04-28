@@ -14,6 +14,7 @@
   "Navigation": {
     "services": "Services",
     "network": "Network",
+    "industries": "Industries",
     "about": "About",
     "contact": "Contact",
     "portal": "Customer Portal",
@@ -22,11 +23,17 @@
     "submenu_services_direct": "Direct Shipments EU",
     "submenu_services_uk": "UK Logistics",
     "submenu_services_warehouse": "Warehousing & Handling",
+    "submenu_services_customs": "Customs Service",
     "submenu_network_stuttgart": "Stuttgart HQ",
     "submenu_network_witham": "Witham (UK South)",
     "submenu_network_stoke": "Stoke (UK North)",
     "submenu_network_lines": "Line services",
     "submenu_network_partners": "Partners",
+    "submenu_industries_automotive": "Automotive",
+    "submenu_industries_engineering": "Mechanical Engineering",
+    "submenu_industries_consumer": "FMCG & E-Commerce",
+    "submenu_industries_electronics": "Electronics & Tech",
+    "submenu_industries_industrial": "Industrial & B2B",
     "submenu_about_team": "Management",
     "submenu_about_values": "Values",
     "submenu_about_history": "Story"
@@ -170,6 +177,53 @@
         "transit": "Goods receipt booked on day of arrival, dispatch the same or next working day."
       }
     },
+    "customs_eyebrow": "Customs Clearance",
+    "customs_title": "Brexit-proof. Fast. Experienced.",
+    "customs_subtitle": "Since Brexit, UK shipping has become more complex. We handle the complete customs clearance for you – with AEO-certified processes, our own customs team and average clearance times of 4–6 hours.",
+    "customs_highlights": [
+      {
+        "title": "EORI & Registration",
+        "items": [
+          "Advice on EORI applications",
+          "Fiscal representation in UK possible",
+          "Onboarding support for new customers"
+        ]
+      },
+      {
+        "title": "T1 / T2 transit procedures",
+        "items": [
+          "T1 transit notes for third-country goods",
+          "T2 procedure for EU goods",
+          "Advice on which procedure fits"
+        ]
+      },
+      {
+        "title": "Brexit compliance",
+        "items": [
+          "Correct Incoterms advice (DDP, DAP, EXW)",
+          "Commercial invoices with all required data",
+          "Statements of origin",
+          "Note: customs reject ~25% of EU shipments due to missing Incoterms – not with us."
+        ]
+      },
+      {
+        "title": "Customs clearance",
+        "items": [
+          "Average clearance: 4–6 hours",
+          "No standstill at UK border",
+          "One contact for transport + customs",
+          "Direct integration with HMRC systems"
+        ]
+      }
+    ],
+    "customs_trust_title": "Memberships & certifications",
+    "customs_trust": [
+      "DSLV – German Forwarders' Association",
+      "BIFA – via partner England Logistics in UK",
+      "IDS Logistik",
+      "AEO status [PLACEHOLDER]"
+    ],
+    "customs_cta": "Request customs quote",
     "faq_eyebrow": "FAQ",
     "faq_title": "Frequently asked questions",
     "faq_description": "Answers to the questions we hear most often.",
@@ -193,6 +247,26 @@
       {
         "q": "What payment terms apply?",
         "a": "Standard is 30 days net from invoice date. For new customers we run a quick credit check; for ongoing relationships individual terms are possible."
+      },
+      {
+        "q": "How does customs clearance to the UK work?",
+        "a": "We are AEO-certified and handle the entire customs clearance via T1/T2 procedures. EORI setup, ENS filing and HMRC submissions happen in-house – average clearance time is 4–6 hours."
+      },
+      {
+        "q": "Which UK postcodes are covered?",
+        "a": "All of the UK including Scotland, Wales and Northern Ireland. South & London via our Witham hub (E, EC, N, NW, SE, SW, W, WC, CM, CT, …), North + Scotland via Stoke-on-Trent (B, M, L, LS, NE, EH, G, …). Belfast (BT) via Stoke + ferry."
+      },
+      {
+        "q": "Do you offer warehousing in Stuttgart?",
+        "a": "Yes: cross-docking, mid- and long-term storage, picking and packing in our Stuttgart hub. Modern WMS with ERP integration – flexible from one pallet."
+      },
+      {
+        "q": "How much does groupage shipping to the UK cost?",
+        "a": "The price depends on weight, volume, postcode and options (ADR, express). You get a transparent zone-tariff quote within 24 hours – no hidden fees."
+      },
+      {
+        "q": "What happens with damage or returns?",
+        "a": "We work according to ADSp 2017. Damages are handled by our claims team, returns are organised within 24 hours. We recommend a transport insurance (e.g. SLVS) and arrange it on request."
       }
     ]
   },
@@ -226,7 +300,19 @@
       "transit_label": "Transit from Stuttgart",
       "transit": "from 48 hours",
       "frequency_label": "Frequency",
-      "frequency": "Mon–Fri"
+      "frequency": "Mon–Fri",
+      "details_title": "Postcode coverage – South",
+      "postcodes_label": "Postcodes",
+      "postcodes": [
+        "London: E, EC, N, NW, SE, SW, W, WC",
+        "Essex: CM, CO, IG, RM, SS",
+        "Kent: BR, CT, DA, ME, TN",
+        "Surrey: CR, GU, KT, RH, SM",
+        "Hertfordshire: AL, EN, HP, SG, WD",
+        "Bedfordshire & Cambridgeshire (South)"
+      ],
+      "cities_label": "Daily departures to",
+      "cities": ["London (all boroughs)", "Cambridge", "Reading", "Brighton", "Canterbury"]
     },
     "stoke": {
       "eyebrow": "Northern Hub",
@@ -238,7 +324,31 @@
       "transit_label": "Transit from Stuttgart",
       "transit": "48–72 hours",
       "frequency_label": "Frequency",
-      "frequency": "Mon–Fri"
+      "frequency": "Mon–Fri",
+      "details_title": "Postcode coverage – North & Scotland",
+      "postcodes_label": "Postcodes",
+      "postcodes": [
+        "Midlands: B, CV, DE, DY, NG, NN, ST, TF, WS, WV",
+        "North West: BB, BL, CW, FY, HX, L, LA, M, OL, PR, SK, WA, WN",
+        "Yorkshire: BD, DN, HD, HG, HU, LS, S, WF, YO",
+        "North East: DH, DL, NE, SR, TS",
+        "Scotland: AB, DD, DG, EH, FK, G, IV, KA, KW, KY, ML, PA, PH, TD",
+        "Wales: CF, LD, LL, NP, SA, SY",
+        "Northern Ireland: BT (via ferry)"
+      ],
+      "cities_label": "Daily departures to",
+      "cities": [
+        "Birmingham",
+        "Manchester",
+        "Liverpool",
+        "Leeds",
+        "Sheffield",
+        "Newcastle",
+        "Glasgow",
+        "Edinburgh",
+        "Cardiff",
+        "Belfast"
+      ]
     },
     "lines_eyebrow": "Line services",
     "lines_title": "Daily Line Services",
@@ -281,6 +391,93 @@
     "cta_description": "We handle the trunk run, customs and last-mile – without Brexit hassle and with a transparent price.",
     "cta_button": "Send UK inquiry"
   },
+  "IndustriesPage": {
+    "page_title": "Industries – Automotive, Engineering, FMCG | KED",
+    "page_description": "Specialised logistics for automotive, mechanical engineering, FMCG, electronics and industrial. Sector know-how from 45+ years in Stuttgart.",
+    "hero_eyebrow": "Industries",
+    "hero_title": "Industry expertise for your sector.",
+    "hero_subtitle": "Stuttgart and Baden-Württemberg are the industrial heart of Europe. With over 45 years of experience we know the specific requirements of every sector.",
+    "items": {
+      "automotive": {
+        "eyebrow": "Stuttgart region",
+        "title": "Automotive",
+        "subtitle": "Just-in-time for the automotive industry",
+        "description": "We've worked with suppliers in the Stuttgart region for decades and understand the requirements of the automotive industry from real-world practice.",
+        "bullets": [
+          "JIS / JIT delivery",
+          "Kanban control",
+          "Plant-ramp expertise",
+          "GTL connections to major OEMs",
+          "Tier-1 / Tier-2 suppliers",
+          "Empty-container management"
+        ],
+        "alt": "KED articulated truck at plant ramp – just-in-time automotive Stuttgart"
+      },
+      "engineering": {
+        "eyebrow": "Made in Germany",
+        "title": "Mechanical Engineering",
+        "subtitle": "Machinery safely shipped worldwide",
+        "description": "Baden-Württemberg is engineering country. We move everything from a single CNC controller to a complete machining centre.",
+        "bullets": [
+          "Heavy goods up to 24 t",
+          "Spare parts for machinery",
+          "Tooling shipments",
+          "Project logistics",
+          "Packaging service",
+          "Crane-goods experience"
+        ],
+        "alt": "KED truck fleet – mechanical engineering logistics worldwide"
+      },
+      "consumer": {
+        "eyebrow": "B2B & B2C",
+        "title": "FMCG & E-Commerce",
+        "subtitle": "From manufacturer to end customer",
+        "description": "We consolidate industrial and trade shipments in our Stuttgart hub and distribute across Germany, EU and UK – including last-mile.",
+        "bullets": [
+          "Cross-docking Stuttgart",
+          "Distribution UK + EU",
+          "Last-mile connection",
+          "Returns management",
+          "Seasonal peak absorption",
+          "White-label logistics"
+        ],
+        "alt": "KED warehouse Stuttgart – FMCG and e-commerce logistics"
+      },
+      "electronics": {
+        "eyebrow": "High-tech",
+        "title": "Electronics & Technology",
+        "subtitle": "Sensitive goods. Safe hands.",
+        "description": "High-value electronics deserve high-value logistics. We bring the rigour and discretion the sector requires.",
+        "bullets": [
+          "ESD-compliant storage available",
+          "Climate-controlled rooms",
+          "High-value cargo insurance",
+          "Discreet handling",
+          "Fast response times"
+        ],
+        "alt": "KED dispatch – high-tech logistics with live tracking"
+      },
+      "industrial": {
+        "eyebrow": "Classic industry",
+        "title": "Industrial & B2B",
+        "subtitle": "Reliable partner for any industry",
+        "description": "Steel, chemicals, construction, materials, tools – we know the typical demands of classic B2B sectors.",
+        "bullets": [
+          "Steel & metal",
+          "Chemicals (ADR)",
+          "Construction & supplies",
+          "Materials",
+          "Tools & industrial supplies"
+        ],
+        "alt": "KED hub Stuttgart – industrial and B2B logistics"
+      }
+    },
+    "block_offer_label": "What we offer",
+    "cta_eyebrow": "Other sector?",
+    "cta_title": "Your industry not listed?",
+    "cta_description": "We work across all sectors. Just get in touch – we'll find the right solution.",
+    "cta_button": "Get in touch"
+  },
   "Locations": {
     "eyebrow": "Locations",
     "title": "Stuttgart meets Great Britain.",
@@ -319,12 +516,47 @@
   },
   "Trust": {
     "label": "Trusted since 1980",
+    "section_title": "Trust & Certifications",
+    "section_description": "Associations, certifications and memberships that back our work.",
     "items": {
       "adsp": "ADSp 2017",
+      "dslv": "DSLV",
       "ids": "IDS network",
-      "aeo": "Authorized Economic Operator (AEO)",
-      "iso": "ISO-certified processes"
+      "aeo": "AEO-S",
+      "iso": "ISO 9001",
+      "ihk": "IHK Stuttgart",
+      "bifa": "BIFA"
+    },
+    "descriptions": {
+      "adsp": "German General Forwarders' Standard Terms",
+      "dslv": "Member of the German Forwarders' Association",
+      "aeo": "Authorized Economic Operator Security – customs simplification [PLACEHOLDER]",
+      "iso": "Quality management certified [PLACEHOLDER]",
+      "ids": "Member of the IDS groupage network",
+      "ihk": "Member of the Stuttgart Chamber of Commerce",
+      "bifa": "Via partner England Logistics – British International Freight Association"
     }
+  },
+  "DigitalSelfService": {
+    "eyebrow": "Digital first",
+    "title": "Self-service. 24/7. No phone call.",
+    "subtitle": "While other forwarders still fax, we make life easier: our own customer portal with live tracking, online shipment creation and instant document access.",
+    "features": {
+      "tracking": {
+        "title": "Real-time status",
+        "description": "See where your shipment is – with timeline, status updates and precise location. Including POD photo on delivery."
+      },
+      "create": {
+        "title": "New shipment in 60 seconds",
+        "description": "Create a new shipment yourself instead of calling. Even faster with your saved address book."
+      },
+      "documents": {
+        "title": "CMR. Invoice. Delivery note.",
+        "description": "Instant download in the portal. Filter by date, shipment or type. No more email requests."
+      }
+    },
+    "cta_button": "Discover the customer portal",
+    "cta_subtitle": "Demo access: demo@ked.de / demo1234"
   },
   "CtaBlock": {
     "default_eyebrow": "Let's talk",
@@ -415,6 +647,17 @@
         ]
       }
     },
+    "numbers_eyebrow": "By the numbers",
+    "numbers_title": "KED in numbers",
+    "numbers_description": "What makes our work measurable – as of today.",
+    "numbers": [
+      { "value": "45+", "label": "Years of experience" },
+      { "value": "[60+]", "label": "Employees" },
+      { "value": "[> 200,000]", "label": "Shipments per year" },
+      { "value": "[> 800]", "label": "Long-term customers" },
+      { "value": "2", "label": "UK hubs" },
+      { "value": "100%", "label": "Owned network" }
+    ],
     "values_eyebrow": "Our values",
     "values_title": "What KED stands for",
     "values_description": "Five principles we measure ourselves against every day.",

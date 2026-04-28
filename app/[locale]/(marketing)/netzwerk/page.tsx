@@ -173,6 +173,8 @@ function UkPartnerSection() {
 
 function HubCard({ hubKey }: { hubKey: HubKey }) {
   const t = useTranslations(`NetworkPage.${hubKey}`);
+  const postcodes = (t.raw('postcodes') as ReadonlyArray<string>) ?? [];
+  const cities = (t.raw('cities') as ReadonlyArray<string>) ?? [];
 
   return (
     <article
@@ -209,6 +211,40 @@ function HubCard({ hubKey }: { hubKey: HubKey }) {
           <dd className="mt-1.5 text-slate-700">{t('frequency')}</dd>
         </div>
       </dl>
+
+      <details className="group mt-6 rounded-lg bg-slate-50 ring-1 ring-slate-200">
+        <summary className="flex cursor-pointer items-center justify-between gap-2 px-4 py-3 text-sm font-semibold text-brand">
+          {t('details_title')}
+          <span aria-hidden="true" className="text-gold transition-transform group-open:rotate-180">▾</span>
+        </summary>
+        <div className="space-y-4 px-4 pb-4 text-sm">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              {t('postcodes_label')}
+            </p>
+            <ul className="mt-2 space-y-1 text-slate-700">
+              {postcodes.map((p) => (
+                <li key={p} className="font-mono text-xs">{p}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              {t('cities_label')}
+            </p>
+            <ul className="mt-2 flex flex-wrap gap-1.5">
+              {cities.map((city) => (
+                <li
+                  key={city}
+                  className="rounded-full bg-white px-2.5 py-0.5 text-xs text-slate-700 ring-1 ring-slate-200"
+                >
+                  {city}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </details>
     </article>
   );
 }

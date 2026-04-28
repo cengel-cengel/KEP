@@ -3,10 +3,8 @@ import { useTranslations } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import {
   ArrowRight,
-  CheckCircle2,
   FileText,
   MapPin,
-  PackageCheck,
   Phone,
   QrCode,
   Radar,
@@ -27,7 +25,7 @@ import {
   SERVICE_IMAGES,
   SERVICE_KEYS,
   SITE,
-  TRUST_KEYS,
+  TRUST_BADGES,
   type ServiceKey,
 } from '@/lib/constants';
 import { buildLocaleMetadata } from '@/lib/seo';
@@ -52,13 +50,6 @@ const FEATURE_ICONS = {
   documents: FileText,
   qr: QrCode,
   portal: Shield,
-} as const;
-
-const TRUST_ICONS = {
-  adsp: CheckCircle2,
-  ids: CheckCircle2,
-  aeo: CheckCircle2,
-  iso: PackageCheck,
 } as const;
 
 export default async function LandingPage({
@@ -89,6 +80,7 @@ export default async function LandingPage({
       <ServicesSection />
       <LocationsSection />
       <TechSection />
+      <DigitalSelfServiceSection />
       <TrustSection />
       <CtaBlock />
 
@@ -241,23 +233,69 @@ function TrustSection() {
   const t = useTranslations('Trust');
 
   return (
-    <Section tone="slate" spacing="md">
+    <Section tone="slate" spacing="lg">
       <Container>
-        <div className="flex flex-col items-center gap-6 text-center">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gold-700">
-            {t('label')}
+        <SectionHeader
+          eyebrow={t('label')}
+          title={t('section_title')}
+          description={t('section_description')}
+          align="center"
+          className="mx-auto"
+        />
+        <ul className="mt-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {TRUST_BADGES.map((key) => (
+            <li
+              key={key}
+              className="rounded-xl bg-white p-5 ring-1 ring-slate-200"
+            >
+              <p className="font-semibold text-brand">{t(`items.${key}`)}</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                {t(`descriptions.${key}`)}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </Container>
+    </Section>
+  );
+}
+
+function DigitalSelfServiceSection() {
+  const t = useTranslations('DigitalSelfService');
+  const featureKeys = ['tracking', 'create', 'documents'] as const;
+
+  return (
+    <Section tone="gradient" spacing="lg">
+      <Container>
+        <div className="mx-auto max-w-3xl text-center">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gold">
+            {t('eyebrow')}
           </p>
-          <ul className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-slate-600">
-            {TRUST_KEYS.map((key) => {
-              const Icon = TRUST_ICONS[key];
-              return (
-                <li key={key} className="flex items-center gap-2">
-                  <Icon className="h-4 w-4 text-gold" aria-hidden="true" />
-                  {t(`items.${key}`)}
-                </li>
-              );
-            })}
-          </ul>
+          <h2 className="mt-3 text-display-md text-balance text-white">{t('title')}</h2>
+          <p className="mt-4 text-lg leading-relaxed text-brand-100">{t('subtitle')}</p>
+        </div>
+
+        <div className="mt-12 grid gap-6 md:grid-cols-3">
+          {featureKeys.map((key) => (
+            <div
+              key={key}
+              className="rounded-2xl bg-white/10 p-6 ring-1 ring-inset ring-white/15 backdrop-blur"
+            >
+              <h3 className="text-lg font-semibold text-white">
+                {t(`features.${key}.title`)}
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-brand-100">
+                {t(`features.${key}.description`)}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-10 flex flex-col items-center gap-2">
+          <Button asChild variant="secondary" size="lg" rightIcon={<ArrowRight className="h-4 w-4" />}>
+            <Link href={ROUTES.portal.login}>{t('cta_button')}</Link>
+          </Button>
+          <p className="text-xs text-brand-100/80">{t('cta_subtitle')}</p>
         </div>
       </Container>
     </Section>

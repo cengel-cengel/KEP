@@ -14,6 +14,7 @@
   "Navigation": {
     "services": "Leistungen",
     "network": "Netzwerk",
+    "industries": "Branchen",
     "about": "Über uns",
     "contact": "Kontakt",
     "portal": "Kundenportal",
@@ -22,11 +23,17 @@
     "submenu_services_direct": "Direktverkehre EU",
     "submenu_services_uk": "UK-Logistik",
     "submenu_services_warehouse": "Lager & Umschlag",
+    "submenu_services_customs": "Zollservice",
     "submenu_network_stuttgart": "Stuttgart HQ",
     "submenu_network_witham": "Witham (UK Süd)",
     "submenu_network_stoke": "Stoke (UK Nord)",
     "submenu_network_lines": "Linienverkehre",
     "submenu_network_partners": "Partner",
+    "submenu_industries_automotive": "Automotive",
+    "submenu_industries_engineering": "Maschinenbau",
+    "submenu_industries_consumer": "Konsumgüter & E-Commerce",
+    "submenu_industries_electronics": "Elektronik & Technologie",
+    "submenu_industries_industrial": "Industrie & B2B",
     "submenu_about_team": "Geschäftsführung",
     "submenu_about_values": "Werte",
     "submenu_about_history": "Geschichte"
@@ -170,6 +177,53 @@
         "transit": "Wareneingang am Tag der Anlieferung gebucht, Versand am gleichen oder nächsten Werktag möglich."
       }
     },
+    "customs_eyebrow": "Zollabwicklung",
+    "customs_title": "Brexit-sicher. Schnell. Erfahren.",
+    "customs_subtitle": "Seit dem Brexit ist UK-Versand komplexer geworden. Wir nehmen Ihnen die komplette Zollabwicklung ab – mit AEO-zertifizierten Prozessen, eigenem Zoll-Team und durchschnittlich 4–6 Stunden Clearance-Zeit.",
+    "customs_highlights": [
+      {
+        "title": "EORI & Registrierung",
+        "items": [
+          "Beratung bei EORI-Antrag",
+          "Fiskalvertretung in UK möglich",
+          "Setup-Begleitung für Erstkunden"
+        ]
+      },
+      {
+        "title": "T1 / T2 Versandverfahren",
+        "items": [
+          "T1-Versandscheine bei Drittland-Ware",
+          "T2-Verfahren für EU-Ware",
+          "Beratung welches Verfahren passt"
+        ]
+      },
+      {
+        "title": "Brexit-Compliance",
+        "items": [
+          "Korrekte Incoterms-Beratung (DDP, DAP, EXW)",
+          "Handelsrechnungen mit allen Pflichtangaben",
+          "Ursprungserklärungen",
+          "Hinweis: Zollbehörden lehnen ca. 25 % der EU-Sendungen wegen fehlender Incoterms ab – bei uns nicht."
+        ]
+      },
+      {
+        "title": "Customs Clearance",
+        "items": [
+          "Durchschnittliche Clearance: 4–6 Stunden",
+          "Kein Stillstand am UK-Grenzübergang",
+          "Ein Ansprechpartner für Transport + Zoll",
+          "Direktanbindung an HMRC-Systeme"
+        ]
+      }
+    ],
+    "customs_trust_title": "Mitgliedschaften & Zertifizierungen",
+    "customs_trust": [
+      "DSLV – Deutscher Speditions- und Logistikverband",
+      "BIFA – über Partner England Logistics in UK",
+      "IDS Logistik",
+      "AEO-Status [PLATZHALTER]"
+    ],
+    "customs_cta": "Zoll-Anfrage stellen",
     "faq_eyebrow": "FAQ",
     "faq_title": "Häufige Fragen",
     "faq_description": "Antworten auf die Fragen, die uns am häufigsten gestellt werden.",
@@ -193,6 +247,26 @@
       {
         "q": "Welche Zahlungsbedingungen gelten?",
         "a": "Standard sind 30 Tage netto nach Rechnungsstellung. Für Neukunden klären wir die Bonität vorab; für laufende Geschäftsbeziehungen sind individuelle Konditionen möglich."
+      },
+      {
+        "q": "Wie funktioniert die Zollabwicklung nach UK?",
+        "a": "Wir sind AEO-zertifiziert und übernehmen die komplette Zollabwicklung über T1- bzw. T2-Verfahren. EORI-Setup, ENS-Filing und HMRC-Anmeldungen passieren bei uns intern – durchschnittliche Clearance-Zeit: 4–6 Stunden."
+      },
+      {
+        "q": "Welche britischen Postleitzahlen werden bedient?",
+        "a": "Komplett UK inklusive Schottland, Wales und Nordirland. Süden & London über unseren Hub Witham (E, EC, N, NW, SE, SW, W, WC, CM, CT, …), Norden + Schottland über Stoke-on-Trent (B, M, L, LS, NE, EH, G, …). Belfast (BT) über Stoke + Fähre."
+      },
+      {
+        "q": "Bieten Sie auch Lager in Stuttgart?",
+        "a": "Ja: Cross-Docking, Mittel- und Langzeitlagerung sowie Kommissionierung in unserem Stuttgarter Hub. Mit modernem WMS und ERP-Anbindung – flexibel ab einer Palette."
+      },
+      {
+        "q": "Was kostet ein Sammelgut-Versand nach UK?",
+        "a": "Der Preis hängt von Gewicht, Volumen, Postleitzahl und Optionen (ADR, Express) ab. Sie bekommen ein transparentes Zonentarif-Angebot binnen 24 Stunden – ohne versteckte Kosten."
+      },
+      {
+        "q": "Was passiert bei Schäden oder Retouren?",
+        "a": "Wir arbeiten nach ADSp 2017. Schäden gehen an unser Klärungsteam, das Retouren binnen 24 Stunden organisiert. Eine Transportversicherung (z. B. SLVS) empfehlen wir und vermitteln sie auf Wunsch."
       }
     ]
   },
@@ -226,7 +300,19 @@
       "transit_label": "Laufzeit ab Stuttgart",
       "transit": "ab 48 Stunden",
       "frequency_label": "Frequenz",
-      "frequency": "Mo–Fr"
+      "frequency": "Mo–Fr",
+      "details_title": "PLZ-Coverage Süd",
+      "postcodes_label": "Postcodes",
+      "postcodes": [
+        "London: E, EC, N, NW, SE, SW, W, WC",
+        "Essex: CM, CO, IG, RM, SS",
+        "Kent: BR, CT, DA, ME, TN",
+        "Surrey: CR, GU, KT, RH, SM",
+        "Hertfordshire: AL, EN, HP, SG, WD",
+        "Bedfordshire & Cambridgeshire (Süd)"
+      ],
+      "cities_label": "Tagesabfahrten zu",
+      "cities": ["London (alle Bezirke)", "Cambridge", "Reading", "Brighton", "Canterbury"]
     },
     "stoke": {
       "eyebrow": "Hub Nord",
@@ -238,7 +324,31 @@
       "transit_label": "Laufzeit ab Stuttgart",
       "transit": "48–72 Stunden",
       "frequency_label": "Frequenz",
-      "frequency": "Mo–Fr"
+      "frequency": "Mo–Fr",
+      "details_title": "PLZ-Coverage Nord & Schottland",
+      "postcodes_label": "Postcodes",
+      "postcodes": [
+        "Midlands: B, CV, DE, DY, NG, NN, ST, TF, WS, WV",
+        "North West: BB, BL, CW, FY, HX, L, LA, M, OL, PR, SK, WA, WN",
+        "Yorkshire: BD, DN, HD, HG, HU, LS, S, WF, YO",
+        "North East: DH, DL, NE, SR, TS",
+        "Scotland: AB, DD, DG, EH, FK, G, IV, KA, KW, KY, ML, PA, PH, TD",
+        "Wales: CF, LD, LL, NP, SA, SY",
+        "Nordirland: BT (über Fähre)"
+      ],
+      "cities_label": "Tagesabfahrten zu",
+      "cities": [
+        "Birmingham",
+        "Manchester",
+        "Liverpool",
+        "Leeds",
+        "Sheffield",
+        "Newcastle",
+        "Glasgow",
+        "Edinburgh",
+        "Cardiff",
+        "Belfast"
+      ]
     },
     "lines_eyebrow": "Linienverkehre",
     "lines_title": "Tägliche Linienverkehre",
@@ -281,6 +391,93 @@
     "cta_description": "Wir kümmern uns um Hauptlauf, Zoll und Last-Mile – ohne Brexit-Stress, mit transparentem Preis.",
     "cta_button": "UK-Anfrage senden"
   },
+  "IndustriesPage": {
+    "page_title": "Branchen – Automotive, Maschinenbau, FMCG | KED",
+    "page_description": "Spezialisierte Logistik für Automotive, Maschinenbau, Konsumgüter, Elektronik und Industrie. Branchenwissen seit 45+ Jahren in Stuttgart.",
+    "hero_eyebrow": "Branchen",
+    "hero_title": "Branchen-Expertise für Ihre Industrie.",
+    "hero_subtitle": "Stuttgart und Baden-Württemberg sind das industrielle Herz Europas. Mit über 45 Jahren Erfahrung kennen wir die spezifischen Anforderungen jeder Branche.",
+    "items": {
+      "automotive": {
+        "eyebrow": "Region Stuttgart",
+        "title": "Automotive",
+        "subtitle": "Just-in-Time für die Automobilindustrie",
+        "description": "Wir arbeiten für Zulieferer in der Region Stuttgart seit Jahrzehnten und kennen die Anforderungen der Automobilindustrie aus der Praxis.",
+        "bullets": [
+          "JIS/JIT-Belieferung",
+          "Kanban-Steuerung",
+          "Werksrampe-Kompetenz",
+          "GTL-Anbindung großer OEMs",
+          "Tier-1/Tier-2 Lieferanten",
+          "Empty-Container-Management"
+        ],
+        "alt": "KED-Sattelzug an Werksrampe – Just-in-Time für Automotive Stuttgart"
+      },
+      "engineering": {
+        "eyebrow": "Made in Germany",
+        "title": "Maschinenbau",
+        "subtitle": "Maschinen sicher in alle Welt",
+        "description": "Baden-Württemberg ist Maschinenbau-Land. Wir transportieren von der einzelnen CNC-Steuerung bis zur kompletten Werkzeugmaschine.",
+        "bullets": [
+          "Schwergut bis 24 t",
+          "Maschinen-Ersatzteile",
+          "Werkzeug-Versand",
+          "Projekt-Logistik",
+          "Verpackungsservice",
+          "Krangut-Erfahrung"
+        ],
+        "alt": "KED-LKW-Flotte – Maschinenbau-Logistik weltweit"
+      },
+      "consumer": {
+        "eyebrow": "B2B & B2C",
+        "title": "Konsumgüter & E-Commerce",
+        "subtitle": "Vom Hersteller bis zum Endkunden",
+        "description": "Wir bündeln Industrie- und Handelssendungen in unserem Stuttgarter Hub und distribuieren in DE, EU und UK – inklusive Last-Mile.",
+        "bullets": [
+          "Cross-Docking Stuttgart",
+          "Distribution UK + EU",
+          "Last-Mile-Anbindung",
+          "Retourenmanagement",
+          "Saison-Peaks abfedern",
+          "White-Label-Logistik"
+        ],
+        "alt": "KED-Lager Stuttgart – Konsumgüter und E-Commerce"
+      },
+      "electronics": {
+        "eyebrow": "High-Tech",
+        "title": "Elektronik & Technologie",
+        "subtitle": "Sensible Ware. Sichere Hände.",
+        "description": "Hochwertige Elektronik braucht hochwertige Logistik. Wir arbeiten mit dem nötigen Anspruch und der notwendigen Diskretion.",
+        "bullets": [
+          "ESD-konforme Lagerung möglich",
+          "Klimatisierte Räume verfügbar",
+          "High-Value-Cargo-Versicherung",
+          "Diskrete Abwicklung",
+          "Schnelle Reaktionszeiten"
+        ],
+        "alt": "KED-Disposition – High-Tech-Logistik mit Live-Tracking"
+      },
+      "industrial": {
+        "eyebrow": "Klassische Industrie",
+        "title": "Industrie & B2B",
+        "subtitle": "Verlässliche Partner für jede Industrie",
+        "description": "Stahl, Chemie, Bau, Werkstoffe, Werkzeuge – wir kennen die typischen Anforderungen klassischer B2B-Branchen.",
+        "bullets": [
+          "Stahl & Metall",
+          "Chemie (ADR)",
+          "Bau & Bauzubehör",
+          "Werkstoffe",
+          "Werkzeuge & Industriebedarf"
+        ],
+        "alt": "KED-Hub Stuttgart – Industrie- und B2B-Logistik"
+      }
+    },
+    "block_offer_label": "Was wir bieten",
+    "cta_eyebrow": "Andere Branche?",
+    "cta_title": "Ihre Branche nicht dabei?",
+    "cta_description": "Wir arbeiten branchenübergreifend. Sprechen Sie uns einfach an – wir finden die passende Lösung.",
+    "cta_button": "Kontakt aufnehmen"
+  },
   "Locations": {
     "eyebrow": "Standorte",
     "title": "Stuttgart trifft Großbritannien.",
@@ -319,12 +516,47 @@
   },
   "Trust": {
     "label": "Vertrauen seit 1980",
+    "section_title": "Vertrauen & Zertifizierungen",
+    "section_description": "Verbände, Zertifizierungen und Mitgliedschaften, die unsere Arbeit absichern.",
     "items": {
       "adsp": "ADSp 2017",
+      "dslv": "DSLV",
       "ids": "IDS-Netzwerk",
-      "aeo": "Zugelassener Wirtschaftsbeteiligter (AEO)",
-      "iso": "ISO-zertifizierte Prozesse"
+      "aeo": "AEO-S",
+      "iso": "ISO 9001",
+      "ihk": "IHK Stuttgart",
+      "bifa": "BIFA"
+    },
+    "descriptions": {
+      "adsp": "Allgemeine Deutsche Spediteurbedingungen",
+      "dslv": "Mitglied im Deutschen Speditions- und Logistikverband",
+      "aeo": "Authorized Economic Operator Security – Zollvereinfachung [PLATZHALTER]",
+      "iso": "Qualitätsmanagement zertifiziert [PLATZHALTER]",
+      "ids": "Mitglied im IDS-Sammelgut-Netzwerk",
+      "ihk": "Mitglied der IHK Region Stuttgart",
+      "bifa": "Über Partner England Logistics – British International Freight Association"
     }
+  },
+  "DigitalSelfService": {
+    "eyebrow": "Digital first",
+    "title": "Selbstbedienung. 24/7. Ohne Anruf.",
+    "subtitle": "Während andere Speditionen noch Faxe verschicken, machen wir Ihnen das Leben einfacher: eigenes Kundenportal mit Live-Tracking, Online-Sendungserfassung und sofortigem Dokumenten-Zugriff.",
+    "features": {
+      "tracking": {
+        "title": "Echtzeit-Status",
+        "description": "Sehen Sie wo Ihre Sendung ist – mit Timeline, Statusupdates und genauer Lokalisierung. Inklusive POD-Foto bei Zustellung."
+      },
+      "create": {
+        "title": "Sendung in 60 Sekunden",
+        "description": "Neue Sendung selbst erfassen, statt anzurufen. Mit gespeichertem Adressbuch geht's noch schneller."
+      },
+      "documents": {
+        "title": "CMR. Rechnung. Lieferschein.",
+        "description": "Sofortiger Download im Portal. Filterbar nach Datum, Sendung oder Typ. Keine E-Mail-Anfragen mehr."
+      }
+    },
+    "cta_button": "Kundenportal kennenlernen",
+    "cta_subtitle": "Demo-Zugang: demo@ked.de / demo1234"
   },
   "CtaBlock": {
     "default_eyebrow": "Sprechen wir",
@@ -415,6 +647,17 @@
         ]
       }
     },
+    "numbers_eyebrow": "In Zahlen",
+    "numbers_title": "KED in Zahlen",
+    "numbers_description": "Was unsere Arbeit messbar macht – Stand heute.",
+    "numbers": [
+      { "value": "45+", "label": "Jahre Erfahrung" },
+      { "value": "[60+]", "label": "Mitarbeitende" },
+      { "value": "[> 200.000]", "label": "Sendungen pro Jahr" },
+      { "value": "[> 800]", "label": "Stammkunden" },
+      { "value": "2", "label": "UK-Hubs" },
+      { "value": "100 %", "label": "Eigenes Netzwerk" }
+    ],
     "values_eyebrow": "Unsere Werte",
     "values_title": "Wofür KED steht",
     "values_description": "Fünf Prinzipien, an denen wir uns jeden Tag messen lassen.",

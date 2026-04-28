@@ -91,6 +91,7 @@ export default async function UeberUnsPage({
 
       <StorySection />
       <TeamSection />
+      <NumbersSection />
       <ValuesSection />
 
       {/* Slogan */}
@@ -209,6 +210,43 @@ function TeamSection() {
             );
           })}
         </div>
+      </Container>
+    </Section>
+  );
+}
+
+interface NumberItem {
+  value: string;
+  label: string;
+}
+
+function NumbersSection() {
+  const t = useTranslations('About');
+  const numbers = (t.raw('numbers') as ReadonlyArray<NumberItem>) ?? [];
+
+  return (
+    <Section tone="white" spacing="lg">
+      <Container>
+        <SectionHeader
+          eyebrow={t('numbers_eyebrow')}
+          title={t('numbers_title')}
+          description={t('numbers_description')}
+          align="center"
+          className="mx-auto"
+        />
+        <dl className="mt-12 grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-6">
+          {numbers.map((n) => (
+            <div
+              key={n.label}
+              className="rounded-xl bg-slate-50 p-5 text-center ring-1 ring-slate-200"
+            >
+              <dt className="order-2 mt-2 text-xs text-slate-600">{n.label}</dt>
+              <dd className="order-1 text-3xl font-bold text-brand 3xl:text-4xl">
+                {n.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
       </Container>
     </Section>
   );

@@ -1,8 +1,11 @@
 import Image from 'next/image';
 import { useTranslations } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
-import { Check } from 'lucide-react';
+import { ArrowRight, Check, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Link } from '@/i18n/routing';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { Container } from '@/components/ui/Container';
 import { Section, SectionHeader } from '@/components/ui/Section';
 import { PageHero } from '@/components/marketing/PageHero';
@@ -83,6 +86,8 @@ export default async function ServicesPage({
           </div>
         </Container>
       </Section>
+
+      <CustomsSection />
 
       <Section tone="slate" spacing="lg">
         <Container size="md">
@@ -192,5 +197,79 @@ function DetailList({ label, items }: { label: string; items: ReadonlyArray<stri
         ))}
       </ul>
     </div>
+  );
+}
+
+interface CustomsHighlight {
+  title: string;
+  items: string[];
+}
+
+function CustomsSection() {
+  const t = useTranslations('ServicesPage');
+  const highlights = (t.raw('customs_highlights') as CustomsHighlight[]) ?? [];
+  const trustItems = (t.raw('customs_trust') as string[]) ?? [];
+
+  return (
+    <Section tone="slate" spacing="lg" id="customs" className="scroll-mt-24">
+      <Container>
+        <div className="flex flex-col items-start gap-3 text-center sm:items-center">
+          <Badge tone="gold" dot>
+            {t('customs_eyebrow')}
+          </Badge>
+          <h2 className="text-display-md text-balance text-brand">
+            {t('customs_title')}
+          </h2>
+          <p className="max-w-3xl text-lg leading-relaxed text-slate-600">
+            {t('customs_subtitle')}
+          </p>
+        </div>
+
+        <div className="mt-12 grid gap-4 sm:grid-cols-2">
+          {highlights.map((h) => (
+            <article
+              key={h.title}
+              className="rounded-xl bg-white p-6 ring-1 ring-slate-200"
+            >
+              <div className="flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand">
+                  <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <h3 className="text-lg font-semibold text-brand">{h.title}</h3>
+              </div>
+              <ul className="mt-4 space-y-2">
+                {h.items.map((it) => (
+                  <li key={it} className="flex items-start gap-2 text-sm text-slate-700">
+                    <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold" aria-hidden="true" />
+                    <span>{it}</span>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          ))}
+        </div>
+
+        <div className="mt-10 rounded-xl bg-white p-6 ring-1 ring-slate-200">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            {t('customs_trust_title')}
+          </p>
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {trustItems.map((item) => (
+              <li key={item}>
+                <span className="inline-flex items-center rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
+                  {item}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="mt-8 flex justify-center">
+          <Button asChild rightIcon={<ArrowRight className="h-4 w-4" />}>
+            <Link href="/kontakt">{t('customs_cta')}</Link>
+          </Button>
+        </div>
+      </Container>
+    </Section>
   );
 }

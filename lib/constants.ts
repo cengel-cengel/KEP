@@ -62,6 +62,7 @@ export const ROUTES = {
 export type PrimaryHref =
   | '/leistungen'
   | '/netzwerk'
+  | '/branchen'
   | '/ueber-uns'
   | '/kontakt';
 
@@ -86,6 +87,7 @@ export const NAV_PRIMARY: ReadonlyArray<NavPrimaryItem> = [
       { pathname: '/leistungen', hash: 'direkt', labelKey: 'submenu_services_direct' },
       { pathname: '/leistungen', hash: 'uk', labelKey: 'submenu_services_uk' },
       { pathname: '/leistungen', hash: 'lager', labelKey: 'submenu_services_warehouse' },
+      { pathname: '/leistungen', hash: 'customs', labelKey: 'submenu_services_customs' },
     ],
   },
   {
@@ -97,6 +99,17 @@ export const NAV_PRIMARY: ReadonlyArray<NavPrimaryItem> = [
       { pathname: '/netzwerk', hash: 'stoke', labelKey: 'submenu_network_stoke' },
       { pathname: '/netzwerk', hash: 'lines', labelKey: 'submenu_network_lines' },
       { pathname: '/netzwerk', hash: 'partners', labelKey: 'submenu_network_partners' },
+    ],
+  },
+  {
+    pathname: '/branchen',
+    labelKey: 'industries',
+    submenu: [
+      { pathname: '/branchen', hash: 'automotive', labelKey: 'submenu_industries_automotive' },
+      { pathname: '/branchen', hash: 'engineering', labelKey: 'submenu_industries_engineering' },
+      { pathname: '/branchen', hash: 'consumer', labelKey: 'submenu_industries_consumer' },
+      { pathname: '/branchen', hash: 'electronics', labelKey: 'submenu_industries_electronics' },
+      { pathname: '/branchen', hash: 'industrial', labelKey: 'submenu_industries_industrial' },
     ],
   },
   {
@@ -182,6 +195,25 @@ export const TEAM_MEMBERS = [
 export type TeamMember = (typeof TEAM_MEMBERS)[number];
 
 export const VALUE_KEYS = ['fast', 'flexible', 'transparent', 'digital', 'whatever'] as const;
+
+export const INDUSTRY_KEYS = [
+  'automotive',
+  'engineering',
+  'consumer',
+  'electronics',
+  'industrial',
+] as const;
+export type IndustryKey = (typeof INDUSTRY_KEYS)[number];
+
+export const INDUSTRY_IMAGES: Record<IndustryKey, string> = {
+  automotive: '/images/service-hauptlauf.jpg',
+  engineering: '/images/fleet-collage.jpg',
+  consumer: '/images/service-lager.jpg',
+  electronics: '/images/team-disposition.jpg',
+  industrial: '/images/network-hub.jpg',
+};
+
+export const TRUST_BADGES = ['adsp', 'dslv', 'aeo', 'iso', 'ids', 'ihk', 'bifa'] as const;
 
 /**
  * Portal-spezifische Daten (intern, kein i18n nötig).

@@ -24,8 +24,23 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const BACKEND_DIR = resolve(__dirname, '..');
 const REPO_ROOT = resolve(BACKEND_DIR, '..');
-const INITIAL_SCHEMA = resolve(REPO_ROOT, 'database/001_initial_schema.sql');
+// Initial-Schema bevorzugt aus tms-backend/database/ (deployt mit dem Service),
+// fallback auf Repo-Root (lokales Mono-Repo-Dev).
+const INITIAL_SCHEMA_LOCAL = resolve(BACKEND_DIR, 'database/001_initial_schema.sql');
+const INITIAL_SCHEMA_REPO = resolve(REPO_ROOT, 'database/001_initial_schema.sql');
 const RAW_MIGRATIONS_DIR = resolve(BACKEND_DIR, 'prisma/migrations');
+
+async function resolveInitialSchemaPath() {
+  for (const candidate of [INITIAL_SCHEMA_LOCAL, INITIAL_SCHEMA_REPO]) {
+    try {
+      await stat(candidate);
+      return candidate;
+    } catch {}
+  }
+  throw new Error(
+    `Initial-Schema nicht gefunden. Gesucht: ${INITIAL_SCHEMA_LOCAL} und ${INITIAL_SCHEMA_REPO}`,
+  );
+}
 
 function sha256(text) {
   return createHash('sha256').update(text).digest('hex');
@@ -104,10 +119,11 @@ async function main() {
     await ensureTrackerTable(client);
 
     console.log('==> Initial-Schema');
+    const initialSchemaPath = await resolveInitialSchemaPath();
     await applyFile(
       client,
       'database/001_initial_schema.sql',
-      INITIAL_SCHEMA,
+      initialSchemaPath,
       '001_initial_schema.sql',
     );
 

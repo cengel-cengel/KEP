@@ -29,11 +29,14 @@ function resolveCorsOrigins(): (string | RegExp)[] {
 }
 
 async function bootstrap() {
+  console.log('[STARTUP] creating Nest app...');
   const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix('api');
+  console.log('[STARTUP] Nest app created');
 
+  app.setGlobalPrefix('api');
   app.use(helmet());
 
+  console.log('[STARTUP] resolving CORS origins...');
   app.enableCors({
     origin: resolveCorsOrigins(),
     credentials: true,
@@ -55,6 +58,7 @@ async function bootstrap() {
     process.env.ENABLE_SWAGGER === 'true';
 
   if (enableSwagger) {
+    console.log('[STARTUP] building Swagger document...');
     const config = new DocumentBuilder()
       .setTitle('TMS API')
       .setDescription('TMS Backend API')
@@ -63,14 +67,21 @@ async function bootstrap() {
       .build();
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('docs', app, document);
+    console.log('[STARTUP] Swagger ready');
   }
 
   const port = Number(process.env.PORT ?? 3001);
+  console.log(`[STARTUP] about to listen on 0.0.0.0:${port}`);
   await app.listen(port, '0.0.0.0');
+  console.log(`[STARTUP] listen() resolved on port ${port}`);
 
   const logger = new Logger('Bootstrap');
   logger.log(`TMS Backend listening on port ${port}`);
   logger.log(`CORS origins: ${JSON.stringify(resolveCorsOrigins())}`);
   if (enableSwagger) logger.log(`Swagger UI: /docs`);
 }
-bootstrap();
+
+bootstrap().catch((err) => {
+  console.error('[STARTUP] bootstrap failed:', err);
+  process.exit(1);
+});

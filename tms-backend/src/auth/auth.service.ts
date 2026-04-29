@@ -16,11 +16,23 @@ export class AuthService {
       where: { email },
     });
 
+    console.log('LOGIN-DEBUG', {
+      emailReceived: email,
+      passwordReceivedLength: password?.length,
+      passwordReceivedFirstChar: password?.[0],
+      userFoundInDb: !!user,
+      hashFromDb: user?.password_hash?.substring(0, 7),
+      hashFromDbLength: user?.password_hash?.length,
+      hashStartsWithBcrypt: user?.password_hash?.startsWith('$2'),
+    });
+
     if (!user || !user.is_active) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const passwordMatches = await bcrypt.compare(password, user.password_hash);
+
+    console.log('LOGIN-DEBUG-RESULT', { isValid: passwordMatches });
 
     if (!passwordMatches) {
       throw new UnauthorizedException('Invalid credentials');

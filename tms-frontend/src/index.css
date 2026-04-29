@@ -1,0 +1,22 @@
+@import "leaflet/dist/leaflet.css";
+@import "tailwindcss";
+
+#root {
+  width: 100%;
+  max-width: none;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+.leaflet-container {
+  height: 100% !important;
+  width: 100% !important;
+}
+
+.leaflet-tile-pane {
+  opacity: 1 !important;
+}

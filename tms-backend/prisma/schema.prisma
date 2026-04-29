@@ -1,0 +1,1270 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../generated/prisma"
+  previewFeatures = ["partialIndexes"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model addresses {
+  id                                                 String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  customer_id                                        String?      @db.Uuid
+  type                                               address_type @default(delivery)
+  name                                               String       @db.VarChar(200)
+  name2                                              String?      @db.VarChar(200)
+  street                                             String       @db.VarChar(200)
+  zip                                                String       @db.VarChar(10)
+  city                                               String       @db.VarChar(100)
+  country_code                                       String       @default("DE") @db.Char(2)
+  lat                                                Decimal?     @db.Decimal(10, 7)
+  lng                                                Decimal?     @db.Decimal(10, 7)
+  contact_name                                       String?      @db.VarChar(100)
+  contact_phone                                      String?      @db.VarChar(30)
+  contact_email                                      String?      @db.VarChar(200)
+  opening_hours                                      Json?
+  notes                                              String?
+  is_active                                          Boolean      @default(true)
+  created_at                                         DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at                                         DateTime     @default(now()) @db.Timestamptz(6)
+  customers                                          customers?   @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
+  shipments_shipments_delivery_address_idToaddresses shipments[]  @relation("shipments_delivery_address_idToaddresses")
+  shipments_shipments_loading_address_idToaddresses  shipments[]  @relation("shipments_loading_address_idToaddresses")
+
+  @@index([city(ops: raw("gin_trgm_ops"))], map: "idx_addresses_city", type: Gin)
+  @@index([country_code], map: "idx_addresses_country")
+  @@index([customer_id], map: "idx_addresses_customer")
+  @@index([name(ops: raw("gin_trgm_ops"))], map: "idx_addresses_name", type: Gin)
+  @@index([zip], map: "idx_addresses_zip")
+}
+
+model audit_log {
+  id         String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  table_name String       @db.VarChar(100)
+  record_id  String       @db.Uuid
+  action     audit_action
+  old_values Json?
+  new_values Json?
+  user_id    String?      @db.Uuid
+  user_ip    String?      @db.Inet
+  created_at DateTime     @default(now()) @db.Timestamptz(6)
+  users      users?       @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([created_at], map: "idx_audit_log_created")
+  @@index([table_name, record_id], map: "idx_audit_log_table_record")
+  @@index([user_id], map: "idx_audit_log_user")
+}
+
+model condition_rates {
+  id           String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  condition_id String     @db.Uuid
+  from_value   Decimal    @db.Decimal(10, 3)
+  to_value     Decimal    @db.Decimal(10, 3)
+  rate         Decimal    @db.Decimal(10, 4)
+  created_at   DateTime   @default(now()) @db.Timestamptz(6)
+  conditions   conditions @relation(fields: [condition_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([condition_id], map: "idx_condition_rates_condition")
+}
+
+model conditions {
+  id                 String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  customer_id        String            @db.Uuid
+  name               String            @db.VarChar(100)
+  valid_from         DateTime          @db.Date
+  valid_to           DateTime?         @db.Date
+  basis              condition_basis   @default(ldm)
+  country_from       String?           @db.Char(2)
+  country_to         String?           @db.Char(2)
+  zip_prefix_from    String?           @db.VarChar(5)
+  zip_prefix_to      String?           @db.VarChar(5)
+  min_charge         Decimal?          @default(0) @db.Decimal(10, 2)
+  fuel_surcharge_pct Decimal?          @default(0) @db.Decimal(5, 2)
+  is_active          Boolean           @default(true)
+  created_by         String?           @db.Uuid
+  created_at         DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime          @default(now()) @db.Timestamptz(6)
+  condition_rates    condition_rates[]
+  users              users?            @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customers          customers         @relation(fields: [customer_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  shipments          shipments[]
+
+  @@index([customer_id], map: "idx_conditions_customer")
+  @@index([valid_from, valid_to], map: "idx_conditions_validity")
+}
+
+model customers {
+  id                    String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  customer_number       String             @unique @db.VarChar(20)
+  name                  String             @db.VarChar(200)
+  name2                 String?            @db.VarChar(200)
+  vat_id                String?            @db.VarChar(30)
+  payment_term_days     Int                @default(30)
+  credit_limit          Decimal?           @db.Decimal(12, 2)
+  datev_account         String?            @db.VarChar(10)
+  default_incoterm      String?            @db.VarChar(10)
+  default_freight_payer freight_payer      @default(sender)
+  invoice_email         String?            @db.VarChar(200)
+  edi_partner_id        String?            @db.VarChar(50)
+  min_contribution_pct  Decimal?           @default(10.00) @db.Decimal(5, 2)
+  notes                 String?
+  is_active             Boolean            @default(true)
+  created_by            String?            @db.Uuid
+  created_at            DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime           @default(now()) @db.Timestamptz(6)
+  addresses             addresses[]
+  conditions            conditions[]
+  customer_tariffs      customer_tariffs[]
+  users                 users?             @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  invoices              invoices[]
+  pricing_rules         pricing_rules[]
+  shipments             shipments[]
+
+  @@index([name(ops: raw("gin_trgm_ops"))], map: "idx_customers_name", type: Gin)
+  @@index([customer_number], map: "idx_customers_number")
+}
+
+model invoice_items {
+  id          String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  invoice_id  String     @db.Uuid
+  shipment_id String?    @db.Uuid
+  description String
+  quantity    Decimal    @default(1) @db.Decimal(10, 3)
+  unit        String     @default("flat") @db.VarChar(20)
+  unit_price  Decimal    @db.Decimal(12, 4)
+  total_price Decimal    @db.Decimal(12, 2)
+  position    Int        @default(1) @db.SmallInt
+  created_at  DateTime   @default(now()) @db.Timestamptz(6)
+  invoices    invoices   @relation(fields: [invoice_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  shipments   shipments? @relation(fields: [shipment_id], references: [id], onUpdate: NoAction)
+
+  @@index([invoice_id], map: "idx_invoice_items_invoice")
+  @@index([shipment_id], map: "idx_invoice_items_shipment")
+}
+
+model invoices {
+  id                  String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  invoice_number      String          @unique @db.VarChar(30)
+  customer_id         String          @db.Uuid
+  invoice_date        DateTime        @db.Date
+  due_date            DateTime        @db.Date
+  status              invoice_status  @default(draft)
+  net_amount          Decimal         @default(0) @db.Decimal(12, 2)
+  vat_rate            Decimal         @default(19.00) @db.Decimal(5, 2)
+  vat_amount          Decimal         @default(0) @db.Decimal(12, 2)
+  gross_amount        Decimal         @default(0) @db.Decimal(12, 2)
+  payment_received_at DateTime?       @db.Timestamptz(6)
+  datev_exported_at   DateTime?       @db.Timestamptz(6)
+  pdf_s3_key          String?         @db.VarChar(500)
+  notes               String?
+  created_by          String          @db.Uuid
+  created_at          DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime        @default(now()) @db.Timestamptz(6)
+  invoice_items       invoice_items[]
+  users               users           @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customers           customers       @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([customer_id], map: "idx_invoices_customer")
+  @@index([invoice_date], map: "idx_invoices_date")
+  @@index([status], map: "idx_invoices_status")
+}
+
+model shipment_events {
+  id          String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  shipment_id String          @db.Uuid
+  status      shipment_status
+  location    String?         @db.VarChar(200)
+  note        String?
+  created_by  String?         @db.Uuid
+  created_at  DateTime        @default(now()) @db.Timestamptz(6)
+  users       users?          @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipments   shipments       @relation(fields: [shipment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([shipment_id], map: "idx_shipment_events_shipment")
+}
+
+model shipments {
+  id                                                 String                     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  shipment_number                                    String                     @unique @db.VarChar(30)
+  customer_id                                        String?                    @db.Uuid
+  customer_ref                                       String?                    @db.VarChar(50)
+  status                                             shipment_status            @default(new)
+  loading_address_id                                 String                     @db.Uuid
+  delivery_address_id                                String                     @db.Uuid
+  loading_date                                       DateTime                   @db.Date
+  loading_time_from                                  DateTime?                  @db.Time(6)
+  loading_time_to                                    DateTime?                  @db.Time(6)
+  delivery_date                                      DateTime                   @db.Date
+  delivery_time_from                                 DateTime?                  @db.Time(6)
+  delivery_time_to                                   DateTime?                  @db.Time(6)
+  package_type                                       package_type               @default(pallet_euro)
+  package_count                                      Int                        @default(1)
+  weight_kg                                          Decimal                    @db.Decimal(10, 2)
+  ldm                                                Decimal?                   @db.Decimal(6, 2)
+  volume_m3                                          Decimal?                   @db.Decimal(8, 3)
+  length_cm                                          Int?
+  width_cm                                           Int?
+  height_cm                                          Int?
+  is_hazmat                                          Boolean                    @default(false)
+  hazmat_class                                       String?                    @db.VarChar(10)
+  hazmat_un_number                                   String?                    @db.VarChar(10)
+  hazmat_packing_group                               String?                    @db.VarChar(5)
+  hazmat_description                                 String?
+  incoterm                                           String?                    @db.VarChar(10)
+  freight_payer                                      freight_payer              @default(sender)
+  condition_id                                       String?                    @db.Uuid
+  tour_id                                            String?                    @db.Uuid
+  tour_position                                      Int?                       @db.SmallInt
+  freight_revenue                                    Decimal?                   @db.Decimal(12, 2)
+  freight_cost                                       Decimal?                   @db.Decimal(12, 2)
+  contribution_margin                                Decimal?                   @db.Decimal(12, 2)
+  cm_percent                                         Decimal?                   @db.Decimal(5, 2)
+  comment                                            String?
+  customer_note                                      String?
+  delivery_note_number                               String?                    @db.VarChar(50)
+  edi_source                                         String?                    @db.VarChar(50)
+  edi_reference                                      String?                    @db.VarChar(100)
+  last_status_update                                 DateTime?                  @db.Timestamptz(6)
+  delivered_at                                       DateTime?                  @db.Timestamptz(6)
+  pod_image_s3_key                                   String?                    @db.VarChar(500)
+  created_by                                         String                     @db.Uuid
+  created_at                                         DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at                                         DateTime                   @default(now()) @db.Timestamptz(6)
+  deleted_at                                         DateTime?                  @db.Timestamptz(6)
+  transport_type                                     String                     @default("DIREKT") @db.VarChar(20)
+  relation_id                                        String?                    @db.Uuid
+  business_partner_id                                String?                    @db.Uuid
+  chargeable_weight                                  Decimal?                   @db.Decimal(10, 2)
+  cbm                                                Decimal?                   @db.Decimal(8, 3)
+  volume_weight_cbm                                  Decimal?                   @db.Decimal(10, 2)
+  volume_weight_ldm                                  Decimal?                   @db.Decimal(10, 2)
+  fpg_method                                         String?                    @db.VarChar(20)
+  pre_carriage_cost                                  Decimal?                   @default(0) @db.Decimal(10, 2)
+  main_carriage_cost                                 Decimal?                   @default(0) @db.Decimal(10, 2)
+  on_carriage_cost                                   Decimal?                   @default(0) @db.Decimal(10, 2)
+  total_cost                                         Decimal?                   @default(0) @db.Decimal(10, 2)
+  inbound_routing_id                                 String?                    @db.Uuid
+  outbound_routing_id                                String?                    @db.Uuid
+  inbound_delivery_type                              String?                    @db.VarChar(20)
+  outbound_delivery_type                             String?                    @db.VarChar(20)
+  inbound_partner_name                               String?                    @db.VarChar(200)
+  outbound_partner_name                              String?                    @db.VarChar(200)
+  has_active_lock                                    Boolean?                   @default(false)
+  lock_types                                         String?                    @db.VarChar(200)
+  advisory_required                                  Boolean?                   @default(false)
+  advisory_status                                    String?                    @default("none") @db.VarChar(20)
+  last_event_type                                    String?                    @db.VarChar(30)
+  last_event_at                                      DateTime?                  @db.Timestamptz(6)
+  customer_tariff_id                                 String?                    @db.Uuid
+  calculated_revenue                                 Decimal?                   @db.Decimal(10, 2)
+  daily_price                                        Decimal?                   @db.Decimal(10, 2)
+  partner_on_carriage_cost                           Decimal?                   @default(0) @db.Decimal(10, 2)
+  has_nv_disposition                                 Boolean?                   @default(false)
+  has_damage_report                                  Boolean?                   @default(false)
+  has_return                                         Boolean?                   @default(false)
+  return_status                                      String?                    @db.VarChar(20)
+  advisories                                         advisories[]
+  claims                                             claims[]
+  damage_reports                                     damage_reports[]
+  driver_deliveries                                 driver_deliveries[]
+  driver_problems                                   driver_problems[]
+  hall_check_items_entries                           hall_check_items[]
+  hall_movements_entries                             hall_movements[]
+  hall_stock_entries                                 hall_stock[]
+  invoice_items                                      invoice_items[]
+  loading_plan_draft_items                           loading_plan_draft_items[]
+  nv_dispositions                                    nv_dispositions[]
+  pre_carriage_shipments                             pre_carriage_shipments[]
+  returns                                            returns[]
+  shipment_events                                    shipment_events[]
+  shipment_locks                                     shipment_locks[]
+  shipment_package_items                             shipment_package_items[]
+  shipment_status_events                             shipment_status_events[]
+  business_partner                                   business_partners?         @relation(fields: [business_partner_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  conditions                                         conditions?                @relation(fields: [condition_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users                                              users                      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customers                                          customers?                 @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customer_tariff                                    customer_tariffs?          @relation(fields: [customer_tariff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  addresses_shipments_delivery_address_idToaddresses addresses                  @relation("shipments_delivery_address_idToaddresses", fields: [delivery_address_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  inbound_routing                                    routing_rules?             @relation("shipments_inbound_routing", fields: [inbound_routing_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  addresses_shipments_loading_address_idToaddresses  addresses                  @relation("shipments_loading_address_idToaddresses", fields: [loading_address_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  outbound_routing                                   routing_rules?             @relation("shipments_outbound_routing", fields: [outbound_routing_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  relation                                           relations?                 @relation("shipments_relation", fields: [relation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tours                                              tours?                     @relation(fields: [tour_id], references: [id], onUpdate: NoAction)
+  surplus_items                                      surplus_items[]
+
+  @@index([customer_id], map: "idx_shipments_customer")
+  @@index([customer_ref], map: "idx_shipments_customer_ref")
+  @@index([delivery_date], map: "idx_shipments_delivery_date")
+  @@index([loading_date], map: "idx_shipments_loading_date")
+  @@index([id], map: "idx_shipments_not_deleted", where: raw("(deleted_at IS NULL)"))
+  @@index([shipment_number], map: "idx_shipments_number")
+  @@index([status], map: "idx_shipments_status")
+  @@index([tour_id], map: "idx_shipments_tour")
+  @@index([business_partner_id], map: "idx_shipments_business_partner")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model shipment_package_items {
+  id           String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  shipment_id  String       @db.Uuid
+  line_index   Int
+  package_type package_type @default(pallet_euro)
+  quantity     Int          @default(1)
+  length_cm    Int
+  width_cm     Int
+  height_cm    Int
+  weight_kg    Decimal      @db.Decimal(10, 2)
+  stackable    Boolean      @default(true)
+  created_at   DateTime     @default(now()) @db.Timestamptz(6)
+  shipments    shipments    @relation(fields: [shipment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([shipment_id, line_index], map: "uq_shipment_package_line")
+  @@index([shipment_id], map: "idx_shipment_package_items_shipment")
+}
+
+// Driver-App: Zustellungen & Probleme (Sprint 15)
+model driver_deliveries {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipment_id       String    @db.Uuid
+  tour_id           String    @db.Uuid
+  driver_name      String?
+  recipient_name   String    @db.VarChar(100)
+  signature_base64 String?
+  photo_base64     String?
+  delivered_at     DateTime  @db.Timestamptz(6)
+  notes             String?
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+
+  shipments        shipments @relation(fields: [shipment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  tours            tours @relation(fields: [tour_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([shipment_id], map: "idx_driver_deliveries_shipment")
+  @@index([tour_id], map: "idx_driver_deliveries_tour")
+}
+
+model driver_problems {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipment_id    String   @db.Uuid
+  tour_id        String   @db.Uuid
+  problem_type   String   @db.VarChar(30)
+  notes          String?
+  photo_base64   String?
+  reported_at    DateTime? @default(now()) @db.Timestamptz(6)
+
+  shipments      shipments @relation(fields: [shipment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  tours          tours @relation(fields: [tour_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([shipment_id], map: "idx_driver_problems_shipment")
+  @@index([tour_id], map: "idx_driver_problems_tour")
+}
+
+model nv_dispositions {
+  id                                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipment_id                              String    @db.Uuid
+  problem_type                             String    @db.VarChar(30)
+  disposition_type                         String?   @db.VarChar(20)
+  driver_notes                             String?
+  driver_photo_base64                      String?
+  reported_at                              DateTime? @default(now()) @db.Timestamptz(6)
+  retry_date                               DateTime? @db.Date
+  retry_time_from                          DateTime? @db.Time(6)
+  retry_time_to                            DateTime? @db.Time(6)
+  return_cost_eur                          Decimal?  @default(0) @db.Decimal(10, 2)
+  return_cost_bearer                       String?   @db.VarChar(20)
+  storage_start_date                       DateTime? @db.Date
+  storage_daily_rate                       Decimal?  @db.Decimal(10, 2)
+  notes                                    String?
+  status                                   String?   @default("open") @db.VarChar(20)
+  created_by                               String?   @db.Uuid
+  resolved_by                              String?   @db.Uuid
+  resolved_at                              DateTime? @db.Timestamptz(6)
+  created_at                               DateTime? @default(now()) @db.Timestamptz(6)
+  users_nv_dispositions_created_byTousers  users?    @relation("nv_dispositions_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_nv_dispositions_resolved_byTousers users?    @relation("nv_dispositions_resolved_byTousers", fields: [resolved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipments                                shipments @relation(fields: [shipment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  returns                                  returns[]
+}
+
+model damage_reports {
+  id                                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipment_id                             String    @db.Uuid
+  damage_type                             String    @db.VarChar(20)
+  damage_cause                            String?   @db.VarChar(20)
+  damage_description                      String
+  damage_value_eur                        Decimal?  @db.Decimal(10, 2)
+  photo_base64_1                          String?
+  photo_base64_2                          String?
+  photo_base64_3                          String?
+  reported_by_driver                      Boolean?  @default(false)
+  reported_at                             DateTime? @default(now()) @db.Timestamptz(6)
+  liability_party                         String?   @db.VarChar(20)
+  insurance_claim                         Boolean?  @default(false)
+  insurance_ref                           String?   @db.VarChar(100)
+  status                                  String?   @default("open") @db.VarChar(20)
+  resolution_notes                        String?
+  created_by                              String?   @db.Uuid
+  resolved_by                             String?   @db.Uuid
+  resolved_at                             DateTime? @db.Timestamptz(6)
+  created_at                              DateTime? @default(now()) @db.Timestamptz(6)
+  claims                                  claims[]
+  users_damage_reports_created_byTousers  users?    @relation("damage_reports_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_damage_reports_resolved_byTousers users?    @relation("damage_reports_resolved_byTousers", fields: [resolved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipments                               shipments @relation(fields: [shipment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model claims {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipment_id      String          @db.Uuid
+  damage_report_id String?         @db.Uuid
+  claim_type       String          @db.VarChar(20)
+  claim_against    String          @db.VarChar(20)
+  claim_amount_eur Decimal?        @db.Decimal(10, 2)
+  status           String?         @default("open") @db.VarChar(20)
+  partner_ref      String?         @db.VarChar(100)
+  deadline_date    DateTime?       @db.Date
+  notes            String?
+  created_by       String?         @db.Uuid
+  created_at       DateTime?       @default(now()) @db.Timestamptz(6)
+  users            users?          @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  damage_report    damage_reports? @relation(fields: [damage_report_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipments        shipments       @relation(fields: [shipment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model returns {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipment_id       String           @db.Uuid
+  nv_disposition_id String?          @db.Uuid
+  return_reason     String           @db.VarChar(30)
+  return_type       String           @db.VarChar(20)
+  return_cost_eur   Decimal?         @default(0) @db.Decimal(10, 2)
+  cost_bearer       String?          @db.VarChar(20)
+  hall_location_id  String?          @db.Uuid
+  return_tour_id    String?          @db.Uuid
+  status            String?          @default("erfasst") @db.VarChar(20)
+  created_by        String?          @db.Uuid
+  created_at        DateTime?        @default(now()) @db.Timestamptz(6)
+  users             users?           @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  hall_locations    hall_locations?  @relation(fields: [hall_location_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  nv_disposition    nv_dispositions? @relation(fields: [nv_disposition_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tours             tours?           @relation(fields: [return_tour_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipments         shipments        @relation(fields: [shipment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model surplus_items {
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tour_id             String?         @db.Uuid
+  description         String?
+  weight_kg           Decimal?        @db.Decimal(8, 2)
+  package_count       Int?            @default(1)
+  photo_base64        String?
+  scan_code           String?         @db.VarChar(100)
+  matched_shipment_id String?         @db.Uuid
+  hall_location_id    String?         @db.Uuid
+  status              String?         @default("erfasst") @db.VarChar(20)
+  created_by          String?         @db.Uuid
+  created_at          DateTime?       @default(now()) @db.Timestamptz(6)
+  users               users?          @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  hall_locations      hall_locations? @relation(fields: [hall_location_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipments           shipments?      @relation(fields: [matched_shipment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tours               tours?          @relation(fields: [tour_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model subcontractors {
+  id                   String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  subcontractor_number String               @unique @db.VarChar(20)
+  name                 String               @db.VarChar(200)
+  vat_id               String?              @db.VarChar(30)
+  street               String?              @db.VarChar(200)
+  zip                  String?              @db.VarChar(10)
+  city                 String?              @db.VarChar(100)
+  country_code         String               @default("DE") @db.Char(2)
+  contact_name         String?              @db.VarChar(100)
+  contact_phone        String?              @db.VarChar(30)
+  contact_email        String?              @db.VarChar(200)
+  datev_account        String?              @db.VarChar(10)
+  payment_term_days    Int                  @default(30)
+  has_adr_license      Boolean              @default(false)
+  has_temperature      Boolean              @default(false)
+  max_weight_kg        Decimal?             @db.Decimal(10, 2)
+  max_ldm              Decimal?             @db.Decimal(6, 2)
+  service_areas        Json?
+  rating               Int?                 @db.SmallInt
+  notes                String?
+  is_active            Boolean              @default(true)
+  created_by           String?              @db.Uuid
+  created_at           DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime             @default(now()) @db.Timestamptz(6)
+  cost_rates           cost_rates[]
+  pre_carriage_tours   pre_carriage_tours[]
+  pricing_rules        pricing_rules[]
+  sub_conditions       sub_conditions[]
+  users                users?               @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tours                tours[]
+
+  @@index([name(ops: raw("gin_trgm_ops"))], map: "idx_subcontractors_name", type: Gin)
+}
+
+model tours {
+  id                      String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tour_number             String               @unique @db.VarChar(30)
+  tour_date               DateTime             @db.Date
+  status                  tour_status          @default(planned)
+  subcontractor_id        String?              @db.Uuid
+  vehicle_plate           String?              @db.VarChar(20)
+  driver_name             String?              @db.VarChar(100)
+  driver_phone            String?              @db.VarChar(30)
+  departure_time          DateTime?            @db.Timestamptz(6)
+  max_weight_kg           Decimal?             @default(24000) @db.Decimal(10, 2)
+  max_ldm                 Decimal?             @default(13.6) @db.Decimal(6, 2)
+  total_weight_kg         Decimal?             @default(0) @db.Decimal(10, 2)
+  total_ldm               Decimal?             @default(0) @db.Decimal(6, 2)
+  total_revenue           Decimal?             @default(0) @db.Decimal(12, 2)
+  subcontractor_cost      Decimal?             @default(0) @db.Decimal(12, 2)
+  contribution_margin     Decimal?             @default(0) @db.Decimal(12, 2)
+  cm_percent              Decimal?             @default(0) @db.Decimal(5, 2)
+  cmr_generated_at        DateTime?            @db.Timestamptz(6)
+  dispatched_at           DateTime?            @db.Timestamptz(6)
+  completed_at            DateTime?            @db.Timestamptz(6)
+  notes                   String?
+  created_by              String               @db.Uuid
+  created_at              DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime             @default(now()) @db.Timestamptz(6)
+  released_at             DateTime?            @db.Timestamptz(6)
+  closed_at               DateTime?            @db.Timestamptz(6)
+  sub_condition_id        String?              @db.Uuid
+  sub_condition_type      String?              @db.VarChar(20)
+  calculated_sub_cost     Decimal?             @db.Decimal(10, 2)
+  stop_count              Int?                 @default(0)
+  distance_km             Decimal?             @db.Decimal(8, 2)
+  driver_pin              String?              @db.VarChar(6)
+  driver_pin_expires_at   DateTime?            @db.Timestamptz(6)
+  driver_access_token     String?              @unique @db.VarChar(100)
+  driver_token_expires_at DateTime?            @db.Timestamptz(6)
+  loading_plan_draft      loading_plan_drafts?
+  returns                 returns[]
+  driver_deliveries      driver_deliveries[]
+  driver_problems        driver_problems[]
+  shipments               shipments[]
+  surplus_items           surplus_items[]
+  users                   users                @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sub_condition           sub_conditions?      @relation(fields: [sub_condition_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subcontractors          subcontractors?      @relation(fields: [subcontractor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tour_date], map: "idx_tours_date")
+  @@index([status], map: "idx_tours_status")
+  @@index([subcontractor_id], map: "idx_tours_subcontractor")
+}
+
+model users {
+  id                                                 String                   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email                                              String                   @unique @db.VarChar(200)
+  password_hash                                      String                   @db.VarChar(255)
+  name                                               String                   @db.VarChar(100)
+  role                                               user_role                @default(dispatcher)
+  is_active                                          Boolean                  @default(true)
+  mfa_enabled                                        Boolean                  @default(false)
+  mfa_secret                                         String?                  @db.VarChar(100)
+  last_login                                         DateTime?                @db.Timestamptz(6)
+  created_at                                         DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at                                         DateTime                 @default(now()) @db.Timestamptz(6)
+  advisories_created                                 advisories[]
+  audit_log                                          audit_log[]
+  claims                                             claims[]
+  conditions                                         conditions[]
+  customers                                          customers[]
+  damage_reports_damage_reports_created_byTousers    damage_reports[]         @relation("damage_reports_created_byTousers")
+  damage_reports_damage_reports_resolved_byTousers   damage_reports[]         @relation("damage_reports_resolved_byTousers")
+  hall_checks_performed                              hall_checks[]            @relation("hall_checks_performed_by_user")
+  hall_movements_performed                           hall_movements[]         @relation("hall_movements_performed_by_user")
+  hall_stock_placed_by                               hall_stock[]             @relation("hall_stock_placed_by_user")
+  hall_stock_removed_by                              hall_stock[]             @relation("hall_stock_removed_by_user")
+  invoices                                           invoices[]
+  loading_plan_drafts                                loading_plan_drafts[]
+  nv_dispositions_nv_dispositions_created_byTousers  nv_dispositions[]        @relation("nv_dispositions_created_byTousers")
+  nv_dispositions_nv_dispositions_resolved_byTousers nv_dispositions[]        @relation("nv_dispositions_resolved_byTousers")
+  pre_carriage_tours                                 pre_carriage_tours[]
+  pricing_import_batches                             pricing_import_batches[]
+  pricing_rules_pricing_rules_created_byTousers      pricing_rules[]          @relation("pricing_rules_created_byTousers")
+  pricing_rules_pricing_rules_updated_byTousers      pricing_rules[]          @relation("pricing_rules_updated_byTousers")
+  returns                                            returns[]
+  shipment_events                                    shipment_events[]
+  locks_escalated                                    shipment_locks[]         @relation("shipment_locks_escalated_to")
+  locks_locked                                       shipment_locks[]         @relation("shipment_locks_locked_by")
+  locks_resolved                                     shipment_locks[]         @relation("shipment_locks_resolved_by")
+  shipment_status_events                             shipment_status_events[]
+  shipments                                          shipments[]
+  subcontractors                                     subcontractors[]
+  surplus_items                                      surplus_items[]
+  tours                                              tours[]
+  user_ui_preferences                                user_ui_preferences[]
+
+  @@index([email], map: "idx_users_email")
+}
+
+model shipment_locks {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipment_id       String    @db.Uuid
+  lock_type         String    @db.VarChar(30)
+  reason            String?
+  locked_by         String?   @db.Uuid
+  locked_at         DateTime? @default(now()) @db.Timestamptz(6)
+  resolved_by       String?   @db.Uuid
+  resolved_at       DateTime? @db.Timestamptz(6)
+  resolution_notes  String?
+  is_active         Boolean?  @default(true)
+  escalated_to      String?   @db.Uuid
+  escalated_at      DateTime? @db.Timestamptz(6)
+  due_date          DateTime? @db.Timestamptz(6)
+  escalated_to_user users?    @relation("shipment_locks_escalated_to", fields: [escalated_to], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  locked_by_user    users?    @relation("shipment_locks_locked_by", fields: [locked_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  resolved_by_user  users?    @relation("shipment_locks_resolved_by", fields: [resolved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipments         shipments @relation(fields: [shipment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([due_date], map: "idx_shipment_locks_due", where: raw("(is_active = true)"))
+  @@index([shipment_id], map: "idx_shipment_locks_shipment_active", where: raw("(is_active = true)"))
+}
+
+model shipment_status_events {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipment_id    String    @db.Uuid
+  event_type     String    @db.VarChar(30)
+  description    String?
+  location       String?   @db.VarChar(100)
+  performed_by   String?   @db.Uuid
+  performed_at   DateTime? @default(now()) @db.Timestamptz(6)
+  recipient_name String?   @db.VarChar(100)
+  signature_data String?
+  photo_url      String?
+  is_automatic   Boolean?  @default(false)
+  users          users?    @relation(fields: [performed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipments      shipments @relation(fields: [shipment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([shipment_id, performed_at(sort: Desc)], map: "idx_shipment_status_events_shipment")
+}
+
+model advisories {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipment_id         String    @db.Uuid
+  advisory_type       String    @db.VarChar(20)
+  contact_name        String?   @db.VarChar(100)
+  contact_phone       String?   @db.VarChar(30)
+  contact_email       String?   @db.VarChar(200)
+  portal_url          String?   @db.VarChar(500)
+  portal_booking_ref  String?   @db.VarChar(100)
+  scheduled_date      DateTime? @db.Date
+  scheduled_time_from DateTime? @db.Time(6)
+  scheduled_time_to   DateTime? @db.Time(6)
+  notes               String?
+  status              String?   @default("open") @db.VarChar(20)
+  created_by          String?   @db.Uuid
+  created_at          DateTime? @default(now()) @db.Timestamptz(6)
+  confirmed_at        DateTime? @db.Timestamptz(6)
+  users               users?    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipments           shipments @relation(fields: [shipment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([shipment_id], map: "idx_advisories_shipment")
+  @@index([status], map: "idx_advisories_status")
+}
+
+model loading_plan_drafts {
+  id         String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tour_id    String                     @unique @db.Uuid
+  created_by String?                    @db.Uuid
+  created_at DateTime?                  @default(now()) @db.Timestamptz(6)
+  updated_at DateTime?                  @default(now()) @db.Timestamptz(6)
+  items      loading_plan_draft_items[]
+  users      users?                     @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tours      tours                      @relation(fields: [tour_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([tour_id], map: "idx_loading_plan_drafts_tour")
+}
+
+model loading_plan_draft_items {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  draft_id       String              @db.Uuid
+  shipment_id    String              @db.Uuid
+  x_pos_cm       Int                 @default(0)
+  y_pos_cm       Int                 @default(0)
+  rotation_angle Int                 @default(0)
+  stack_level    Int                 @default(1)
+  updated_at     DateTime?           @default(now()) @db.Timestamptz(6)
+  draft          loading_plan_drafts @relation(fields: [draft_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  shipments      shipments           @relation(fields: [shipment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([draft_id, shipment_id])
+  @@index([draft_id], map: "idx_loading_plan_draft_items_draft")
+}
+
+model user_ui_preferences {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id    String   @db.Uuid
+  key        String   @db.VarChar(200)
+  value      Json
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, key], map: "uq_user_ui_preferences_user_id_key")
+}
+
+model hall_locations {
+  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                  String                 @unique @db.VarChar(20)
+  type                  String                 @default("NORMAL") @db.VarChar(20)
+  zone                  String?                @db.VarChar(10)
+  capacity              Int?                   @default(1)
+  description           String?
+  is_active             Boolean?               @default(true)
+  created_at            DateTime?              @default(now()) @db.Timestamptz(6)
+  hall_check_items      hall_check_items[]
+  hall_movements_from   hall_movements[]       @relation("hall_movements_from_location")
+  hall_movements_to     hall_movements[]       @relation("hall_movements_to_location")
+  hall_stock            hall_stock[]
+  default_relations     relations[]            @relation("relations_default_hall_location")
+  returns               returns[]
+  routing_rules         routing_rules[]
+  surplus_items         surplus_items[]
+  zip_relation_mappings zip_relation_mapping[] @relation("zip_relation_mapping_hall_location")
+}
+
+model routing_rules {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rule_name          String             @db.VarChar(100)
+  direction          String             @db.VarChar(10)
+  country_code       String             @db.Char(2)
+  zip_from           String?            @db.VarChar(10)
+  zip_to             String?            @db.VarChar(10)
+  zip_prefix         String?            @db.VarChar(5)
+  delivery_type      String             @db.VarChar(20)
+  partner_id         String?            @db.Uuid
+  partner_name       String?            @db.VarChar(200)
+  gateway_name       String?            @db.VarChar(100)
+  gateway_zip        String?            @db.VarChar(10)
+  gateway_city       String?            @db.VarChar(100)
+  gateway_country    String?            @db.Char(2)
+  transit_days       Int?               @default(1)
+  priority           Int?               @default(10)
+  departure_days     String?            @db.VarChar(20)
+  departure_time     DateTime?          @db.Time(6)
+  cutoff_time        DateTime?          @db.Time(6)
+  hall_location_id   String?            @db.Uuid
+  is_active          Boolean?           @default(true)
+  valid_from         DateTime?          @default(dbgenerated("CURRENT_DATE")) @db.Date
+  valid_to           DateTime?          @db.Date
+  created_at         DateTime?          @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime?          @default(now()) @db.Timestamptz(6)
+  hall_locations     hall_locations?    @relation(fields: [hall_location_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  business_partners  business_partners? @relation(fields: [partner_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  inbound_shipments  shipments[]        @relation("shipments_inbound_routing")
+  outbound_shipments shipments[]        @relation("shipments_outbound_routing")
+
+  @@index([country_code, zip_prefix], map: "idx_routing_country_prefix")
+  @@index([country_code, zip_from, zip_to], map: "idx_routing_country_zip")
+  @@index([direction, is_active], map: "idx_routing_direction")
+}
+
+model hall_stock {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hall_location_id String         @db.Uuid
+  shipment_id      String         @db.Uuid
+  placed_at        DateTime?      @default(now()) @db.Timestamptz(6)
+  placed_by        String?        @db.Uuid
+  removed_at       DateTime?      @db.Timestamptz(6)
+  removed_by       String?        @db.Uuid
+  notes            String?
+  hall_location    hall_locations @relation(fields: [hall_location_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  placed_by_user   users?         @relation("hall_stock_placed_by_user", fields: [placed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  removed_by_user  users?         @relation("hall_stock_removed_by_user", fields: [removed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipments        shipments      @relation(fields: [shipment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model hall_movements {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipment_id       String          @db.Uuid
+  from_location_id  String?         @db.Uuid
+  to_location_id    String?         @db.Uuid
+  action            String          @db.VarChar(20)
+  performed_by      String?         @db.Uuid
+  performed_at      DateTime?       @default(now()) @db.Timestamptz(6)
+  notes             String?
+  from_location     hall_locations? @relation("hall_movements_from_location", fields: [from_location_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  performed_by_user users?          @relation("hall_movements_performed_by_user", fields: [performed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipments         shipments       @relation(fields: [shipment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  to_location       hall_locations? @relation("hall_movements_to_location", fields: [to_location_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model hall_checks {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  check_date        DateTime           @db.Date
+  performed_by      String?            @db.Uuid
+  started_at        DateTime?          @db.Timestamptz(6)
+  completed_at      DateTime?          @db.Timestamptz(6)
+  status            String?            @default("open") @db.VarChar(20)
+  discrepancies     Int?               @default(0)
+  notes             String?
+  items             hall_check_items[]
+  performed_by_user users?             @relation("hall_checks_performed_by_user", fields: [performed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model hall_check_items {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hall_check_id    String          @db.Uuid
+  shipment_id      String          @db.Uuid
+  hall_location_id String?         @db.Uuid
+  expected_status  String?         @db.VarChar(20)
+  actual_status    String?         @db.VarChar(20)
+  is_ok            Boolean?
+  notes            String?
+  hall_check       hall_checks     @relation(fields: [hall_check_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  hall_location    hall_locations? @relation(fields: [hall_location_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipments        shipments       @relation(fields: [shipment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model corporate_groups {
+  id           String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code         String              @unique @db.VarChar(20)
+  name         String              @db.VarChar(200)
+  country_code String?             @default("DE") @db.Char(2)
+  notes        String?
+  created_at   DateTime?           @default(now()) @db.Timestamptz(6)
+  partners     business_partners[]
+}
+
+model business_partners {
+  id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  partner_number            String                      @unique @db.VarChar(20)
+  partner_type              String                      @db.VarChar(20)
+  corporate_group_id        String?                     @db.Uuid
+  name                      String                      @db.VarChar(200)
+  name2                     String?                     @db.VarChar(200)
+  legal_form                String?                     @db.VarChar(50)
+  street                    String?                     @db.VarChar(200)
+  zip                       String?                     @db.VarChar(10)
+  city                      String?                     @db.VarChar(100)
+  country_code              String?                     @default("DE") @db.Char(2)
+  vat_id                    String?                     @db.VarChar(30)
+  tax_number                String?                     @db.VarChar(30)
+  commercial_register       String?                     @db.VarChar(50)
+  commercial_register_court String?                     @db.VarChar(100)
+  datev_account             String?                     @db.VarChar(10)
+  payment_term_days         Int?                        @default(30)
+  skonto_percent            Decimal?                    @db.Decimal(5, 2)
+  skonto_days               Int?
+  credit_limit              Decimal?                    @db.Decimal(12, 2)
+  credit_limit_currency     String?                     @default("EUR") @db.Char(3)
+  invoice_email             String?                     @db.VarChar(200)
+  invoice_delivery          String?                     @default("EMAIL") @db.VarChar(20)
+  bank_name                 String?                     @db.VarChar(100)
+  iban                      String?                     @db.VarChar(34)
+  bic                       String?                     @db.VarChar(11)
+  min_contribution_pct      Decimal?                    @default(10.00) @db.Decimal(5, 2)
+  revenue_target_annual     Decimal?                    @db.Decimal(12, 2)
+  lksg_risk_country         Boolean?                    @default(false)
+  lksg_self_disclosure      Boolean?                    @default(false)
+  lksg_self_disclosure_date DateTime?                   @db.Date
+  lksg_next_review_date     DateTime?                   @db.Date
+  lksg_notes                String?
+  edi_partner_id            String?                     @db.VarChar(50)
+  edi_format                String?                     @db.VarChar(20)
+  ids_member_number         String?                     @db.VarChar(20)
+  ids_depot_code            String?                     @db.VarChar(10)
+  is_active                 Boolean?                    @default(true)
+  created_at                DateTime?                   @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime?                   @default(now()) @db.Timestamptz(6)
+  avg_weight_per_stellplatz Decimal?                    @db.Decimal(10, 2)
+  stacking_factor           Decimal?                    @db.Decimal(5, 2)
+  corporate_group           corporate_groups?           @relation(fields: [corporate_group_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customer_tariffs_partner  customer_tariffs[]          @relation("customer_tariffs_partner")
+  contacts                  partner_contacts[]
+  locations                 partner_locations[]
+  partner_on_carriage_rates partner_on_carriage_rates[]
+  pricing_rules             pricing_rules[]
+  network_partner_relations relations[]                 @relation("business_partners_network_partner_relations")
+  routing_rules             routing_rules[]
+  shipments                 shipments[]
+}
+
+model partner_contacts {
+  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  partner_id   String            @db.Uuid
+  contact_type String            @db.VarChar(30)
+  name         String            @db.VarChar(100)
+  title        String?           @db.VarChar(20)
+  phone        String?           @db.VarChar(30)
+  mobile       String?           @db.VarChar(30)
+  email        String?           @db.VarChar(200)
+  notes        String?
+  is_primary   Boolean?          @default(false)
+  partner      business_partners @relation(fields: [partner_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model partner_locations {
+  id                   String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  partner_id           String            @db.Uuid
+  location_key         String            @db.VarChar(30)
+  location_type        String?           @default("LOADING") @db.VarChar(20)
+  name                 String            @db.VarChar(200)
+  name2                String?           @db.VarChar(200)
+  street               String            @db.VarChar(200)
+  zip                  String            @db.VarChar(10)
+  city                 String            @db.VarChar(100)
+  country_code         String?           @default("DE") @db.Char(2)
+  lat                  Decimal?          @db.Decimal(10, 7)
+  lng                  Decimal?          @db.Decimal(10, 7)
+  opening_mon_from     DateTime?         @db.Time(6)
+  opening_mon_to       DateTime?         @db.Time(6)
+  opening_tue_from     DateTime?         @db.Time(6)
+  opening_tue_to       DateTime?         @db.Time(6)
+  opening_wed_from     DateTime?         @db.Time(6)
+  opening_wed_to       DateTime?         @db.Time(6)
+  opening_thu_from     DateTime?         @db.Time(6)
+  opening_thu_to       DateTime?         @db.Time(6)
+  opening_fri_from     DateTime?         @db.Time(6)
+  opening_fri_to       DateTime?         @db.Time(6)
+  opening_sat_from     DateTime?         @db.Time(6)
+  opening_sat_to       DateTime?         @db.Time(6)
+  has_loading_ramp     Boolean?          @default(false)
+  ramp_count           Int?
+  max_vehicle_length_m Decimal?          @db.Decimal(5, 1)
+  forklift_available   Boolean?          @default(false)
+  appointment_required Boolean?          @default(false)
+  access_code          String?           @db.VarChar(50)
+  special_instructions String?
+  contact_name         String?           @db.VarChar(100)
+  contact_phone        String?           @db.VarChar(30)
+  contact_email        String?           @db.VarChar(200)
+  is_active            Boolean?          @default(true)
+  created_at           DateTime?         @default(now()) @db.Timestamptz(6)
+  partner              business_partners @relation(fields: [partner_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model relations {
+  id                       String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                     String                 @unique @db.VarChar(20)
+  name                     String                 @db.VarChar(100)
+  direction                String                 @db.VarChar(10)
+  country_from             String?                @db.Char(2)
+  country_to               String?                @db.Char(2)
+  zip_prefix_from          String?                @db.VarChar(5)
+  zip_prefix_to            String?                @db.VarChar(5)
+  default_hall_location_id String?                @db.Uuid
+  network_partner_id       String?                @db.Uuid
+  departure_days           String?                @db.VarChar(20)
+  departure_time           DateTime?              @db.Time(6)
+  transit_days             Int?                   @default(1)
+  is_active                Boolean?               @default(true)
+  created_at               DateTime?              @default(now()) @db.Timestamptz(6)
+  cost_rates               cost_rates[]
+  daily_price_configs      daily_price_config[]
+  pricing_rules            pricing_rules[]
+  default_hall_location    hall_locations?        @relation("relations_default_hall_location", fields: [default_hall_location_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  network_partner          business_partners?     @relation("business_partners_network_partner_relations", fields: [network_partner_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipments                shipments[]            @relation("shipments_relation")
+  sub_conditions           sub_conditions[]
+  zip_relation_mappings    zip_relation_mapping[]
+}
+
+model zip_relation_mapping {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  zip_prefix       String          @db.VarChar(10)
+  country_code     String          @db.Char(2)
+  relation_id      String          @db.Uuid
+  hall_location_id String?         @db.Uuid
+  priority         Int?            @default(1)
+  created_at       DateTime?       @default(now()) @db.Timestamptz(6)
+  hall_location    hall_locations? @relation("zip_relation_mapping_hall_location", fields: [hall_location_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  relation         relations       @relation(fields: [relation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model cost_rates {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rate_type          String               @db.VarChar(20)
+  name               String               @db.VarChar(100)
+  relation_id        String?              @db.Uuid
+  subcontractor_id   String?              @db.Uuid
+  rate_per_100kg     Decimal              @default(9.00) @db.Decimal(10, 4)
+  min_charge         Decimal?             @default(0) @db.Decimal(10, 2)
+  valid_from         DateTime?            @default(dbgenerated("CURRENT_DATE")) @db.Date
+  valid_to           DateTime?            @db.Date
+  is_active          Boolean?             @default(true)
+  created_at         DateTime?            @default(now()) @db.Timestamptz(6)
+  relations          relations?           @relation(fields: [relation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subcontractors     subcontractors?      @relation(fields: [subcontractor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pre_carriage_tours pre_carriage_tours[]
+}
+
+model pre_carriage_shipments {
+  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pre_carriage_tour_id String             @db.Uuid
+  shipment_id          String             @db.Uuid
+  chargeable_weight    Decimal?           @db.Decimal(10, 2)
+  allocated_cost       Decimal?           @default(0) @db.Decimal(10, 2)
+  pre_carriage_tours   pre_carriage_tours @relation(fields: [pre_carriage_tour_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipments            shipments          @relation(fields: [shipment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model pre_carriage_tours {
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tour_date              DateTime                 @db.Date
+  subcontractor_id       String?                  @db.Uuid
+  total_cost             Decimal?                 @default(0) @db.Decimal(10, 2)
+  cost_rate_id           String?                  @db.Uuid
+  distance_km            Decimal?                 @db.Decimal(8, 2)
+  notes                  String?
+  status                 String?                  @default("open") @db.VarChar(20)
+  created_by             String?                  @db.Uuid
+  created_at             DateTime?                @default(now()) @db.Timestamptz(6)
+  pre_carriage_shipments pre_carriage_shipments[]
+  cost_rates             cost_rates?              @relation(fields: [cost_rate_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users                  users?                   @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subcontractors         subcontractors?          @relation(fields: [subcontractor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model sub_conditions {
+  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subcontractor_id   String         @db.Uuid
+  condition_type     String         @db.VarChar(20)
+  rate_per_stop      Decimal?       @db.Decimal(10, 2)
+  rate_per_day       Decimal?       @db.Decimal(10, 2)
+  rate_per_km        Decimal?       @db.Decimal(10, 4)
+  min_stops          Int?           @default(1)
+  max_stops          Int?
+  rate_flat          Decimal?       @db.Decimal(10, 2)
+  rate_per_ldm       Decimal?       @db.Decimal(10, 2)
+  rate_per_kg        Decimal?       @db.Decimal(10, 4)
+  min_ldm            Decimal?       @db.Decimal(5, 2)
+  min_charge         Decimal?       @default(0) @db.Decimal(10, 2)
+  meeting_rate       Decimal?       @db.Decimal(10, 2)
+  roundtrip_rate     Decimal?       @db.Decimal(10, 2)
+  fuel_surcharge_pct Decimal?       @default(0) @db.Decimal(5, 2)
+  valid_from         DateTime?      @default(dbgenerated("CURRENT_DATE")) @db.Date
+  valid_to           DateTime?      @db.Date
+  relation_id        String?        @db.Uuid
+  is_active          Boolean?       @default(true)
+  notes              String?
+  created_at         DateTime?      @default(now()) @db.Timestamptz(6)
+  relations          relations?     @relation(fields: [relation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subcontractors     subcontractors @relation(fields: [subcontractor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tours              tours[]
+
+  @@index([subcontractor_id], map: "idx_sub_conditions_sub")
+  @@index([relation_id], map: "idx_sub_conditions_relation")
+}
+
+model partner_on_carriage_rates {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  partner_id        String            @db.Uuid
+  rate_type         String            @db.VarChar(20)
+  zone_number       Int?
+  zone_km_from      Int?
+  zone_km_to        Int?
+  zip_prefix        String?           @db.VarChar(5)
+  country_code      String?           @db.Char(2)
+  rate_per_shipment Decimal?          @default(0) @db.Decimal(10, 2)
+  rate_per_100kg    Decimal?          @default(0) @db.Decimal(10, 4)
+  rate_per_ldm      Decimal?          @default(0) @db.Decimal(10, 2)
+  min_charge        Decimal?          @default(0) @db.Decimal(10, 2)
+  handling_fee      Decimal?          @default(0) @db.Decimal(10, 2)
+  valid_from        DateTime?         @default(dbgenerated("CURRENT_DATE")) @db.Date
+  valid_to          DateTime?         @db.Date
+  is_active         Boolean?          @default(true)
+  created_at        DateTime?         @default(now()) @db.Timestamptz(6)
+  business_partners business_partners @relation(fields: [partner_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([partner_id], map: "idx_partner_on_carriage_partner")
+}
+
+model customer_tariffs {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customer_id        String?            @db.Uuid
+  partner_id         String?            @db.Uuid
+  origin_country     String?            @db.Char(2)
+  origin_zip_prefix  String?            @db.VarChar(3)
+  dest_country       String             @db.Char(2)
+  dest_zip_prefix    String?            @db.VarChar(3)
+  rate_type          String             @db.VarChar(20)
+  rate               Decimal            @db.Decimal(10, 4)
+  min_charge         Decimal?           @default(0) @db.Decimal(10, 2)
+  max_charge         Decimal?           @db.Decimal(10, 2)
+  fuel_surcharge_pct Decimal?           @default(0) @db.Decimal(5, 2)
+  adr_surcharge      Decimal?           @default(0) @db.Decimal(10, 2)
+  priority           Int?               @default(10)
+  valid_from         DateTime?          @default(dbgenerated("CURRENT_DATE")) @db.Date
+  valid_to           DateTime?          @db.Date
+  is_active          Boolean?           @default(true)
+  created_at         DateTime?          @default(now()) @db.Timestamptz(6)
+  customers          customers?         @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  business_partners  business_partners? @relation("customer_tariffs_partner", fields: [partner_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipments          shipments[]
+
+  @@index([customer_id], map: "idx_customer_tariffs_customer")
+  @@index([dest_country, dest_zip_prefix], map: "idx_customer_tariffs_dest")
+}
+
+model market_price_history {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  source         String    @db.VarChar(20)
+  origin_country String?   @db.Char(2)
+  dest_country   String?   @db.Char(2)
+  vehicle_type   String?   @db.VarChar(20)
+  price_per_ldm  Decimal?  @db.Decimal(10, 2)
+  price_per_km   Decimal?  @db.Decimal(10, 4)
+  recorded_at    DateTime? @default(now()) @db.Timestamptz(6)
+  valid_date     DateTime? @default(dbgenerated("CURRENT_DATE")) @db.Date
+}
+
+model daily_price_config {
+  id                   String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  relation_id          String?    @db.Uuid
+  base_margin_pct      Decimal?   @default(25.0) @db.Decimal(5, 2)
+  market_delta_factor  Decimal?   @default(1.0) @db.Decimal(5, 2)
+  manual_surcharge_pct Decimal?   @default(0) @db.Decimal(5, 2)
+  timocom_weight       Decimal?   @default(0.4) @db.Decimal(5, 2)
+  dat_weight           Decimal?   @default(0.3) @db.Decimal(5, 2)
+  internal_weight      Decimal?   @default(0.3) @db.Decimal(5, 2)
+  updated_at           DateTime?  @default(now()) @db.Timestamptz(6)
+  relations            relations? @relation(fields: [relation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model pricing_import_batches {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rule_type      String    @db.VarChar(30)
+  filename       String?   @db.VarChar(500)
+  imported_count Int?      @default(0)
+  skipped_count  Int?      @default(0)
+  error_count    Int?      @default(0)
+  errors_json    String?
+  status         String?   @default("completed") @db.VarChar(20)
+  created_by     String?   @db.Uuid
+  created_at     DateTime? @default(now()) @db.Timestamptz(6)
+  users          users?    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model pricing_rules {
+  id                                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rule_type                             String             @db.VarChar(30)
+  rule_name                             String             @db.VarChar(200)
+  description                           String?
+  customer_id                           String?            @db.Uuid
+  partner_id                            String?            @db.Uuid
+  subcontractor_id                      String?            @db.Uuid
+  relation_id                           String?            @db.Uuid
+  origin_country                        String?            @db.Char(2)
+  origin_zip_prefix                     String?            @db.VarChar(5)
+  dest_country                          String?            @db.Char(2)
+  dest_zip_prefix                       String?            @db.VarChar(5)
+  priority                              Int?               @default(10)
+  rate_basis                            String             @default("PER_100KG") @db.VarChar(20)
+  rate                                  Decimal?           @db.Decimal(12, 4)
+  min_charge                            Decimal?           @default(0) @db.Decimal(10, 2)
+  max_charge                            Decimal?           @db.Decimal(10, 2)
+  zones_json                            String?
+  tiers_json                            String?
+  fuel_surcharge_pct                    Decimal?           @default(0) @db.Decimal(5, 2)
+  adr_surcharge                         Decimal?           @default(0) @db.Decimal(10, 2)
+  timeslot_surcharge                    Decimal?           @default(0) @db.Decimal(10, 2)
+  b2c_surcharge                         Decimal?           @default(0) @db.Decimal(10, 2)
+  cbm_factor                            Decimal?           @default(300) @db.Decimal(6, 2)
+  ldm_factor                            Decimal?           @default(1650) @db.Decimal(8, 2)
+  pallet_ldm_threshold                  Decimal?           @default(5) @db.Decimal(4, 1)
+  meeting_rate                          Decimal?           @db.Decimal(10, 2)
+  roundtrip_rate                        Decimal?           @db.Decimal(10, 2)
+  max_stops                             Int?
+  transit_days                          Int?               @default(1)
+  valid_from                            DateTime           @default(dbgenerated("CURRENT_DATE")) @db.Date
+  valid_to                              DateTime?          @db.Date
+  is_active                             Boolean?           @default(true)
+  source                                String?            @default("MANUAL") @db.VarChar(20)
+  import_batch_id                       String?            @db.Uuid
+  notes                                 String?
+  created_by                            String?            @db.Uuid
+  updated_by                            String?            @db.Uuid
+  created_at                            DateTime?          @default(now()) @db.Timestamptz(6)
+  updated_at                            DateTime?          @default(now()) @db.Timestamptz(6)
+  users_pricing_rules_created_byTousers users?             @relation("pricing_rules_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customers                             customers?         @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  business_partners                     business_partners? @relation(fields: [partner_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  relations                             relations?         @relation(fields: [relation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subcontractors                        subcontractors?    @relation(fields: [subcontractor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_pricing_rules_updated_byTousers users?             @relation("pricing_rules_updated_byTousers", fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([customer_id, rule_type, is_active], map: "idx_pricing_rules_customer", where: raw("(is_active = true)"))
+  @@index([rule_type, is_active, dest_country, priority(sort: Desc)], map: "idx_pricing_rules_lookup", where: raw("(is_active = true)"))
+  @@index([partner_id, rule_type, is_active], map: "idx_pricing_rules_partner", where: raw("(is_active = true)"))
+}
+
+enum address_type {
+  billing
+  loading
+  delivery
+  depot
+}
+
+enum audit_action {
+  INSERT
+  UPDATE
+  DELETE
+}
+
+enum condition_basis {
+  weight
+  ldm
+  zone
+  flat
+}
+
+enum freight_payer {
+  sender
+  recipient
+  third_party
+}
+
+enum invoice_status {
+  draft
+  sent
+  paid
+  overdue
+  cancelled
+}
+
+enum package_type {
+  pallet_euro
+  pallet_one_way
+  box
+  drum
+  bulk
+  coil
+  container
+  other
+}
+
+enum shipment_status {
+  new
+  dispatched
+  in_transit
+  delivered
+  invoiced
+  cancelled
+  returned
+}
+
+enum tour_status {
+  planned
+  dispatched
+  in_transit
+  completed
+  invoiced
+  cancelled
+  released
+  closed
+}
+
+enum user_role {
+  superadmin
+  dispatcher
+  clearance
+  accounting
+  readonly
+}

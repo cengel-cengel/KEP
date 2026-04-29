@@ -1,0 +1,156 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root { --border: #000; }
+      body {
+        font-family: Arial, Helvetica, sans-serif;
+        margin: 0;
+        padding: 0;
+        color: #000;
+      }
+      .page {
+        padding: 18px;
+      }
+      .header {
+        text-align: center;
+        font-weight: 700;
+        font-size: 18px;
+        margin-bottom: 10px;
+      }
+      .subheader {
+        text-align: center;
+        font-size: 12px;
+        margin-bottom: 14px;
+      }
+      .frame {
+        border: 2px solid var(--border);
+        padding: 10px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      td, th {
+        border: 1px solid var(--border);
+        padding: 6px;
+        font-size: 11px;
+        vertical-align: top;
+      }
+      th {
+        font-weight: 700;
+        background: #f9fafb;
+      }
+      .field {
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+      }
+      .label {
+        font-weight: 700;
+        min-width: 90px;
+      }
+      .muted { color: #111; }
+      .small { font-size: 10px; }
+      .totals td {
+        font-weight: 700;
+        background: #f3f4f6;
+      }
+      .sign-row td {
+        height: 64px;
+      }
+      .strong { font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="header">KED Global Logistics</div>
+      <div class="subheader">Beladeplan</div>
+
+      <div class="frame" style="margin-bottom: 10px;">
+        <table style="border: none; width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="width: 33%; border: none;">
+              <div class="field">
+                <div class="label">Tournummer</div>
+                <div class="strong">{{tour.tour_number}}</div>
+              </div>
+            </td>
+            <td style="width: 33%; border: none;">
+              <div class="field">
+                <div class="label">Datum</div>
+                <div class="strong">{{tour.tour_date}}</div>
+              </div>
+            </td>
+            <td style="width: 34%; border: none;">
+              <div class="field">
+                <div class="label">Kennzeichen</div>
+                <div class="strong">{{tour.vehicle_plate}}</div>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td colspan="3" style="border: none;">
+              <div class="field">
+                <div class="label">SUB</div>
+                <div class="strong">{{tour.subcontractorName}}</div>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="frame">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 6%;">Nr.</th>
+              <th style="width: 16%;">Sendungsnummer</th>
+              <th style="width: 18%;">Kunde</th>
+              <th style="width: 12%;">Ladestelle (Stadt)</th>
+              <th style="width: 16%;">Entladestelle (Stadt+Land)</th>
+              <th style="width: 10%;">Packstücke</th>
+              <th style="width: 10%;">Gewicht</th>
+              <th style="width: 8%;">ldm</th>
+              <th style="width: 14%;">Hinweistext</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{#each shipments}}
+              <tr>
+                <td>{{position}}</td>
+                <td class="strong">{{shipment_number}}</td>
+                <td>{{customer_name}}</td>
+                <td>{{load_city}}</td>
+                <td>{{unload_city}}, {{unload_country}}</td>
+                <td>{{package_count}}</td>
+                <td>{{weight_kg}}</td>
+                <td>{{ldm}}</td>
+                <td class="small">{{note}}</td>
+              </tr>
+            {{/each}}
+            <tr class="totals">
+              <td colspan="5">Gesamt</td>
+              <td>{{totals.totalPackageCount}}</td>
+              <td>{{totals.totalWeightKg}}</td>
+              <td>{{totals.totalLdm}}</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table style="margin-top: 10px;">
+          <tr class="sign-row">
+            <td style="width: 100%; border: none;">
+              <div class="strong">Unterschriftsfeld</div>
+              <div class="small" style="margin-top: 4px;">Fahrer bestätigt Übernahme</div>
+              <div style="margin-top: 26px;">__________________________</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </body>
+</html>
+

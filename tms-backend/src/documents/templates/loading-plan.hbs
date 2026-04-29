@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { font-family: Arial, sans-serif; color: #111827; font-size: 12px; }
+      .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 12px; }
+      .logo { font-size:18px; font-weight:700; color:#1e40af; }
+      .muted { color:#6b7280; }
+      .box { border:1px solid #d1d5db; border-radius:8px; padding:10px; margin-bottom:12px; }
+      .title { font-weight:700; margin-bottom:6px; }
+      table { width:100%; border-collapse: collapse; }
+      th, td { border:1px solid #e5e7eb; padding:6px; text-align:left; vertical-align: top; }
+      th { background:#f9fafb; }
+      .warn { color:#b91c1c; font-weight:600; }
+      .sig { margin-top: 26px; display:flex; justify-content:space-between; }
+      .sig-line { border-top:1px solid #9ca3af; width:240px; padding-top:6px; text-align:center; color:#4b5563; }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div>
+        <div class="logo">KED Global Logistics</div>
+        <div class="muted">Optimierter Beladeplan</div>
+      </div>
+      <div>
+        <div><strong>Tour:</strong> {{tour.tour_number}}</div>
+        <div><strong>Datum:</strong> {{tour.date}}</div>
+        <div><strong>Fahrzeug:</strong> {{vehicle.type}}</div>
+      </div>
+    </div>
+
+    <div class="box">
+      <div class="title">2D Laderaum-Skizze (Draufsicht)</div>
+      {{{layoutSvg}}}
+      <div class="muted" style="margin-top:6px">
+        Auslastung: {{totals.ldm}} ldm / {{vehicle.maxLdm}} ldm · {{totals.weight}} kg / {{vehicle.maxWeightKg}} kg · {{totals.utilizationPercent}}%
+      </div>
+    </div>
+
+    <div class="box">
+      <div class="title">Beladungsreihenfolge</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Nr.</th>
+            <th>Sendung</th>
+            <th>Empfänger</th>
+            <th>Ort</th>
+            <th>Maße</th>
+            <th>Gewicht</th>
+            <th>ldm</th>
+            <th>Stapelbar</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each rows}}
+          <tr>
+            <td>{{nr}}</td>
+            <td>{{shipmentNumber}}</td>
+            <td>{{customer}}</td>
+            <td>{{city}} (Stop {{stop}})</td>
+            <td>{{dimensions}}</td>
+            <td>{{weightKg}} kg</td>
+            <td>{{ldm}}</td>
+            <td>{{stackable}}</td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="box">
+      <div class="title">Entladereihenfolge</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Stop</th>
+            <th>Empfänger</th>
+            <th>Ort</th>
+            <th>Sendungen</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each unloadOrder}}
+          <tr>
+            <td>{{stop}}</td>
+            <td>{{customer}}</td>
+            <td>{{city}}</td>
+            <td>{{shipments}}</td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+
+    {{#if warnings.length}}
+    <div class="box">
+      <div class="title warn">⚠ Warnungen</div>
+      <ul>
+        {{#each warnings}}
+          <li class="warn">{{this}}</li>
+        {{/each}}
+      </ul>
+    </div>
+    {{/if}}
+
+    <div class="sig">
+      <div class="sig-line">Fahrer Unterschrift</div>
+      <div class="sig-line">Disposition / Verladung</div>
+    </div>
+  </body>
+</html>
+

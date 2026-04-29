@@ -1,0 +1,37 @@
+# ===============================
+# Root Gitignore (TMS Mono-Repo)
+# ===============================
+
+# Dependencies
+**/node_modules/
+
+# Builds / outputs
+**/dist/
+**/build/
+**/.vite/
+**/coverage/
+
+# Environment / secrets
+**/.env
+**/.env.*
+
+# Generated artifacts
+**/generated/
+**/.prisma/
+**/prisma/migrations/**/.gitkeep
+
+# Local tooling
+.DS_Store
+**/.DS_Store
+
+# Cursor / IDE
+.cursor/
+.vscode/
+**/.vscode/
+.idea/
+**/.idea/
+
+# Optional older/duplicate folders in this workspace
+/backend/
+/ms-frontend/
+

@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { font-family: Arial, sans-serif; padding: 20px; color: #000; }
+      h1 { font-size: 18px; margin: 0 0 12px; }
+      .row { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+      .box { border: 1px solid #000; padding: 10px; width: 48%; }
+      .small { font-size: 12px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+      th, td { border: 1px solid #000; padding: 8px; font-size: 12px; vertical-align: top; }
+      th { background: #f3f4f6; text-align: left; }
+      .totals td { border: none; }
+      .totals .label { text-align: left; padding-right: 10px; font-weight: 700; }
+      .totals .value { text-align: right; }
+      .right { text-align: right; }
+      .muted { color: #111; }
+    </style>
+  </head>
+  <body>
+    <h1>Rechnung {{invoice.invoice_number}}</h1>
+    <div class="row">
+      <div class="box">
+        <div class="small"><b>Rechnungsdatum:</b> {{invoice.invoice_date}}</div>
+        <div class="small"><b>Fällig:</b> {{invoice.due_date}}</div>
+        <div class="small"><b>Status:</b> {{invoice.status}}</div>
+      </div>
+      <div class="box">
+        <div class="small"><b>Kunde:</b> {{invoice.customer.name}}</div>
+        <div class="small muted"></div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 10%;">Pos.</th>
+          <th>Beschreibung</th>
+          <th style="width: 15%;" class="right">Menge</th>
+          <th style="width: 20%;" class="right">Einzelpreis</th>
+          <th style="width: 20%;" class="right">Summe</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each invoice.items}}
+          <tr>
+            <td>{{position}}</td>
+            <td>{{description}}</td>
+            <td class="right">{{quantity}}</td>
+            <td class="right">{{unit_price}}</td>
+            <td class="right">{{total_price}}</td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+
+    <table class="totals" style="margin-top: 16px;">
+      <tr>
+        <td class="label">Netto:</td>
+        <td class="value">{{invoice.net_amount}}</td>
+      </tr>
+      <tr>
+        <td class="label">MwSt. ({{invoice.vat_rate}}%):</td>
+        <td class="value">{{invoice.vat_amount}}</td>
+      </tr>
+      <tr>
+        <td class="label">Brutto:</td>
+        <td class="value">{{invoice.gross_amount}}</td>
+      </tr>
+    </table>
+
+    <div class="small" style="margin-top: 14px;">
+      <b>Notiz:</b> {{invoice.notes}}
+    </div>
+  </body>
+</html>
+

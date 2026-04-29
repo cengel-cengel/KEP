@@ -1,0 +1,209 @@
+import type { Shipment } from '../types/shipment';
+
+function formatDate(s: string) {
+  return new Date(s).toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+function formatCurrency(n: number) {
+  return new Intl.NumberFormat('de-DE', {
+    style: 'currency',
+    currency: 'EUR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
+}
+
+function formatFromTo(s: Shipment): string {
+  const load = s.loadingAddress ?? s.addresses_shipments_loading_address_idToaddresses;
+  const deliv = s.deliveryAddress ?? s.addresses_shipments_delivery_address_idToaddresses;
+  const from = load ? [load.city, load.country_code ?? load.countryCode].filter(Boolean).join(' ') || '–' : '–';
+  const to = deliv ? [deliv.city, deliv.country_code ?? deliv.countryCode].filter(Boolean).join(' ') || '–' : '–';
+  return `${from} → ${to}`;
+}
+
+function deliveryTypeBadge(type?: string | null) {
+  switch (type) {
+    case 'OWN_NV':
+      return {
+        emoji: '🟢',
+        label: 'Eigener NV',
+        className:
+          'bg-green-100 text-green-800 border-green-200',
+      };
+    case 'NETWORK_PARTNER':
+      return {
+        emoji: '🔵',
+        label: 'Netzwerk',
+        className:
+          'bg-blue-100 text-blue-800 border-blue-200',
+      };
+    case 'CHARTER':
+      return {
+        emoji: '🟠',
+        label: 'Charter',
+        className:
+          'bg-orange-100 text-orange-800 border-orange-200',
+      };
+    case 'COOPERATOR':
+      return {
+        emoji: '🟣',
+        label: 'Kooperator',
+        className:
+          'bg-purple-100 text-purple-800 border-purple-200',
+      };
+    default:
+      return null;
+  }
+}
+
+export interface ShipmentCardProps {
+  shipment: Shipment;
+  draggable?: boolean;
+  onLockBadgeClick?: () => void;
+}
+
+export default function ShipmentCard({
+  shipment,
+  draggable = false,
+  onLockBadgeClick,
+}: ShipmentCardProps) {
+  const row = shipment as {
+    customers?: { name: string };
+    business_partner?: { name?: string; partner_number?: string };
+  };
+  const outboundType = (shipment as any).outbound_delivery_type as string | null | undefined;
+  const inboundType = (shipment as any).inbound_delivery_type as string | null | undefined;
+  const outboundBadge = deliveryTypeBadge(outboundType);
+  const inboundBadge = deliveryTypeBadge(inboundType);
+
+  const partyName =
+    row.customers?.name ??
+    (row.business_partner
+      ? `[BP] ${row.business_partner.name ?? row.business_partner.partner_number ?? ''}`
+      : undefined) ??
+    shipment.customer?.name ??
+    '–';
+
+  const revenue = Number(shipment.freightRevenue ?? (shipment as { freight_revenue?: number }).freight_revenue ?? 0);
+  const ldm = Number(shipment.ldm ?? 0);
+  const rowAny = shipment as any;
+  const packageCount = Number(rowAny.package_count ?? rowAny.packageCount ?? 0);
+  const lengthCm = Number(rowAny.length_cm ?? rowAny.lengthCm ?? 0);
+  const widthCm = Number(rowAny.width_cm ?? rowAny.widthCm ?? 0);
+  const heightCm = Number(rowAny.height_cm ?? rowAny.heightCm ?? 0);
+  const isStackable = !String(rowAny.package_type ?? rowAny.packageType ?? '')
+    .toLowerCase()
+    .includes('drum');
+
+  const hasLock = !!(rowAny.has_active_lock ?? shipment.has_active_lock);
+  const lockLabel =
+    (rowAny.lock_types ?? shipment.lock_types)?.split(',')[0]?.trim() || 'GESPERRT';
+
+  const hasNvDisposition = Boolean((rowAny.has_nv_disposition ?? shipment.has_nv_disposition) ?? false);
+  const hasDamage = Boolean((rowAny.has_damage_report ?? shipment.has_damage_report) ?? false);
+  const hasReturn = Boolean((rowAny.has_return ?? shipment.has_return) ?? false);
+
+  function handleDragStart(e: React.DragEvent) {
+    if (!draggable) return;
+    e.dataTransfer.setData('application/json', JSON.stringify({ shipmentId: shipment.id }));
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  return (
+    <div
+      className={`rounded-lg border bg-white p-3 shadow-sm transition-shadow hover:shadow ${
+        hasLock ? 'border-red-500 ring-1 ring-red-200' : 'border-gray-200'
+      }`}
+      draggable={draggable}
+      onDragStart={draggable ? handleDragStart : undefined}
+      role={draggable ? 'button' : undefined}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold text-gray-900">
+          {(shipment as { shipment_number?: string }).shipment_number ??
+            shipment.shipmentNumber ??
+            shipment.id}
+        </span>
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          {hasLock && (
+            <button
+              type="button"
+              title="Sperre"
+              onClick={(e) => {
+                e.stopPropagation();
+                onLockBadgeClick?.();
+              }}
+              className="rounded bg-red-100 text-red-800 px-2 py-0.5 text-xs font-semibold border border-red-200"
+            >
+              🔒 {lockLabel}
+            </button>
+          )}
+          {ldm > 0 && (
+            <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+              {ldm} ldm
+            </span>
+          )}
+          {hasNvDisposition && (
+            <span className="rounded bg-red-100 text-red-800 px-2 py-0.5 text-xs font-semibold border border-red-200">
+              🔴 NV offen
+            </span>
+          )}
+          {hasDamage && (
+            <span className="rounded bg-orange-100 text-orange-800 px-2 py-0.5 text-xs font-semibold border border-orange-200">
+              🟠 Schaden
+            </span>
+          )}
+          {hasReturn && (
+            <span className="rounded bg-blue-100 text-blue-800 px-2 py-0.5 text-xs font-semibold border border-blue-200">
+              🔵 Retoure
+            </span>
+          )}
+        </div>
+      </div>
+      {(outboundBadge || inboundBadge) && (
+        <div className="mt-2 flex flex-wrap gap-2 items-center">
+          {outboundBadge && (
+            <span
+              className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] font-semibold ${outboundBadge.className}`}
+            >
+              {outboundBadge.emoji} {outboundBadge.label} (Ausgang)
+            </span>
+          )}
+          {inboundBadge && (
+            <span
+              className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] font-semibold ${inboundBadge.className}`}
+            >
+              {inboundBadge.emoji} {inboundBadge.label} (Eingang)
+            </span>
+          )}
+        </div>
+      )}
+      <div className="mt-1 text-sm text-gray-600">
+        {partyName}
+      </div>
+      <div className="mt-0.5 text-xs text-gray-500">
+        {formatFromTo(shipment)}
+      </div>
+      <div className="mt-1 text-xs text-gray-500 flex items-center gap-2 flex-wrap">
+        <span>
+          {packageCount || 0} EP · {(lengthCm / 100).toFixed(1)}×
+          {(widthCm / 100).toFixed(1)}×{(heightCm / 100).toFixed(1)}m ·{' '}
+          {ldm.toFixed(2)} ldm
+        </span>
+        <span className={isStackable ? 'text-blue-700' : 'text-red-700'}>
+          {isStackable ? '🔵 Stapelbar' : '🔴 Nicht stapelbar'}
+        </span>
+      </div>
+      <div className="mt-2 flex items-center justify-between text-xs">
+        <span className="text-gray-500">{formatDate((shipment as { loading_date?: string }).loading_date ?? shipment.loadingDate ?? '')}</span>
+        {revenue > 0 && (
+          <span className="font-medium text-gray-700">{formatCurrency(revenue)}</span>
+        )}
+      </div>
+    </div>
+  );
+}

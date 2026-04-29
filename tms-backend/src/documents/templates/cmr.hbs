@@ -1,0 +1,166 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root { --border: #000; }
+      body {
+        font-family: Arial, Helvetica, sans-serif;
+        margin: 0;
+        padding: 0;
+        color: #000;
+      }
+      .page {
+        padding: 18px;
+      }
+      .title {
+        text-align: center;
+        font-weight: 700;
+        font-size: 18px;
+        margin-bottom: 10px;
+      }
+      .cmr-frame {
+        border: 2px solid var(--border);
+        padding: 10px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      td, th {
+        border: 1px solid var(--border);
+        padding: 6px;
+        font-size: 11px;
+        vertical-align: top;
+      }
+      th {
+        font-weight: 700;
+        background: #f9fafb;
+      }
+      .no-border { border: none !important; }
+      .field {
+        display: flex;
+        gap: 6px;
+        align-items: baseline;
+      }
+      .field .label {
+        font-weight: 700;
+        min-width: 54px;
+      }
+      .strong { font-weight: 700; }
+      .muted { color: #111; }
+      .shipments th {
+        background: #eef2ff;
+      }
+      .sign-row td {
+        height: 64px;
+      }
+      .small { font-size: 10px; }
+    </style>
+  </head>
+
+  <body>
+    <div class="page">
+      <div class="title">CMR Frachtbrief</div>
+
+      <div class="cmr-frame">
+        <table style="margin-bottom: 10px;">
+          <tr>
+            <td style="width: 50%;">
+              <div class="field">
+                <div class="label">Feld 1</div>
+                <div class="strong">Absender</div>
+              </div>
+              <div>{{sender.name}}</div>
+              <div class="small">{{sender.street}}</div>
+              <div class="small">{{sender.zip}} {{sender.city}}</div>
+              <div class="small">{{sender.country_code}}</div>
+            </td>
+            <td style="width: 50%;">
+              <div class="field">
+                <div class="label">Feld 2</div>
+                <div class="strong">Empfänger</div>
+              </div>
+              <div>{{receiver.name}}</div>
+              <div class="small">{{receiver.street}}</div>
+              <div class="small">{{receiver.zip}} {{receiver.city}}</div>
+              <div class="small">{{receiver.country_code}}</div>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <div class="field">
+                <div class="label">Feld 4</div>
+                <div class="strong">Ort der Übernahme</div>
+              </div>
+              <div class="strong">{{place_of_reception}}</div>
+            </td>
+            <td>
+              <div class="field">
+                <div class="label">Feld 21</div>
+                <div class="strong">Ausstellungsort</div>
+              </div>
+              <div class="strong">{{place_of_issuance}}</div>
+            </td>
+          </tr>
+          <tr>
+            <td colspan="2">
+              <div class="field">
+                <div class="label">Feld 16</div>
+                <div class="strong">Frachtführer</div>
+              </div>
+              <div>{{tour.subcontractorName}}</div>
+            </td>
+          </tr>
+        </table>
+
+        <table class="shipments">
+          <thead>
+            <tr>
+              <th style="width: 8%;">Pos.</th>
+              <th style="width: 18%;">Sendung</th>
+              <th style="width: 14%;">Packstücke</th>
+              <th style="width: 14%;">Art</th>
+              <th style="width: 14%;">Gewicht</th>
+              <th style="width: 12%;">ldm</th>
+              <th style="width: 20%;">Notizen</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{#each shipments}}
+              <tr>
+                <td>{{position}}</td>
+                <td class="strong">{{shipment_number}}</td>
+                <td>{{package_count}}</td>
+                <td>{{package_type}}</td>
+                <td>{{weight_kg}}</td>
+                <td>{{ldm}}</td>
+                <td class="small"></td>
+              </tr>
+            {{/each}}
+          </tbody>
+        </table>
+
+        <table style="margin-top: 10px;">
+          <tr class="sign-row">
+            <td style="width: 50%;">
+              <div class="strong">Unterschrift Absender</div>
+              <div class="small" style="margin-top: 8px;">(Ort / Datum)</div>
+              <div style="margin-top: 22px;">__________________________</div>
+            </td>
+            <td style="width: 50%;">
+              <div class="strong">Unterschrift Empfänger</div>
+              <div class="small" style="margin-top: 8px;">(Ort / Datum)</div>
+              <div style="margin-top: 22px;">__________________________</div>
+            </td>
+          </tr>
+        </table>
+
+        <div class="small" style="margin-top: 8px; text-align: right;">
+          Tour: <span class="strong">{{tour.tour_number}}</span> – Datum: {{tour.tour_date}}
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+

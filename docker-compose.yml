@@ -1,0 +1,72 @@
+# ============================================================
+# TMS – Docker Compose (Lokale Entwicklung)
+# Startet PostgreSQL + Redis lokal
+# Verwendung: docker-compose up -d
+# ============================================================
+
+version: '3.8'
+
+services:
+
+  # PostgreSQL Datenbank
+  postgres:
+    image: postgres:15-alpine
+    container_name: tms_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tms_db
+      POSTGRES_USER: tms_user
+      POSTGRES_PASSWORD: tms_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tms_user -d tms_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (Cache + Job Queue)
+  redis:
+    image: redis:7-alpine
+    container_name: tms_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # pgAdmin (optional – Datenbank-GUI im Browser)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: tms_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@tms.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    profiles:
+      - tools  # Nur starten mit: docker-compose --profile tools up -d
+
+volumes:
+  postgres_data:
+  redis_data:
+
+# ── Verwendung ─────────────────────────────────────────────
+# Starten:          docker-compose up -d
+# Stoppen:          docker-compose down
+# Logs:             docker-compose logs -f postgres
+# Mit pgAdmin:      docker-compose --profile tools up -d
+# pgAdmin URL:      http://localhost:5050
+# DB-Verbindung:    Host: postgres, Port: 5432, DB: tms_db

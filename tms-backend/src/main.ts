@@ -72,8 +72,15 @@ async function bootstrap() {
 
   const port = Number(process.env.PORT ?? 3001);
   console.log(`[STARTUP] about to listen on 0.0.0.0:${port}`);
+  console.log(`[STARTUP] env PORT raw=${JSON.stringify(process.env.PORT)}`);
   await app.listen(port, '0.0.0.0');
-  console.log(`[STARTUP] listen() resolved on port ${port}`);
+  console.log(`[STARTUP] *** LISTEN RESOLVED *** port=${port}`);
+
+  // Heartbeat: alle 10s ein Lebenszeichen ins Log,
+  // sodass wir sehen ob der Container weiterläuft oder stirbt.
+  setInterval(() => {
+    console.log(`[ALIVE] tick ${new Date().toISOString()} pid=${process.pid}`);
+  }, 10000);
 
   const logger = new Logger('Bootstrap');
   logger.log(`TMS Backend listening on port ${port}`);

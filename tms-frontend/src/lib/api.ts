@@ -2,8 +2,18 @@ import axios from 'axios';
 
 const AUTH_TOKEN_KEY = 'tms_token';
 
+const baseURL = import.meta.env.VITE_API_URL;
+
+if (!baseURL && import.meta.env.PROD) {
+  console.error(
+    '[API] VITE_API_URL ist nicht gesetzt - ' +
+      'Login wird nicht funktionieren. ' +
+      'Vercel ENV setzen und redeployen.',
+  );
+}
+
 export const api = axios.create({
-  baseURL: '/api',
+  baseURL: baseURL || '/api',
   headers: {
     'Content-Type': 'application/json',
   },

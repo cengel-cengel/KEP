@@ -73,14 +73,29 @@ async function bootstrap() {
   const port = Number(process.env.PORT ?? 3001);
   console.log(`[STARTUP] about to listen on 0.0.0.0:${port}`);
   console.log(`[STARTUP] env PORT raw=${JSON.stringify(process.env.PORT)}`);
-  await app.listen(port, '0.0.0.0');
-  console.log(`[STARTUP] *** LISTEN RESOLVED *** port=${port}`);
 
-  // Heartbeat: alle 10s ein Lebenszeichen ins Log,
-  // sodass wir sehen ob der Container weiterläuft oder stirbt.
-  setInterval(() => {
+  // Heartbeat VOR listen() - sehen ob Process ueberlebt selbst wenn
+  // listen haengt
+  const heartbeat = setInterval(() => {
     console.log(`[ALIVE] tick ${new Date().toISOString()} pid=${process.pid}`);
-  }, 10000);
+  }, 5000);
+
+  // Hard-Timeout: wenn listen nach 30s nicht resolved, abbrechen mit Log
+  const listenWithTimeout = Promise.race([
+    app.listen(port, '0.0.0.0'),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('app.listen() hat 30s nicht resolved')), 30000),
+    ),
+  ]);
+
+  try {
+    await listenWithTimeout;
+    console.log(`[STARTUP] *** LISTEN RESOLVED *** port=${port}`);
+  } catch (err) {
+    console.error('[STARTUP] *** LISTEN FAILED ***', err);
+    clearInterval(heartbeat);
+    process.exit(1);
+  }
 
   const logger = new Logger('Bootstrap');
   logger.log(`TMS Backend listening on port ${port}`);

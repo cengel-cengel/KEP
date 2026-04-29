@@ -9,6 +9,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
+    "prebuild": "prisma generate",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
@@ -23,7 +24,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "deploy:db": "node scripts/apply-migrations.mjs",
     "deploy:start": "npm run deploy:db && npm run start:prod",
-    "postinstall": "prisma generate || echo 'prisma generate skipped (DB not reachable)'",
+    "postinstall": "prisma generate",
     "seed:demo": "ts-node --transpile-only scripts/seed-demo-flow.ts",
     "seed:stuttgart-uk": "ts-node --transpile-only scripts/seed-stuttgart-uk-demo.ts",
     "seed:england-uk": "ts-node --transpile-only scripts/seed-england-uk-packages.ts"

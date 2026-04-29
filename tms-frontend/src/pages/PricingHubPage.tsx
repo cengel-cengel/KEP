@@ -157,7 +157,7 @@ export default function PricingHubPage() {
 
   const templateDownload = async () => {
     const res = await api.get(`/pricing-hub/templates/${activeRuleType}`, { responseType: 'blob' });
-    const blob = new Blob([res.data], { type: res.headers['content-type'] ?? 'application/octet-stream' });
+    const blob = new Blob([res.data], { type: (res.headers['content-type'] as string | undefined) ?? 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

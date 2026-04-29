@@ -9,11 +9,15 @@
 **/dist/
 **/build/
 **/.vite/
+**/.next/
 **/coverage/
+**/tsconfig.tsbuildinfo
+next-env.d.ts
 
 # Environment / secrets
 **/.env
 **/.env.*
+!**/.env.example
 
 # Generated artifacts
 **/generated/

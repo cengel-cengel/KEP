@@ -9,4 +9,17 @@ export class AppController {
   getHello(): string {
     return this.appService.getHello();
   }
+
+  /**
+   * Liveness-Probe für Railway/Cloudflare/Loadbalancer.
+   * Liefert immer 200, sobald die App initialisiert ist.
+   */
+  @Get('healthz')
+  health() {
+    return {
+      status: 'ok',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    };
+  }
 }

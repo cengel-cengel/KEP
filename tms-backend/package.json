@@ -18,6 +18,9 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "deploy:db": "node scripts/apply-migrations.mjs",
+    "deploy:start": "npm run deploy:db && npm run start:prod",
+    "postinstall": "prisma generate || echo 'prisma generate skipped (DB not reachable)'",
     "seed:demo": "ts-node --transpile-only scripts/seed-demo-flow.ts",
     "seed:stuttgart-uk": "ts-node --transpile-only scripts/seed-stuttgart-uk-demo.ts",
     "seed:england-uk": "ts-node --transpile-only scripts/seed-england-uk-packages.ts"

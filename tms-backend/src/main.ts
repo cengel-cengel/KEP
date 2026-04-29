@@ -4,6 +4,23 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
+// SOFORT-Heartbeat - feuert auch wenn Nest haengt.
+// So sehen wir definitiv ob der Container lebt.
+console.log(`[BOOT] process started, pid=${process.pid}, time=${new Date().toISOString()}`);
+const earlyHeartbeat = setInterval(() => {
+  console.log(`[ALIVE] ${new Date().toISOString()}`);
+}, 5000);
+process.on('exit', (code) => {
+  clearInterval(earlyHeartbeat);
+  console.log(`[BOOT] process exiting with code=${code}`);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[BOOT] uncaughtException:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[BOOT] unhandledRejection:', reason);
+});
+
 const DEFAULT_DEV_ORIGINS = [
   'http://localhost:3000',
   'http://localhost:5173',

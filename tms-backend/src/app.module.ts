@@ -54,18 +54,21 @@ import { PricingHubModule } from './pricing-hub/pricing-hub.module';
       inject: [ConfigService],
     }),
 
-    // Bull Queue – für PDF-Generierung, E-Mail, DATEV-Export
-    BullModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (config: ConfigService) => ({
-        redis: {
-          host: config.get('REDIS_HOST', 'localhost'),
-          port: config.get('REDIS_PORT', 6379),
-          password: config.get('REDIS_PASSWORD'),
-        },
-      }),
-      inject: [ConfigService],
-    }),
+    // Bull Queue – temporaer deaktiviert fuer Phase-1-Deploy.
+    // Verursachte vermutlich haengenden Bootstrap (Redis-Connect blockiert
+    // app.listen() in Railways Container). Wieder reinnehmen sobald
+    // Redis-Connection bestaetigt ist.
+    // BullModule.forRootAsync({
+    //   imports: [ConfigModule],
+    //   useFactory: (config: ConfigService) => ({
+    //     redis: {
+    //       host: config.get('REDIS_HOST', 'localhost'),
+    //       port: config.get('REDIS_PORT', 6379),
+    //       password: config.get('REDIS_PASSWORD'),
+    //     },
+    //   }),
+    //   inject: [ConfigService],
+    // }),
 
     // Datenbank (Prisma ORM)
     PrismaModule,

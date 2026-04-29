@@ -8,6 +8,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { BullModule } from '@nestjs/bull';
 
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CustomersModule } from './customers/customers.module';
@@ -99,5 +101,7 @@ import { PricingHubModule } from './pricing-hub/pricing-hub.module';
     ReturnsModule,
     PricingHubModule,
   ],
+  controllers: [AppController],
+  providers: [AppService],
 })
 export class AppModule {}

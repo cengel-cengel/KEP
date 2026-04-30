@@ -35,7 +35,8 @@
     "seed:relations": "ts-node --transpile-only scripts/seed-relations.ts",
     "seed:routing-intl": "ts-node --transpile-only scripts/seed-routing-intl.ts",
     "seed:erka-nv": "ts-node --transpile-only scripts/seed-erka-nv.ts",
-    "seed:backfill-relations": "ts-node --transpile-only scripts/backfill-shipment-relations.ts"
+    "seed:backfill-relations": "ts-node --transpile-only scripts/backfill-shipment-relations.ts",
+    "seed:backfill-coords": "ts-node --transpile-only scripts/backfill-coordinates.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1009.0",

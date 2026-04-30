@@ -191,6 +191,9 @@ export class ShipmentsService {
             },
           },
         },
+        shipment_package_items: {
+          select: { id: true, stackable: true, package_type: true },
+        },
       },
       orderBy: [{ loading_date: 'asc' }, { created_at: 'asc' }],
     });
@@ -712,6 +715,22 @@ export class ShipmentsService {
   }
 
   // ── Sendung soft-löschen ─────────────────────────────────
+  /** Setzt stackable auf ALLEN package_items der Sendung. */
+  async setStackable(id: string, stackable: boolean) {
+    const shipment = await this.prisma.shipments.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!shipment) {
+      throw new NotFoundException(`Sendung ${id} nicht gefunden`);
+    }
+    await this.prisma.shipment_package_items.updateMany({
+      where: { shipment_id: id },
+      data: { stackable },
+    });
+    return this.findOne(id);
+  }
+
   async remove(id: string, userId: string) {
     const shipment = await this.findOne(id);
 

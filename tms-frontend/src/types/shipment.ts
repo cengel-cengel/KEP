@@ -61,4 +61,10 @@ export interface Shipment {
   lock_types?: string | null;
   last_event_type?: string | null;
   last_event_at?: string | null;
+
+  shipment_package_items?: Array<{
+    id?: string;
+    stackable?: boolean;
+    package_type?: string;
+  }>;
 }

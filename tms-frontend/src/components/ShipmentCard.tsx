@@ -1,3 +1,6 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { api } from '../lib/api';
 import type { Shipment } from '../types/shipment';
 
 function formatDate(s: string) {
@@ -95,9 +98,33 @@ export default function ShipmentCard({
   const lengthCm = Number(rowAny.length_cm ?? rowAny.lengthCm ?? 0);
   const widthCm = Number(rowAny.width_cm ?? rowAny.widthCm ?? 0);
   const heightCm = Number(rowAny.height_cm ?? rowAny.heightCm ?? 0);
-  const isStackable = !String(rowAny.package_type ?? rowAny.packageType ?? '')
+  const items = shipment.shipment_package_items ?? [];
+  const fallbackStackable = !String(rowAny.package_type ?? rowAny.packageType ?? '')
     .toLowerCase()
     .includes('drum');
+  const persistedStackable =
+    items.length > 0 ? items.every((it) => it.stackable !== false) : null;
+  const [optimisticStackable, setOptimisticStackable] = useState<boolean | null>(null);
+  const isStackable =
+    optimisticStackable ?? persistedStackable ?? fallbackStackable;
+  const canToggle = items.length > 0;
+  const queryClient = useQueryClient();
+  const stackableMutation = useMutation({
+    mutationFn: async (next: boolean) => {
+      await api.patch(`/shipments/${shipment.id}/stackable`, { stackable: next });
+    },
+    onMutate: async (next: boolean) => {
+      setOptimisticStackable(next);
+    },
+    onError: () => {
+      setOptimisticStackable(null);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['shipments'] });
+      void queryClient.invalidateQueries({ queryKey: ['tours'] });
+      setOptimisticStackable(null);
+    },
+  });
 
   const hasLock = !!(rowAny.has_active_lock ?? shipment.has_active_lock);
   const lockLabel =
@@ -194,9 +221,30 @@ export default function ShipmentCard({
           {(widthCm / 100).toFixed(1)}×{(heightCm / 100).toFixed(1)}m ·{' '}
           {ldm.toFixed(2)} ldm
         </span>
-        <span className={isStackable ? 'text-blue-700' : 'text-red-700'}>
+        <button
+          type="button"
+          disabled={!canToggle || stackableMutation.isPending}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!canToggle) return;
+            stackableMutation.mutate(!isStackable);
+          }}
+          title={
+            canToggle
+              ? 'Klick: Stapelbarkeit umschalten'
+              : 'Keine Packstücke – Anzeige aus package_type abgeleitet'
+          }
+          className={
+            (isStackable ? 'text-blue-700' : 'text-red-700') +
+            ' rounded px-1 ' +
+            (canToggle
+              ? 'hover:bg-gray-100 cursor-pointer'
+              : 'cursor-default opacity-70') +
+            (stackableMutation.isPending ? ' animate-pulse' : '')
+          }
+        >
           {isStackable ? '🔵 Stapelbar' : '🔴 Nicht stapelbar'}
-        </span>
+        </button>
       </div>
       <div className="mt-2 flex items-center justify-between text-xs">
         <span className="text-gray-500">{formatDate((shipment as { loading_date?: string }).loading_date ?? shipment.loadingDate ?? '')}</span>

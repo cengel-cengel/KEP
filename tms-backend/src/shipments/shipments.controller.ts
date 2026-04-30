@@ -78,6 +78,14 @@ export class ShipmentsController {
     return this.shipmentsService.remove(id, req.user.userId);
   }
 
+  @Patch(':id/stackable')
+  async setStackable(
+    @Param('id') id: string,
+    @Body() body: { stackable: boolean },
+  ) {
+    return this.shipmentsService.setStackable(id, !!body.stackable);
+  }
+
   @Post(':id/dispatch')
   async dispatch(
     @Param('id') id: string,

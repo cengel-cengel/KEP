@@ -232,18 +232,6 @@ export default function DispositionPage() {
     },
   });
 
-  const deliveryCount = useMemo(() => {
-    return undispatched.reduce((acc, s) => {
-      const city =
-        s.deliveryAddress?.city ??
-        (s as unknown as { delivery_city?: string }).delivery_city ??
-        s.addresses_shipments_delivery_address_idToaddresses?.city ??
-        '';
-      if (!city) return acc;
-      acc[city] = (acc[city] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-  }, [undispatched]);
 
   const { data: tours = [], isLoading: loadingTours } = useQuery({
     queryKey: ['tours'],

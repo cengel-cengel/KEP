@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Navigation from '../components/Navigation';
 import { api } from '../lib/api';
 import { COUNTRY_CODE_OPTIONS } from '../lib/countryCodes';
+import { TRANSPORT_TYPE_OPTIONS, TRANSPORT_TYPE_DEFAULT } from '../constants/transportTypes';
 import type { Customer } from '../types/customer';
 import type { Address } from '../types/address';
 
@@ -298,6 +299,7 @@ export default function NewShipmentPage() {
   const referenzRef = useRef<HTMLInputElement>(null);
   const suggestionRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [customerRef, setCustomerRef] = useState('');
+  const [transportType, setTransportType] = useState<string>(TRANSPORT_TYPE_DEFAULT);
   const [loadingSelect, setLoadingSelect] = useState('');
   const [deliveryStreetName, setDeliveryStreetName] = useState('');
   const [deliveryHouseNumber, setDeliveryHouseNumber] = useState('');
@@ -544,6 +546,7 @@ export default function NewShipmentPage() {
     setHighlightedIndex(-1);
     setSelectedPartner(null);
     setCustomerRef('');
+    setTransportType(TRANSPORT_TYPE_DEFAULT);
     setLoadingSelect('');
     setDeliveryStreetName('');
     setDeliveryHouseNumber('');
@@ -1317,7 +1320,7 @@ export default function NewShipmentPage() {
         deliveryAddressId: newDelivery.id,
         loadingCountryCode,
         deliveryCountryCode: deliveryForm.countryCode,
-        transportType: 'DIREKT',
+        transportType,
         customerRef: customerRef || undefined,
         loadingDate,
         loadingTimeFrom: lf,
@@ -1914,6 +1917,22 @@ export default function NewShipmentPage() {
                 </div>
               </div>
               <p className="text-[11px] text-gray-500">Neue Lieferadresse wird angelegt und verknüpft.</p>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-2 shadow-sm">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-1.5">
+                VERKEHRSART
+              </h2>
+              <select
+                value={transportType}
+                onChange={(e) => setTransportType(e.target.value)}
+                required
+                className="w-full text-sm rounded-md border border-gray-300 bg-white px-2 py-1.5 outline-none focus:ring-2 focus:ring-[#1e40af]"
+              >
+                {TRANSPORT_TYPE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
             </div>
 
             <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-2 shadow-sm overflow-x-auto">

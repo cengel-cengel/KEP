@@ -31,11 +31,32 @@
  */
 
 import { PrismaClient } from '../generated/prisma';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 import { v5 as uuidv5 } from 'uuid';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const prisma = new PrismaClient();
+// Prisma 7 braucht Driver-Adapter (PrismaPg). Wird in main() instanziiert.
+let prisma: PrismaClient;
+let pool: Pool;
+
+function loadDotEnv() {
+  const envPath = path.join(__dirname, '..', '.env');
+  if (!fs.existsSync(envPath)) return;
+  for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const eq = t.indexOf('=');
+    if (eq < 1) continue;
+    const k = t.slice(0, eq).trim();
+    let v = t.slice(eq + 1).trim();
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+      v = v.slice(1, -1);
+    }
+    if (!process.env[k]) process.env[k] = v;
+  }
+}
 
 const SEED_NS = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
 
@@ -407,6 +428,15 @@ async function main() {
   console.log('SEED: ECHTE STUTTGART-DATEN');
   console.log('===========================================');
 
+  loadDotEnv();
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error('DATABASE_URL fehlt (z. B. in .env oder via Railway-ENV).');
+  }
+  pool = new Pool({ connectionString });
+  const adapter = new PrismaPg(pool);
+  prisma = new PrismaClient({ adapter } as any);
+
   const data = await loadSeedData();
   console.log(`\nQuelle: ${data.meta.source}`);
   console.log(
@@ -431,5 +461,6 @@ main()
     process.exit(1);
   })
   .finally(async () => {
-    await prisma.$disconnect();
+    if (prisma) await prisma.$disconnect();
+    if (pool) await pool.end();
   });

@@ -32,6 +32,90 @@ import type { ShipmentMapItem } from '../types/shipment';
 import type { Tour } from '../types/tour';
 import ShipmentCostCard from '../components/ShipmentCostCard';
 
+// ---- Country/Relation helpers (Disposition-Hierarchie) ----
+const COUNTRY_NAMES: Record<string, string> = {
+  DE: 'Deutschland', AT: 'Österreich', CH: 'Schweiz', FR: 'Frankreich',
+  IT: 'Italien', ES: 'Spanien', GB: 'Großbritannien', UK: 'Großbritannien',
+  NL: 'Niederlande', BE: 'Belgien', PL: 'Polen', CZ: 'Tschechien',
+  DK: 'Dänemark', SE: 'Schweden', NO: 'Norwegen', FI: 'Finnland',
+  PT: 'Portugal', IE: 'Irland', LU: 'Luxemburg', HU: 'Ungarn',
+  RO: 'Rumänien', SK: 'Slowakei', SI: 'Slowenien', HR: 'Kroatien',
+};
+
+function flagFor(code?: string): string {
+  const c = (code || '').toUpperCase();
+  if (c.length !== 2) return '🌐';
+  const base = 0x1f1e6 - 'A'.charCodeAt(0);
+  return String.fromCodePoint(c.charCodeAt(0) + base, c.charCodeAt(1) + base);
+}
+
+function countryLabel(code?: string): string {
+  const c = (code || '').toUpperCase() || 'XX';
+  return `${flagFor(c)} ${c} – ${COUNTRY_NAMES[c] ?? 'Unbekannt'}`;
+}
+
+function normCity(s?: string | null): string {
+  return (s || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function loadingCity(s: Shipment): string {
+  const a = s.loadingAddress as { city?: string } | undefined;
+  return normCity(a?.city) || 'UNBEKANNT';
+}
+function deliveryCity(s: Shipment): string {
+  const a = s.deliveryAddress as { city?: string } | undefined;
+  return normCity(a?.city) || 'UNBEKANNT';
+}
+function deliveryCountry(s: Shipment): string {
+  const a = s.deliveryAddress as { country_code?: string } | undefined;
+  return (a?.country_code || 'XX').toUpperCase();
+}
+
+interface RelationGroup {
+  key: string;
+  origin: string;
+  destination: string;
+  items: Shipment[];
+  totalLdm: number;
+}
+interface CountryGroup {
+  code: string;
+  items: Shipment[];
+  totalLdm: number;
+  relations: RelationGroup[];
+}
+
+function groupShipments(items: Shipment[]): CountryGroup[] {
+  const byCountry = new Map<string, Map<string, RelationGroup>>();
+  for (const s of items) {
+    const cc = deliveryCountry(s);
+    const rk = `${loadingCity(s)} → ${deliveryCity(s)}`;
+    let rels = byCountry.get(cc);
+    if (!rels) { rels = new Map(); byCountry.set(cc, rels); }
+    let g = rels.get(rk);
+    if (!g) {
+      g = { key: rk, origin: loadingCity(s), destination: deliveryCity(s), items: [], totalLdm: 0 };
+      rels.set(rk, g);
+    }
+    g.items.push(s);
+    g.totalLdm += Number(s.ldm ?? 0);
+  }
+  const out: CountryGroup[] = [];
+  for (const [cc, rels] of byCountry) {
+    const relations = [...rels.values()].sort((a, b) => b.items.length - a.items.length);
+    const items = relations.flatMap((r) => r.items);
+    const totalLdm = relations.reduce((s, r) => s + r.totalLdm, 0);
+    out.push({ code: cc, items, totalLdm, relations });
+  }
+  out.sort((a, b) => b.items.length - a.items.length);
+  return out;
+}
+
 const TRANSPORT_TYPE_OPTIONS = [
   { value: '', label: 'Alle' },
   { value: 'DIREKT', label: 'Direktsendung' },
@@ -124,6 +208,8 @@ export default function DispositionPage() {
     Record<string, number | null>
   >({});
   const [tourRouteRefreshKey, setTourRouteRefreshKey] = useState(0);
+  const [expandedCountries, setExpandedCountries] = useState<Set<string>>(new Set());
+  const [expandedRelations, setExpandedRelations] = useState<Set<string>>(new Set());
   const col1Width = 25;
   const col2Width = 25;
 
@@ -485,34 +571,84 @@ export default function DispositionPage() {
               ) : undispatched.length === 0 ? (
                 <p className="text-gray-500 text-sm">Keine Sendungen ohne Tour.</p>
               ) : (
-                undispatched.map((s) => (
-                  <div
-                    key={s.id}
-                    onClick={() => handleListShipmentClick(s.id)}
-                    className={`rounded-lg border transition-colors cursor-pointer ${
-                      selectedShipmentId === s.id
-                        ? 'border-[#1e40af] bg-yellow-100'
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex flex-col gap-1">
-                      {(() => {
-                        const city =
-                          s.deliveryAddress?.city ??
-                          s.addresses_shipments_delivery_address_idToaddresses?.city ??
-                          (s as unknown as { delivery_city?: string }).delivery_city ??
-                          '';
-                        const count = deliveryCount[city] ?? 0;
-                        return city && count > 1 ? (
-                          <span className="bg-orange-100 text-orange-700 text-xs px-2 py-0.5 rounded-full">
-                            {count}x {city}
+                (() => {
+                  const groups = groupShipments(undispatched);
+                  const searchActive = filterSearch.trim().length > 0;
+                  return groups.map((cg) => {
+                    const cExpanded = searchActive || expandedCountries.has(cg.code);
+                    return (
+                      <div key={cg.code} className="border border-gray-200 rounded-lg bg-white">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedCountries((prev) => {
+                              const n = new Set(prev);
+                              n.has(cg.code) ? n.delete(cg.code) : n.add(cg.code);
+                              return n;
+                            })
+                          }
+                          className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-t-lg sticky top-0 z-10"
+                        >
+                          <span className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                            <span>{cExpanded ? '▼' : '▶'}</span>
+                            <span>{countryLabel(cg.code)}</span>
                           </span>
-                        ) : null;
-                      })()}
-                      <ShipmentCard shipment={s} draggable />
-                    </div>
-                  </div>
-                ))
+                          <span className="text-xs text-gray-600">
+                            {cg.items.length} · {cg.totalLdm.toFixed(1)} ldm
+                          </span>
+                        </button>
+                        {cExpanded && (
+                          <div className="p-2 space-y-2">
+                            {cg.relations.map((rg) => {
+                              const rk = `${cg.code}::${rg.key}`;
+                              const rExpanded = searchActive || expandedRelations.has(rk);
+                              return (
+                                <div key={rk} className="border border-gray-100 rounded">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setExpandedRelations((prev) => {
+                                        const n = new Set(prev);
+                                        n.has(rk) ? n.delete(rk) : n.add(rk);
+                                        return n;
+                                      })
+                                    }
+                                    className="w-full flex items-center justify-between px-2 py-1.5 bg-white hover:bg-gray-50 rounded-t"
+                                  >
+                                    <span className="flex items-center gap-2 text-xs font-medium text-gray-700">
+                                      <span>{rExpanded ? '▼' : '▶'}</span>
+                                      <span>{rg.origin} → {rg.destination}</span>
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                      {rg.items.length} · {rg.totalLdm.toFixed(1)} ldm
+                                    </span>
+                                  </button>
+                                  {rExpanded && (
+                                    <div className="p-2 space-y-2">
+                                      {rg.items.map((s) => (
+                                        <div
+                                          key={s.id}
+                                          onClick={() => handleListShipmentClick(s.id)}
+                                          className={`rounded-lg border transition-colors cursor-pointer ${
+                                            selectedShipmentId === s.id
+                                              ? 'border-[#1e40af] bg-yellow-100'
+                                              : 'border-gray-200 bg-white hover:bg-gray-50'
+                                          }`}
+                                        >
+                                          <ShipmentCard shipment={s} draggable />
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()
               )}
             </div>
           </div>

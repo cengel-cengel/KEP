@@ -2,6 +2,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../lib/api';
 import type { Shipment } from '../types/shipment';
+import {
+  TRANSPORT_TYPE_OPTIONS,
+  transportTypeLabel,
+} from '../constants/transportTypes';
 
 function formatDate(s: string) {
   return new Date(s).toLocaleDateString('de-DE', {
@@ -126,6 +130,27 @@ export default function ShipmentCard({
     },
   });
 
+  const persistedTransportType =
+    shipment.transport_type ?? (rowAny.transportType as string | undefined);
+  const [optimisticTransportType, setOptimisticTransportType] = useState<string | null>(null);
+  const currentTransportType = optimisticTransportType ?? persistedTransportType ?? '';
+  const transportMutation = useMutation({
+    mutationFn: async (next: string) => {
+      await api.patch(`/shipments/${shipment.id}`, { transportType: next });
+    },
+    onMutate: async (next: string) => {
+      setOptimisticTransportType(next);
+    },
+    onError: () => {
+      setOptimisticTransportType(null);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['shipments'] });
+      void queryClient.invalidateQueries({ queryKey: ['tours'] });
+      setOptimisticTransportType(null);
+    },
+  });
+
   const hasLock = !!(rowAny.has_active_lock ?? shipment.has_active_lock);
   const lockLabel =
     (rowAny.lock_types ?? shipment.lock_types)?.split(',')[0]?.trim() || 'GESPERRT';
@@ -245,6 +270,35 @@ export default function ShipmentCard({
         >
           {isStackable ? '🔵 Stapelbar' : '🔴 Nicht stapelbar'}
         </button>
+        <span
+          className={
+            'relative inline-flex items-center rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 ' +
+            (transportMutation.isPending ? 'animate-pulse' : '')
+          }
+          title="Klick: Verkehrsart ändern"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="px-1 text-[11px] font-medium pointer-events-none">
+            📦 {transportTypeLabel(currentTransportType)}
+          </span>
+          <select
+            disabled={transportMutation.isPending}
+            value={currentTransportType}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (next && next !== currentTransportType) {
+                transportMutation.mutate(next);
+              }
+            }}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            aria-label="Verkehrsart"
+          >
+            {!currentTransportType && <option value="">–</option>}
+            {TRANSPORT_TYPE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </span>
       </div>
       <div className="mt-2 flex items-center justify-between text-xs">
         <span className="text-gray-500">{formatDate((shipment as { loading_date?: string }).loading_date ?? shipment.loadingDate ?? '')}</span>

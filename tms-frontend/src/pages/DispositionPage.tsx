@@ -82,12 +82,24 @@ function deliveryCountry(s: Shipment): string {
   return (cc || 'XX').toUpperCase();
 }
 
-interface RelationGroup {
+interface AxisGroup {
+  // Origin → Destination Sub-Bucket innerhalb von "keine Relation"
   key: string;
   origin: string;
   destination: string;
   items: Shipment[];
   totalLdm: number;
+}
+interface RelationGroup {
+  // Bucket auf Relation-Ebene unterhalb Country.
+  // - kind='relation': echte Relation (code+name)
+  // - kind='none':     ungemappte Sendungen, mit subAxes
+  kind: 'relation' | 'none';
+  key: string;
+  label: string;
+  items: Shipment[];
+  totalLdm: number;
+  subAxes: AxisGroup[];
 }
 interface CountryGroup {
   code: string;
@@ -96,24 +108,63 @@ interface CountryGroup {
   relations: RelationGroup[];
 }
 
+function relationCode(s: Shipment): string | null {
+  return s.relation?.code ?? null;
+}
+function relationLabel(s: Shipment): string {
+  if (!s.relation) return '(keine Relation)';
+  const name = s.relation.name ?? '';
+  return name ? `${s.relation.code} – ${name}` : s.relation.code;
+}
+
 function groupShipments(items: Shipment[]): CountryGroup[] {
+  // 1) nach Country gruppieren, darin nach relation.code
+  //    (oder 'NONE' fuer ungemappte) — letztere bekommen
+  //    zusaetzlich Origin→Dest sub-axes.
   const byCountry = new Map<string, Map<string, RelationGroup>>();
   for (const s of items) {
     const cc = deliveryCountry(s);
-    const rk = `${loadingCity(s)} → ${deliveryCity(s)}`;
+    const rcode = relationCode(s);
+    const rk = rcode ?? 'NONE';
     let rels = byCountry.get(cc);
     if (!rels) { rels = new Map(); byCountry.set(cc, rels); }
     let g = rels.get(rk);
     if (!g) {
-      g = { key: rk, origin: loadingCity(s), destination: deliveryCity(s), items: [], totalLdm: 0 };
+      g = {
+        kind: rcode ? 'relation' : 'none',
+        key: rk,
+        label: relationLabel(s),
+        items: [],
+        totalLdm: 0,
+        subAxes: [],
+      };
       rels.set(rk, g);
     }
     g.items.push(s);
     g.totalLdm += Number(s.ldm ?? 0);
+    if (g.kind === 'none') {
+      const axisKey = `${loadingCity(s)} → ${deliveryCity(s)}`;
+      let a = g.subAxes.find((x) => x.key === axisKey);
+      if (!a) {
+        a = {
+          key: axisKey,
+          origin: loadingCity(s),
+          destination: deliveryCity(s),
+          items: [],
+          totalLdm: 0,
+        };
+        g.subAxes.push(a);
+      }
+      a.items.push(s);
+      a.totalLdm += Number(s.ldm ?? 0);
+    }
   }
   const out: CountryGroup[] = [];
   for (const [cc, rels] of byCountry) {
     const relations = [...rels.values()].sort((a, b) => b.items.length - a.items.length);
+    for (const r of relations) {
+      r.subAxes.sort((a, b) => b.items.length - a.items.length);
+    }
     const items = relations.flatMap((r) => r.items);
     const totalLdm = relations.reduce((s, r) => s + r.totalLdm, 0);
     out.push({ code: cc, items, totalLdm, relations });
@@ -680,44 +731,98 @@ export default function DispositionPage() {
                                         className="flex items-center gap-2 text-xs font-medium text-gray-700"
                                       >
                                         <span>{rExpanded ? '▼' : '▶'}</span>
-                                        <span>{rg.origin} → {rg.destination}</span>
+                                        <span>{rg.label}</span>
                                       </button>
                                     </div>
                                     <span className="text-xs text-gray-500">
                                       {rg.items.length} · {rg.totalLdm.toFixed(1)} ldm
                                     </span>
                                   </div>
-                                  {rExpanded && (
-                                    <div className="p-2 space-y-2">
-                                      {rg.items.map((s) => (
+                                  {rExpanded && (() => {
+                                    const renderItem = (s: Shipment) => (
+                                      <div
+                                        key={s.id}
+                                        className={`flex items-start gap-2 rounded-lg border transition-colors ${
+                                          selectedShipmentId === s.id
+                                            ? 'border-[#1e40af] bg-yellow-100'
+                                            : selectedIds.has(s.id)
+                                            ? 'border-blue-300 bg-blue-50'
+                                            : 'border-gray-200 bg-white hover:bg-gray-50'
+                                        }`}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedIds.has(s.id)}
+                                          onChange={() => toggleId(s.id)}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="mt-3 ml-2"
+                                          aria-label={`Sendung ${s.shipment_number ?? s.id} markieren`}
+                                        />
                                         <div
-                                          key={s.id}
-                                          className={`flex items-start gap-2 rounded-lg border transition-colors ${
-                                            selectedShipmentId === s.id
-                                              ? 'border-[#1e40af] bg-yellow-100'
-                                              : selectedIds.has(s.id)
-                                              ? 'border-blue-300 bg-blue-50'
-                                              : 'border-gray-200 bg-white hover:bg-gray-50'
-                                          }`}
+                                          className="flex-1 cursor-pointer"
+                                          onClick={() => handleListShipmentClick(s.id)}
                                         >
-                                          <input
-                                            type="checkbox"
-                                            checked={selectedIds.has(s.id)}
-                                            onChange={() => toggleId(s.id)}
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="mt-3 ml-2"
-                                            aria-label={`Sendung ${s.shipment_number ?? s.id} markieren`}
-                                          />
-                                          <div
-                                            className="flex-1 cursor-pointer"
-                                            onClick={() => handleListShipmentClick(s.id)}
-                                          >
-                                            <ShipmentCard shipment={s} draggable />
-                                          </div>
+                                          <ShipmentCard shipment={s} draggable />
                                         </div>
-                                      ))}
-                                    </div>
-                                  )}
+                                      </div>
+                                    );
+                                    if (rg.kind === 'relation') {
+                                      return (
+                                        <div className="p-2 space-y-2">
+                                          {rg.items.map(renderItem)}
+                                        </div>
+                                      );
+                                    }
+                                    return (
+                                      <div className="p-2 space-y-2">
+                                        {rg.subAxes.map((ax) => {
+                                          const axKey = `${rk}::${ax.key}`;
+                                          const axExp = searchActive || expandedRelations.has(axKey);
+                                          const axSel = groupSelectionState(ax.items);
+                                          return (
+                                            <div key={axKey} className="border border-gray-100 rounded">
+                                              <div className="w-full flex items-center justify-between px-2 py-1 bg-white hover:bg-gray-50 rounded-t">
+                                                <div className="flex items-center gap-2">
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={axSel === 'all'}
+                                                    ref={(el) => {
+                                                      if (el) el.indeterminate = axSel === 'some';
+                                                    }}
+                                                    onChange={() => setGroupSelected(ax.items, axSel !== 'all')}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    aria-label={`Alle Sendungen ${ax.key} auswählen`}
+                                                  />
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      setExpandedRelations((prev) => {
+                                                        const n = new Set(prev);
+                                                        n.has(axKey) ? n.delete(axKey) : n.add(axKey);
+                                                        return n;
+                                                      })
+                                                    }
+                                                    className="flex items-center gap-2 text-[11px] font-medium text-gray-600"
+                                                  >
+                                                    <span>{axExp ? '▼' : '▶'}</span>
+                                                    <span>{ax.origin} → {ax.destination}</span>
+                                                  </button>
+                                                </div>
+                                                <span className="text-[11px] text-gray-500">
+                                                  {ax.items.length} · {ax.totalLdm.toFixed(1)} ldm
+                                                </span>
+                                              </div>
+                                              {axExp && (
+                                                <div className="p-2 space-y-2">
+                                                  {ax.items.map(renderItem)}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               );
                             })}

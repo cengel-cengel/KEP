@@ -67,4 +67,12 @@ export interface Shipment {
     stackable?: boolean;
     package_type?: string;
   }>;
+
+  relation_id?: string | null;
+  relation?: {
+    id: string;
+    code: string;
+    name: string;
+    country_to?: string | null;
+  } | null;
 }

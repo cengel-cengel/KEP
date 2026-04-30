@@ -194,6 +194,9 @@ export class ShipmentsService {
         shipment_package_items: {
           select: { id: true, stackable: true, package_type: true },
         },
+        relation: {
+          select: { id: true, code: true, name: true, country_to: true },
+        },
       },
       orderBy: [{ loading_date: 'asc' }, { created_at: 'asc' }],
     });

@@ -63,17 +63,23 @@ function normCity(s?: string | null): string {
     .trim();
 }
 
+// Backend liefert Adressen unter dem langen Prisma-Relations-Namen
+// (addresses_shipments_*_idToaddresses). Die camelCase-Aliase
+// (loadingAddress/deliveryAddress) sind gleichbedeutend, werden aber
+// nicht in jedem Endpoint befuellt. Fallback-Chain wie in
+// ShipmentCard/ClearancePage/ShipmentsPage.
 function loadingCity(s: Shipment): string {
-  const a = s.loadingAddress as { city?: string } | undefined;
+  const a = s.loadingAddress ?? s.addresses_shipments_loading_address_idToaddresses;
   return normCity(a?.city) || 'UNBEKANNT';
 }
 function deliveryCity(s: Shipment): string {
-  const a = s.deliveryAddress as { city?: string } | undefined;
+  const a = s.deliveryAddress ?? s.addresses_shipments_delivery_address_idToaddresses;
   return normCity(a?.city) || 'UNBEKANNT';
 }
 function deliveryCountry(s: Shipment): string {
-  const a = s.deliveryAddress as { country_code?: string } | undefined;
-  return (a?.country_code || 'XX').toUpperCase();
+  const a = s.deliveryAddress ?? s.addresses_shipments_delivery_address_idToaddresses;
+  const cc = (a as { country_code?: string } | null | undefined)?.country_code;
+  return (cc || 'XX').toUpperCase();
 }
 
 interface RelationGroup {

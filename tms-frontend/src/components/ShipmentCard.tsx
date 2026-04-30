@@ -1,11 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Pencil } from 'lucide-react';
 import { api } from '../lib/api';
 import type { Shipment } from '../types/shipment';
 import {
   TRANSPORT_TYPE_OPTIONS,
   transportTypeLabel,
 } from '../constants/transportTypes';
+import ShipmentEditModal from './ShipmentEditModal';
 
 function formatDate(s: string) {
   return new Date(s).toLocaleDateString('de-DE', {
@@ -165,9 +167,11 @@ export default function ShipmentCard({
     e.dataTransfer.effectAllowed = 'move';
   }
 
+  const [editOpen, setEditOpen] = useState(false);
+
   return (
     <div
-      className={`rounded-lg border bg-white p-3 shadow-sm transition-shadow hover:shadow ${
+      className={`group rounded-lg border bg-white p-3 shadow-sm transition-shadow hover:shadow ${
         hasLock ? 'border-red-500 ring-1 ring-red-200' : 'border-gray-200'
       }`}
       draggable={draggable}
@@ -175,10 +179,22 @@ export default function ShipmentCard({
       role={draggable ? 'button' : undefined}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-semibold text-gray-900">
+        <span className="font-semibold text-gray-900 flex items-center gap-2">
           {(shipment as { shipment_number?: string }).shipment_number ??
             shipment.shipmentNumber ??
             shipment.id}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditOpen(true);
+            }}
+            title="Sendung bearbeiten"
+            className="opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 max-md:opacity-100 transition-opacity text-gray-400 hover:text-[#1e40af] p-0.5 rounded hover:bg-gray-100"
+            aria-label="Sendung bearbeiten"
+          >
+            <Pencil size={14} />
+          </button>
         </span>
         <div className="flex items-center gap-1.5 flex-wrap justify-end">
           {hasLock && (
@@ -306,6 +322,11 @@ export default function ShipmentCard({
           <span className="font-medium text-gray-700">{formatCurrency(revenue)}</span>
         )}
       </div>
+      <ShipmentEditModal
+        shipment={shipment}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+      />
     </div>
   );
 }

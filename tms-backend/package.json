@@ -28,7 +28,8 @@
     "postinstall": "prisma generate",
     "seed:demo": "ts-node --transpile-only scripts/seed-demo-flow.ts",
     "seed:stuttgart-uk": "ts-node --transpile-only scripts/seed-stuttgart-uk-demo.ts",
-    "seed:england-uk": "ts-node --transpile-only scripts/seed-england-uk-packages.ts"
+    "seed:england-uk": "ts-node --transpile-only scripts/seed-england-uk-packages.ts",
+    "seed:real": "ts-node --transpile-only scripts/seed-stuttgart-real.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1009.0",

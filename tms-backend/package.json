@@ -30,7 +30,11 @@
     "seed:stuttgart-uk": "ts-node --transpile-only scripts/seed-stuttgart-uk-demo.ts",
     "seed:england-uk": "ts-node --transpile-only scripts/seed-england-uk-packages.ts",
     "seed:real": "ts-node --transpile-only scripts/seed-stuttgart-real.ts",
-    "seed:real-bp": "ts-node --transpile-only scripts/seed-stuttgart-business-partners.ts"
+    "seed:real-bp": "ts-node --transpile-only scripts/seed-stuttgart-business-partners.ts",
+    "seed:network-partners": "ts-node --transpile-only scripts/seed-network-partners.ts",
+    "seed:relations": "ts-node --transpile-only scripts/seed-relations.ts",
+    "seed:routing-intl": "ts-node --transpile-only scripts/seed-routing-intl.ts",
+    "seed:erka-nv": "ts-node --transpile-only scripts/seed-erka-nv.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1009.0",

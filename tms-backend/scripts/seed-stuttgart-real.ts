@@ -164,6 +164,20 @@ function safeWeight(w: number): number {
   return !w || w <= 0 ? 100 : w;
 }
 
+/** Mapping JSON-Wert → Prisma-Enum (package_type) */
+function mapPackageType(p: string | null | undefined): string {
+  const v = (p ?? '').trim().toUpperCase();
+  switch (v) {
+    case 'EURO_PALETTE':       return 'pallet_euro';
+    case 'EINWEG_PALETTE':     return 'pallet_one_way';
+    case 'HALB_PALETTE':       return 'pallet_one_way';
+    case 'KARTON':             return 'box';
+    case 'FASS':               return 'drum';
+    case 'GITTERBOX':          return 'container';
+    default:                   return 'other';
+  }
+}
+
 // ===== Steps =====
 
 async function loadSeedData(): Promise<SeedData> {
@@ -338,7 +352,7 @@ async function seedShipments(data: SeedData, createdBy: string) {
           package_count: s.colli || 1,
           ldm: s.ldm ?? undefined,
           volume_m3: s.volumen_m3 ?? undefined,
-          package_type: (s.package_type as any) || 'pallet_euro',
+          package_type: mapPackageType(s.package_type) as any,
           customer_ref: (s.kundenreferenz ?? s.auftragsnummer)?.slice(0, 50),
           customer_note: `[REAL-DATA] Stuttgart Tagesbericht | Frankatur: ${s.frankatur}`,
           created_by: createdBy,
@@ -366,7 +380,7 @@ async function seedShipments(data: SeedData, createdBy: string) {
             id: packageId,
             shipment_id: id,
             line_index: 1,
-            package_type: (s.package_type as any) || 'pallet_euro',
+            package_type: mapPackageType(s.package_type) as any,
             quantity: s.colli || 1,
             length_cm: s.package_l_cm || 120,
             width_cm: s.package_w_cm || 80,

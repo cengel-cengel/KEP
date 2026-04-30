@@ -216,6 +216,36 @@ export default function DispositionPage() {
   const [tourRouteRefreshKey, setTourRouteRefreshKey] = useState(0);
   const [expandedCountries, setExpandedCountries] = useState<Set<string>>(new Set());
   const [expandedRelations, setExpandedRelations] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  function toggleId(id: string) {
+    setSelectedIds((prev) => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }
+  function setGroupSelected(items: Shipment[], select: boolean) {
+    setSelectedIds((prev) => {
+      const n = new Set(prev);
+      for (const s of items) {
+        if (select) n.add(s.id);
+        else n.delete(s.id);
+      }
+      return n;
+    });
+  }
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+  function groupSelectionState(items: Shipment[]): 'none' | 'some' | 'all' {
+    if (items.length === 0) return 'none';
+    let n = 0;
+    for (const s of items) if (selectedIds.has(s.id)) n++;
+    if (n === 0) return 'none';
+    if (n === items.length) return 'all';
+    return 'some';
+  }
   const col1Width = 25;
   const col2Width = 25;
 
@@ -557,6 +587,20 @@ export default function DispositionPage() {
                 Sendungen ohne Tour ({undispatched.length}) – per Drag auf eine Tour ziehen
               </p>
             </div>
+            {selectedIds.size > 0 && (
+              <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between text-sm">
+                <span className="font-medium text-blue-900">
+                  {selectedIds.size} Sendung{selectedIds.size === 1 ? '' : 'en'} markiert
+                </span>
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="text-blue-700 hover:text-blue-900 text-xs underline"
+                >
+                  Auswahl aufheben
+                </button>
+              </div>
+            )}
             <div className="p-4 flex-1 min-h-0 overflow-y-auto space-y-2">
               {loadingShipments ? (
                 <div className="flex items-center justify-center py-12">
@@ -570,66 +614,106 @@ export default function DispositionPage() {
                   const searchActive = filterSearch.trim().length > 0;
                   return groups.map((cg) => {
                     const cExpanded = searchActive || expandedCountries.has(cg.code);
+                    const cSel = groupSelectionState(cg.items);
                     return (
                       <div key={cg.code} className="border border-gray-200 rounded-lg bg-white">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedCountries((prev) => {
-                              const n = new Set(prev);
-                              n.has(cg.code) ? n.delete(cg.code) : n.add(cg.code);
-                              return n;
-                            })
-                          }
-                          className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-t-lg sticky top-0 z-10"
-                        >
-                          <span className="flex items-center gap-2 text-sm font-medium text-gray-900">
-                            <span>{cExpanded ? '▼' : '▶'}</span>
-                            <span>{countryLabel(cg.code)}</span>
-                          </span>
+                        <div className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-t-lg sticky top-0 z-10">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={cSel === 'all'}
+                              ref={(el) => {
+                                if (el) el.indeterminate = cSel === 'some';
+                              }}
+                              onChange={() => setGroupSelected(cg.items, cSel !== 'all')}
+                              onClick={(e) => e.stopPropagation()}
+                              aria-label={`Alle Sendungen in ${cg.code} auswählen`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedCountries((prev) => {
+                                  const n = new Set(prev);
+                                  n.has(cg.code) ? n.delete(cg.code) : n.add(cg.code);
+                                  return n;
+                                })
+                              }
+                              className="flex items-center gap-2 text-sm font-medium text-gray-900"
+                            >
+                              <span>{cExpanded ? '▼' : '▶'}</span>
+                              <span>{countryLabel(cg.code)}</span>
+                            </button>
+                          </div>
                           <span className="text-xs text-gray-600">
                             {cg.items.length} · {cg.totalLdm.toFixed(1)} ldm
                           </span>
-                        </button>
+                        </div>
                         {cExpanded && (
                           <div className="p-2 space-y-2">
                             {cg.relations.map((rg) => {
                               const rk = `${cg.code}::${rg.key}`;
                               const rExpanded = searchActive || expandedRelations.has(rk);
+                              const rSel = groupSelectionState(rg.items);
                               return (
                                 <div key={rk} className="border border-gray-100 rounded">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setExpandedRelations((prev) => {
-                                        const n = new Set(prev);
-                                        n.has(rk) ? n.delete(rk) : n.add(rk);
-                                        return n;
-                                      })
-                                    }
-                                    className="w-full flex items-center justify-between px-2 py-1.5 bg-white hover:bg-gray-50 rounded-t"
-                                  >
-                                    <span className="flex items-center gap-2 text-xs font-medium text-gray-700">
-                                      <span>{rExpanded ? '▼' : '▶'}</span>
-                                      <span>{rg.origin} → {rg.destination}</span>
-                                    </span>
+                                  <div className="w-full flex items-center justify-between px-2 py-1.5 bg-white hover:bg-gray-50 rounded-t">
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={rSel === 'all'}
+                                        ref={(el) => {
+                                          if (el) el.indeterminate = rSel === 'some';
+                                        }}
+                                        onChange={() => setGroupSelected(rg.items, rSel !== 'all')}
+                                        onClick={(e) => e.stopPropagation()}
+                                        aria-label={`Alle Sendungen ${rg.key} auswählen`}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setExpandedRelations((prev) => {
+                                            const n = new Set(prev);
+                                            n.has(rk) ? n.delete(rk) : n.add(rk);
+                                            return n;
+                                          })
+                                        }
+                                        className="flex items-center gap-2 text-xs font-medium text-gray-700"
+                                      >
+                                        <span>{rExpanded ? '▼' : '▶'}</span>
+                                        <span>{rg.origin} → {rg.destination}</span>
+                                      </button>
+                                    </div>
                                     <span className="text-xs text-gray-500">
                                       {rg.items.length} · {rg.totalLdm.toFixed(1)} ldm
                                     </span>
-                                  </button>
+                                  </div>
                                   {rExpanded && (
                                     <div className="p-2 space-y-2">
                                       {rg.items.map((s) => (
                                         <div
                                           key={s.id}
-                                          onClick={() => handleListShipmentClick(s.id)}
-                                          className={`rounded-lg border transition-colors cursor-pointer ${
+                                          className={`flex items-start gap-2 rounded-lg border transition-colors ${
                                             selectedShipmentId === s.id
                                               ? 'border-[#1e40af] bg-yellow-100'
+                                              : selectedIds.has(s.id)
+                                              ? 'border-blue-300 bg-blue-50'
                                               : 'border-gray-200 bg-white hover:bg-gray-50'
                                           }`}
                                         >
-                                          <ShipmentCard shipment={s} draggable />
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedIds.has(s.id)}
+                                            onChange={() => toggleId(s.id)}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="mt-3 ml-2"
+                                            aria-label={`Sendung ${s.shipment_number ?? s.id} markieren`}
+                                          />
+                                          <div
+                                            className="flex-1 cursor-pointer"
+                                            onClick={() => handleListShipmentClick(s.id)}
+                                          >
+                                            <ShipmentCard shipment={s} draggable />
+                                          </div>
                                         </div>
                                       ))}
                                     </div>

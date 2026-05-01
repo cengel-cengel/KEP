@@ -19,6 +19,23 @@ export class LoadingService {
   ) {}
 
   private toShipmentLoad(s: any): ShipmentLoad {
+    const items = Array.isArray(s.shipment_package_items)
+      ? s.shipment_package_items.map((it: any) => ({
+          id: String(it.id),
+          lineIndex: Number(it.line_index) || 0,
+          packageType: String(it.package_type ?? 'other'),
+          quantity: Number(it.quantity) || 1,
+          lengthCm: Number(it.length_cm) || 0,
+          widthCm: Number(it.width_cm) || 0,
+          heightCm: Number(it.height_cm) || 0,
+          weightKg: Number(it.weight_kg) || 0,
+          stackable: it.stackable !== false,
+          posXCm: it.pos_x_cm == null ? null : Number(it.pos_x_cm),
+          posYCm: it.pos_y_cm == null ? null : Number(it.pos_y_cm),
+          posZCm: it.pos_z_cm == null ? null : Number(it.pos_z_cm),
+          rotationDeg: Number(it.rotation_deg) || 0,
+        }))
+      : undefined;
     return {
       id: s.id,
       shipmentNumber: s.shipment_number,
@@ -40,6 +57,7 @@ export class LoadingService {
         .includes('drum'),
       packageCount: Number(s.package_count) || 0,
       packageType: String(s.package_type ?? 'other'),
+      packageItems: items,
     };
   }
 
@@ -55,6 +73,24 @@ export class LoadingService {
             business_partner: { select: { name: true, partner_number: true } },
             addresses_shipments_delivery_address_idToaddresses: {
               select: { city: true, name: true, zip: true },
+            },
+            shipment_package_items: {
+              orderBy: { line_index: 'asc' },
+              select: {
+                id: true,
+                line_index: true,
+                package_type: true,
+                quantity: true,
+                length_cm: true,
+                width_cm: true,
+                height_cm: true,
+                weight_kg: true,
+                stackable: true,
+                pos_x_cm: true,
+                pos_y_cm: true,
+                pos_z_cm: true,
+                rotation_deg: true,
+              },
             },
           },
         },
@@ -208,6 +244,55 @@ export class LoadingService {
       where: { tour_id: tourId },
     });
     return { success: true };
+  }
+
+  /** Setzt Position eines einzelnen package items. NULL = unsetzen. */
+  async setPackageItemPosition(
+    itemId: string,
+    body: {
+      posXCm?: number | null;
+      posYCm?: number | null;
+      posZCm?: number | null;
+      rotationDeg?: number | null;
+    },
+  ) {
+    const item = await this.prisma.shipment_package_items.findUnique({
+      where: { id: itemId },
+      select: { id: true },
+    });
+    if (!item) throw new NotFoundException(`Package item ${itemId} nicht gefunden`);
+    const data: Record<string, number | null> = {};
+    if (body.posXCm !== undefined) data.pos_x_cm = body.posXCm;
+    if (body.posYCm !== undefined) data.pos_y_cm = body.posYCm;
+    if (body.posZCm !== undefined) data.pos_z_cm = body.posZCm;
+    if (body.rotationDeg !== undefined && body.rotationDeg !== null) {
+      data.rotation_deg = body.rotationDeg;
+    }
+    return this.prisma.shipment_package_items.update({
+      where: { id: itemId },
+      data,
+    });
+  }
+
+  /** Setzt alle Paket-Positionen einer Tour auf NULL (Auto-Placer aktiv). */
+  async resetTourPositions(tourId: string) {
+    const tour = await this.prisma.tours.findUnique({
+      where: { id: tourId },
+      select: { id: true },
+    });
+    if (!tour) throw new NotFoundException(`Tour ${tourId} nicht gefunden`);
+    const result = await this.prisma.shipment_package_items.updateMany({
+      where: {
+        shipments: { tour_id: tourId, deleted_at: null },
+      },
+      data: {
+        pos_x_cm: null,
+        pos_y_cm: null,
+        pos_z_cm: null,
+        rotation_deg: 0,
+      },
+    });
+    return { success: true, updated: result.count };
   }
 
   private createLayoutSvg(layout: LoadingLayout): string {

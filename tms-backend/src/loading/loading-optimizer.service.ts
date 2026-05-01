@@ -1,5 +1,21 @@
 import { Injectable } from '@nestjs/common';
 
+export interface ShipmentPackageItem {
+  id: string;
+  lineIndex: number;
+  packageType: string;
+  quantity: number;
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
+  weightKg: number;
+  stackable: boolean;
+  posXCm: number | null;
+  posYCm: number | null;
+  posZCm: number | null;
+  rotationDeg: number;
+}
+
 export interface ShipmentLoad {
   id: string;
   shipmentNumber: string;
@@ -14,6 +30,8 @@ export interface ShipmentLoad {
   isStackable: boolean;
   packageCount: number;
   packageType: string;
+  /** Pakete der Sendung mit moeglichen gespeicherten Drag-Positionen. */
+  packageItems?: ShipmentPackageItem[];
 }
 
 export interface Vehicle {

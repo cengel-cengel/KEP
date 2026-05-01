@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Request,
   Res,
@@ -57,6 +58,25 @@ export class LoadingController {
   @Delete('tour/:tourId/draft')
   async clearDraft(@Param('tourId') tourId: string) {
     return this.loadingService.clearDraft(tourId);
+  }
+
+  @Patch('package-item/:itemId/position')
+  async setItemPosition(
+    @Param('itemId') itemId: string,
+    @Body()
+    body: {
+      posXCm?: number | null;
+      posYCm?: number | null;
+      posZCm?: number | null;
+      rotationDeg?: number | null;
+    },
+  ) {
+    return this.loadingService.setPackageItemPosition(itemId, body);
+  }
+
+  @Post('tour/:tourId/reset-positions')
+  async resetTourPositions(@Param('tourId') tourId: string) {
+    return this.loadingService.resetTourPositions(tourId);
   }
 
   @Get('tour/:tourId/loading-plan-pdf')

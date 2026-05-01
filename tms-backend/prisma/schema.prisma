@@ -307,18 +307,22 @@ model shipments {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model shipment_package_items {
-  id           String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  shipment_id  String       @db.Uuid
-  line_index   Int
-  package_type package_type @default(pallet_euro)
-  quantity     Int          @default(1)
-  length_cm    Int
-  width_cm     Int
-  height_cm    Int
-  weight_kg    Decimal      @db.Decimal(10, 2)
-  stackable    Boolean      @default(true)
-  created_at   DateTime     @default(now()) @db.Timestamptz(6)
-  shipments    shipments    @relation(fields: [shipment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id            String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  shipment_id   String       @db.Uuid
+  line_index    Int
+  package_type  package_type @default(pallet_euro)
+  quantity      Int          @default(1)
+  length_cm     Int
+  width_cm      Int
+  height_cm     Int
+  weight_kg     Decimal      @db.Decimal(10, 2)
+  stackable     Boolean      @default(true)
+  pos_x_cm      Int?
+  pos_y_cm      Int?
+  pos_z_cm      Int?
+  rotation_deg  Int          @default(0)
+  created_at    DateTime     @default(now()) @db.Timestamptz(6)
+  shipments     shipments    @relation(fields: [shipment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([shipment_id, line_index], map: "uq_shipment_package_line")
   @@index([shipment_id], map: "idx_shipment_package_items_shipment")

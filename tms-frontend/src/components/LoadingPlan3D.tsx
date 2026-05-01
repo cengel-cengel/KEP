@@ -1,6 +1,6 @@
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, GizmoHelper, GizmoViewport, Edges, Html } from '@react-three/drei';
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   computeAxleLoads,
   VEHICLE_AXLES,
@@ -61,6 +61,24 @@ export default function LoadingPlan3D({ vehicle, packages, vehicleType }: Props)
     return { L, W, H };
   }, [vehicle.lengthCm, vehicle.widthCm, vehicle.heightCm]);
 
+  // E1: Drag-Override (lokaler State, kein Persist).
+  // Map<packageId, {posX, posY}> in cm.
+  const [dragActive, setDragActive] = useState<string | null>(null);
+  const [dragOverrides, setDragOverrides] = useState<Map<string, { posX: number; posY: number }>>(
+    () => new Map(),
+  );
+  // Offset zwischen Klick-Punkt und Paket-Center (in Welt-Metern)
+  const offsetRef = useRef<{ x: number; z: number }>({ x: 0, z: 0 });
+
+  function effectivePos(p: Plan3DPackage): { posX: number; posY: number; posZ: number } {
+    const ov = dragOverrides.get(p.id);
+    return {
+      posX: ov?.posX ?? p.posX,
+      posY: ov?.posY ?? p.posY,
+      posZ: p.posZ,
+    };
+  }
+
   // Achslast-Berechnung (nur wenn vehicleType bekannt)
   const axleResult = useMemo(() => {
     if (!vehicleType || !VEHICLE_AXLES[vehicleType]) return null;
@@ -120,25 +138,68 @@ export default function LoadingPlan3D({ vehicle, packages, vehicleType }: Props)
               posZ (cm)  VERT    HEIGHT   → Three.y
         */}
         {packages.map((p) => {
+          const eff = effectivePos(p);
           const lx = p.lengthCm / 100;
           const ly = p.heightCm / 100;
           const lz = p.widthCm / 100;
-          const cx = p.posY / 100 + lx / 2;
-          const cy = p.posZ / 100 + ly / 2;
-          const cz = p.posX / 100 - trailer.W / 2 + lz / 2;
+          const cx = eff.posY / 100 + lx / 2;
+          const cy = eff.posZ / 100 + ly / 2;
+          const cz = eff.posX / 100 - trailer.W / 2 + lz / 2;
+          const isDragging = dragActive === p.id;
           return (
             <mesh
               key={p.id}
               position={[cx, cy, cz]}
               castShadow
               receiveShadow
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                offsetRef.current = {
+                  x: e.point.x - cx,
+                  z: e.point.z - cz,
+                };
+                setDragActive(p.id);
+              }}
             >
               <boxGeometry args={[lx, ly, lz]} />
-              <meshStandardMaterial color={p.color ?? '#9ca3af'} />
-              <Edges color="#1f2937" threshold={1} />
+              <meshStandardMaterial
+                color={p.color ?? '#9ca3af'}
+                emissive={isDragging ? '#fde047' : '#000000'}
+                emissiveIntensity={isDragging ? 0.4 : 0}
+              />
+              <Edges color={isDragging ? '#facc15' : '#1f2937'} threshold={1} />
             </mesh>
           );
         })}
+
+        {/* Drag-Plane: nur aktiv waehrend Drag, faengt PointerMove ab. */}
+        {dragActive && (
+          <mesh
+            position={[trailer.L / 2, 0.005, 0]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            onPointerMove={(e) => {
+              const pkg = packages.find((p) => p.id === dragActive);
+              if (!pkg) return;
+              const lx = pkg.lengthCm / 100;
+              const lz = pkg.widthCm / 100;
+              const newCx = e.point.x - offsetRef.current.x;
+              const newCz = e.point.z - offsetRef.current.z;
+              // Center -> Corner cm. posY=Länge, posX=Breite.
+              const newPosY = (newCx - lx / 2) * 100;
+              const newPosX = (newCz + trailer.W / 2 - lz / 2) * 100;
+              setDragOverrides((prev) => {
+                const m = new Map(prev);
+                m.set(dragActive, { posX: newPosX, posY: newPosY });
+                return m;
+              });
+            }}
+            onPointerUp={() => setDragActive(null)}
+            onPointerLeave={() => setDragActive(null)}
+          >
+            <planeGeometry args={[trailer.L * 4, trailer.W * 4]} />
+            <meshBasicMaterial transparent opacity={0} />
+          </mesh>
+        )}
 
         {/* Schwerpunkt + Achs-Marker (nur wenn vehicleType bekannt) */}
         {axleResult && (
@@ -231,6 +292,7 @@ export default function LoadingPlan3D({ vehicle, packages, vehicleType }: Props)
           enableDamping
           dampingFactor={0.1}
           target={[trailer.L / 2, trailer.H / 2, 0]}
+          enabled={!dragActive}
         />
         <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
           <GizmoViewport axisColors={['#ef4444', '#22c55e', '#3b82f6']} labelColor="#111827" />

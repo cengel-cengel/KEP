@@ -657,7 +657,16 @@ export default function MasterDataPage() {
 
   return (
     <main className="w-full flex-1 px-4 sm:px-6 py-4 bg-white">
-        <h1 className="text-2xl font-semibold text-gray-900 mb-4">Stammdaten</h1>
+        <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+          <h1 className="text-2xl font-semibold text-gray-900">Stammdaten</h1>
+          <a
+            href="/masterdata/admin"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <span>🔧</span>
+            <span>Wartung &amp; Admin</span>
+          </a>
+        </div>
 
         <div className="flex gap-2 mb-4">
           <button

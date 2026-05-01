@@ -11,6 +11,7 @@ import ClearancePage from './pages/ClearancePage';
 import InvoicesPage from './pages/InvoicesPage';
 import HallPage from './pages/HallPage';
 import MasterDataPage from './pages/MasterDataPage';
+import AdminPage from './pages/AdminPage';
 import RoutingPage from './pages/RoutingPage';
 import LoadingPlanPage from './pages/LoadingPlanPage';
 import CompletedToursPage from './pages/CompletedToursPage';
@@ -141,6 +142,7 @@ export default function App() {
         }
       >
         <Route index element={<MasterDataPage />} />
+        <Route path="admin" element={<AdminPage />} />
         <Route path="routing" element={<RoutingPage />} />
         <Route path="pricing" element={<Navigate to="/pricing-hub" replace />} />
       </Route>

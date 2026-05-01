@@ -11,6 +11,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import Navigation from '../components/Navigation';
 import LoadingPlan3D from '../components/LoadingPlan3D';
 import AxleLoadPanel from '../components/AxleLoadPanel';
+import SecurementPanel from '../components/SecurementPanel';
 import { api } from '../lib/api';
 import { computeStackingLdmMetrics } from '../lib/loadingLdm';
 import { canStackOn } from '../lib/stackingRules';
@@ -1279,6 +1280,13 @@ export default function LoadingPlanPage() {
                         trailerLength_m={vehicleDims.lengthCm / 100}
                         groundedCount={placedPackages.filter((p) => p.posZ < 1e-6).length}
                         totalCount={placedPackages.length}
+                      />
+                      <SecurementPanel
+                        packages={placedPackages.map((p) => ({
+                          id: p.id,
+                          shipmentId: p.shipmentId,
+                          weightKg: p.weightKg,
+                        }))}
                       />
                     </>
                   );

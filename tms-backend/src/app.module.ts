@@ -16,6 +16,7 @@ import { CustomersModule } from './customers/customers.module';
 import { AddressesModule } from './addresses/addresses.module';
 import { SubcontractorsModule } from './subcontractors/subcontractors.module';
 import { ShipmentsModule } from './shipments/shipments.module';
+import { AdminModule } from './admin/admin.module';
 import { ToursModule } from './tours/tours.module';
 import { ConditionsModule } from './conditions/conditions.module';
 import { InvoicesModule } from './invoices/invoices.module';
@@ -83,6 +84,7 @@ import { PricingHubModule } from './pricing-hub/pricing-hub.module';
     SubcontractorsModule,
     ConditionsModule,
     ShipmentsModule,
+    AdminModule,
     ToursModule,
     InvoicesModule,
     DocumentsModule,

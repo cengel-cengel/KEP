@@ -93,7 +93,7 @@ export default function MapDispositionPage() {
 
   const assignMutation = useMutation({
     mutationFn: async (vars: { shipmentId: string; tourId: string }) => {
-      await api.patch(`/shipments/${vars.shipmentId}`, { tourId: vars.tourId });
+      await api.post(`/shipments/${vars.shipmentId}/dispatch`, { tourId: vars.tourId });
     },
     onSuccess: (_d, vars) => {
       void queryClient.invalidateQueries({ queryKey: ['shipments'] });

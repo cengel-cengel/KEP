@@ -83,15 +83,19 @@ export default function LoadingPlan3D({ vehicle, packages }: Props) {
           <meshStandardMaterial color="#e2e8f0" />
         </mesh>
 
-        {/* Pakete als 3D-Boxen */}
+        {/* Pakete als 3D-Boxen
+            Achsen-Konvention placePackages:
+              posX (cm)  ACROSS  WIDTH    → Three.z
+              posY (cm)  ALONG   LENGTH   → Three.x
+              posZ (cm)  VERT    HEIGHT   → Three.y
+        */}
         {packages.map((p) => {
           const lx = p.lengthCm / 100;
           const ly = p.heightCm / 100;
           const lz = p.widthCm / 100;
-          // Trailer-Boden geht von x=0..L, z=-W/2..+W/2, y=0..H
-          const cx = p.posX / 100 + lx / 2;
+          const cx = p.posY / 100 + lx / 2;
           const cy = p.posZ / 100 + ly / 2;
-          const cz = p.posY / 100 - trailer.W / 2 + lz / 2;
+          const cz = p.posX / 100 - trailer.W / 2 + lz / 2;
           return (
             <mesh
               key={p.id}

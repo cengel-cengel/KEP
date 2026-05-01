@@ -1231,26 +1231,40 @@ export default function LoadingPlanPage() {
                   </div>
                 </div>
 
-                {viewMode === 'real3d' && (
-                  <LoadingPlan3D
-                    vehicle={{
-                      lengthCm: vehicleDims.lengthCm,
-                      widthCm: vehicleDims.widthCm,
-                      heightCm: vehicleDims.heightCm,
-                    }}
-                    packages={placedPackages.map((p) => ({
-                      id: p.id,
-                      lengthCm: p.lengthCm,
-                      widthCm: p.widthCm,
-                      heightCm: p.heightCm,
-                      posX: p.posX,
-                      posY: p.posY,
-                      posZ: p.posZ,
-                      color: p.color,
-                      isStackable: p.isStackable,
-                    }))}
-                  />
-                )}
+                {viewMode === 'real3d' && (() => {
+                  // Per-shipment Farb-Mapping (3D-spezifisch, SVG bleibt Stop-Farbe)
+                  const SHIPMENT_COLORS = [
+                    '#2563eb', '#16a34a', '#ca8a04', '#dc2626', '#9333ea',
+                    '#0891b2', '#ea580c', '#db2777', '#0f766e', '#7c3aed',
+                  ];
+                  const shipIdx = new Map<string, number>();
+                  for (const p of placedPackages) {
+                    if (!shipIdx.has(p.shipmentId)) shipIdx.set(p.shipmentId, shipIdx.size);
+                  }
+                  return (
+                    <LoadingPlan3D
+                      vehicle={{
+                        lengthCm: vehicleDims.lengthCm,
+                        widthCm: vehicleDims.widthCm,
+                        heightCm: vehicleDims.heightCm,
+                      }}
+                      packages={placedPackages.map((p) => ({
+                        id: p.id,
+                        lengthCm: p.lengthCm,
+                        widthCm: p.widthCm,
+                        heightCm: p.heightCm,
+                        posX: p.posX,
+                        posY: p.posY,
+                        posZ: p.posZ,
+                        color:
+                          SHIPMENT_COLORS[
+                            (shipIdx.get(p.shipmentId) ?? 0) % SHIPMENT_COLORS.length
+                          ],
+                        isStackable: p.isStackable,
+                      }))}
+                    />
+                  );
+                })()}
 
                 {viewMode === '3d' && (
                   <div className="overflow-auto">

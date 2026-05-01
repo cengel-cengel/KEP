@@ -12,6 +12,13 @@ interface JobState {
   errors: number;
   lastRun: string | null;
   lastError: string | null;
+  byStrategy: {
+    original: number;
+    cleaned: number;
+    umlaut: number;
+    noZip: number;
+    zipOnly: number;
+  };
 }
 
 interface Geo {
@@ -19,10 +26,58 @@ interface Geo {
   lng: number;
 }
 
+type Strategy = 'original' | 'cleaned' | 'umlaut' | 'noZip' | 'zipOnly';
+
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
-function cacheKey(country: string, zip: string, city: string): string {
-  return `${(country || '').toUpperCase()}|${(zip || '').trim()}|${(city || '').trim().toLowerCase()}`;
+/** Bekannte Umlaut-/Encoding-Reparaturen aus Real-Daten. */
+const UMLAUT_FIXES: Array<[RegExp, string]> = [
+  [/W[šŠ]RENLOS/gi, 'WÜRENLOS'],
+  [/MAZZ[šŠ]/gi, 'MAZZÈ'],
+  [/D[��]CINES/gi, 'DÉCINES'],
+  [/CR[��]PY/gi, 'CRÉPY'],
+  [/AALBORG\s+[��]ST/gi, 'AALBORG ØST'],
+];
+
+/** Generische Umlaut-Heuristik fuer Schweizer/CH-Daten. */
+function fixUmlauts(city: string): string {
+  let out = city;
+  for (const [re, val] of UMLAUT_FIXES) out = out.replace(re, val);
+  // š/Š -> ü ist ein haeufiges Encoding-Artefakt aus CP1252→UTF8-Drift
+  out = out.replace(/š/g, 'ü').replace(/Š/g, 'Ü');
+  // Ersetzungs-Char isoliert -> entfernen
+  out = out.replace(/[��]/g, '');
+  return out.trim();
+}
+
+/** Stadt-Bereinigung: erste Teil-Komponente vor Separator/Suffix. */
+function cleanCity(city: string): string {
+  let s = city.trim();
+  // Vor Komma/Slash: nur ersten Teil
+  s = s.split(/[,/]/)[0].trim();
+  // Bekannte Suffix-Tokens entfernen (am Ende des Stringfragments)
+  const SUFFIX_TOKENS = [
+    'INTERPORTO',
+    'BUSINESS PARK',
+    'IND EST',
+    'IND\\. EST\\.',
+    'IND\\.EST\\.',
+    'INDUSTRIAL ESTATE',
+    'TRADING ESTATE',
+    'ST\\.\\s*CROSS',
+    'ST\\s*CROSS',
+    'COWLEY',
+    'EAST',
+    'WEST',
+    'NORTH',
+    'SOUTH',
+    'B\\.',
+    'BEI',
+  ];
+  for (const tok of SUFFIX_TOKENS) {
+    s = s.replace(new RegExp(`\\s+${tok}\\b.*$`, 'i'), '');
+  }
+  return s.trim();
 }
 
 @Injectable()
@@ -35,6 +90,7 @@ export class BackfillCoordinatesService {
     errors: 0,
     lastRun: null,
     lastError: null,
+    byStrategy: { original: 0, cleaned: 0, umlaut: 0, noZip: 0, zipOnly: 0 },
   };
   private cache = new Map<string, Geo | null>();
 
@@ -113,18 +169,15 @@ export class BackfillCoordinatesService {
       errors: 0,
       lastRun: new Date().toISOString(),
       lastError: null,
+      byStrategy: { original: 0, cleaned: 0, umlaut: 0, noZip: 0, zipOnly: 0 },
     };
     // Fire-and-forget
     void this.runBackground(rows);
     return { total: rows.length };
   }
 
-  private async geocode(country: string, zip: string, city: string): Promise<Geo | null> {
-    const params = new URLSearchParams({
-      q: [zip, city, country].filter(Boolean).join(' '),
-      format: 'json',
-      limit: '1',
-    });
+  private async nominatim(query: string): Promise<Geo | null> {
+    const params = new URLSearchParams({ q: query, format: 'json', limit: '1' });
     try {
       const res = await fetch(`${NOMINATIM_URL}?${params.toString()}`, {
         headers: { 'User-Agent': USER_AGENT },
@@ -138,9 +191,60 @@ export class BackfillCoordinatesService {
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
       return { lat, lng };
     } catch (e: any) {
-      this.logger.warn(`Nominatim error for ${country}|${zip}|${city}: ${e?.message}`);
+      this.logger.warn(`Nominatim error for "${query}": ${e?.message}`);
       return null;
     }
+  }
+
+  /** Versucht der Reihe nach mehrere Query-Varianten. */
+  private async geocodeWithFallback(
+    country: string,
+    zip: string,
+    city: string,
+  ): Promise<{ geo: Geo | null; strategy: Strategy | null }> {
+    const variants: Array<{ strategy: Strategy; query: string; key: string }> = [];
+    const push = (strategy: Strategy, query: string, keyParts: string) => {
+      const k = `${strategy}|${keyParts}`.toLowerCase();
+      if (variants.some((v) => v.key === k)) return;
+      variants.push({ strategy, query, key: k });
+    };
+
+    push('original', [zip, city, country].filter(Boolean).join(' '), `${country}|${zip}|${city}`);
+
+    const cleaned = cleanCity(city);
+    if (cleaned && cleaned !== city) {
+      push('cleaned', [zip, cleaned, country].filter(Boolean).join(' '), `${country}|${zip}|${cleaned}`);
+    }
+
+    const fixed = fixUmlauts(city);
+    if (fixed && fixed !== city) {
+      push('umlaut', [zip, fixed, country].filter(Boolean).join(' '), `${country}|${zip}|${fixed}`);
+    }
+
+    if (city) {
+      push('noZip', [city, country].filter(Boolean).join(' '), `${country}||${city}`);
+      const cleanedNoZip = cleanCity(fixUmlauts(city));
+      if (cleanedNoZip && cleanedNoZip !== city) {
+        push('noZip', [cleanedNoZip, country].filter(Boolean).join(' '), `${country}||${cleanedNoZip}`);
+      }
+    }
+
+    if (zip) {
+      push('zipOnly', [zip, country].filter(Boolean).join(' '), `${country}|${zip}|`);
+    }
+
+    for (const v of variants) {
+      if (this.cache.has(v.key)) {
+        const cached = this.cache.get(v.key) ?? null;
+        if (cached) return { geo: cached, strategy: v.strategy };
+        continue;
+      }
+      const geo = await this.nominatim(v.query);
+      this.cache.set(v.key, geo);
+      await sleep(SLEEP_MS);
+      if (geo) return { geo, strategy: v.strategy };
+    }
+    return { geo: null, strategy: null };
   }
 
   private async runBackground(
@@ -156,23 +260,16 @@ export class BackfillCoordinatesService {
         const country = (a.country_code || 'DE').toUpperCase();
         const zip = (a.zip || '').trim();
         const city = a.city.trim();
-        const ck = cacheKey(country, zip, city);
 
-        let geo: Geo | null;
-        if (this.cache.has(ck)) {
-          geo = this.cache.get(ck) ?? null;
-        } else {
-          geo = await this.geocode(country, zip, city);
-          this.cache.set(ck, geo);
-          await sleep(SLEEP_MS);
-        }
+        const { geo, strategy } = await this.geocodeWithFallback(country, zip, city);
 
-        if (geo) {
+        if (geo && strategy) {
           try {
             await this.prisma.addresses.update({
               where: { id: a.id },
               data: { lat: geo.lat as any, lng: geo.lng as any },
             });
+            this.state.byStrategy[strategy]++;
           } catch (e: any) {
             this.state.errors++;
             this.logger.warn(`Update-Fehler ${a.id}: ${e?.message}`);

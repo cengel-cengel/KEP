@@ -13,6 +13,13 @@ interface BackfillStatus {
   lastRun: string | null;
   lastError: string | null;
   pending: number;
+  byStrategy?: {
+    original: number;
+    cleaned: number;
+    umlaut: number;
+    noZip: number;
+    zipOnly: number;
+  };
 }
 
 interface FailedDiagnostics {
@@ -104,6 +111,16 @@ export default function AdminPage() {
             <Stat label="Fehler" value={String(errors)} highlight={errors > 0} />
             <Stat label="Letzter Run" value={lastRun} />
           </div>
+
+          {status?.byStrategy && (
+            <div className="mb-4 grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+              <StratStat label="Original"  value={status.byStrategy.original} />
+              <StratStat label="Cleaned"   value={status.byStrategy.cleaned} />
+              <StratStat label="Umlaut"    value={status.byStrategy.umlaut} />
+              <StratStat label="Ohne PLZ"  value={status.byStrategy.noZip} />
+              <StratStat label="Nur PLZ"   value={status.byStrategy.zipOnly} />
+            </div>
+          )}
 
           {running && total > 0 && (
             <div className="mb-4">
@@ -256,6 +273,15 @@ function Stat({
       <div className={'text-lg font-semibold ' + (highlight ? 'text-[#1e40af]' : 'text-gray-900')}>
         {value}
       </div>
+    </div>
+  );
+}
+
+function StratStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded border border-gray-200 bg-white px-2 py-1.5">
+      <div className="text-[10px] uppercase text-gray-500">{label}</div>
+      <div className="text-sm font-semibold text-gray-800">{value}</div>
     </div>
   );
 }

@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
-import { ArrowLeft, List, Map as MapIcon, X } from 'lucide-react';
+import { ArrowLeft, List, Map as MapIcon, X, Power } from 'lucide-react';
 import Navigation from '../components/Navigation';
 import { api } from '../lib/api';
 import type { Shipment } from '../types/shipment';
+import type { Tour } from '../types/tour';
 import {
   TRANSPORT_TYPE_OPTIONS,
   transportTypeLabel,
@@ -62,13 +63,61 @@ export default function MapDispositionPage() {
   const [relSearch, setRelSearch] = useState('');
   const [showFilters, setShowFilters] = useState(true);
 
+  // Phase D: Tour-Auswahl + Bulk-Add
+  const [activeTourId, setActiveTourId] = useState<string | null>(null);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [recentlyAdded, setRecentlyAdded] = useState<Set<string>>(new Set());
+  const [hint, setHint] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
   const { data: shipments = [] } = useQuery<Shipment[]>({
-    queryKey: ['shipments', 'map-disposition', 'new'],
+    queryKey: ['shipments', 'map-disposition', 'new', 'unassigned'],
     queryFn: async () => {
-      const { data } = await api.get<Shipment[]>('/shipments', { params: { status: 'new' } });
+      const { data } = await api.get<Shipment[]>('/shipments', {
+        params: { status: 'new', tourId: 'null' },
+      });
       return data;
     },
   });
+
+  const { data: tours = [] } = useQuery<Tour[]>({
+    queryKey: ['tours', 'planned'],
+    queryFn: async () => {
+      const { data } = await api.get<Tour[]>('/tours', { params: { status: 'planned' } });
+      return data;
+    },
+  });
+
+  const activeTour = tours.find((t) => t.id === activeTourId) ?? null;
+
+  const assignMutation = useMutation({
+    mutationFn: async (vars: { shipmentId: string; tourId: string }) => {
+      await api.patch(`/shipments/${vars.shipmentId}`, { tourId: vars.tourId });
+    },
+    onSuccess: (_d, vars) => {
+      void queryClient.invalidateQueries({ queryKey: ['shipments'] });
+      void queryClient.invalidateQueries({ queryKey: ['tours'] });
+      setHint(`Sendung in Tour übernommen.`);
+      setTimeout(() => setHint(null), 2000);
+      void vars;
+    },
+    onError: (_e, vars) => {
+      // Rollback Optimistic
+      setRecentlyAdded((prev) => {
+        const n = new Set(prev);
+        n.delete(vars.shipmentId);
+        return n;
+      });
+      setHint('Zuweisung fehlgeschlagen.');
+      setTimeout(() => setHint(null), 3000);
+    },
+  });
+
+  // Refs für Click-Closure (immer aktueller State)
+  const stateRef = useRef({ bulkMode, activeTourId, recentlyAdded });
+  stateRef.current = { bulkMode, activeTourId, recentlyAdded };
+  const mutateRef = useRef(assignMutation.mutate);
+  mutateRef.current = assignMutation.mutate;
 
   // Filter-Optionen aus Daten ableiten
   const countryOptions = useMemo(() => {
@@ -169,11 +218,12 @@ export default function MapDispositionPage() {
         s.shipmentNumber ??
         s.id.slice(0, 6);
       const relCode = s.relation?.code ?? '';
+      const isAdded = recentlyAdded.has(s.id);
       const marker = L.circleMarker(pos, {
         radius: 7,
-        color: '#374151',
-        fillColor: '#9ca3af',
-        fillOpacity: 0.85,
+        color: isAdded ? '#15803d' : '#374151',
+        fillColor: isAdded ? '#22c55e' : '#9ca3af',
+        fillOpacity: 0.9,
         weight: 1.5,
       });
       marker.bindTooltip(
@@ -182,11 +232,28 @@ export default function MapDispositionPage() {
         }</div>`,
         { direction: 'top', opacity: 0.95 },
       );
+      marker.on('click', () => {
+        const st = stateRef.current;
+        if (!st.bulkMode) return; // Phase E uebernimmt Tooltip-Logik
+        if (!st.activeTourId) {
+          setHint('Erst eine Tour auswählen.');
+          setTimeout(() => setHint(null), 2500);
+          return;
+        }
+        if (st.recentlyAdded.has(s.id)) return; // schon zugewiesen
+        // Optimistic
+        setRecentlyAdded((prev) => {
+          const n = new Set(prev);
+          n.add(s.id);
+          return n;
+        });
+        mutateRef.current({ shipmentId: s.id, tourId: st.activeTourId });
+      });
       cluster.addLayer(marker);
       bounds.extend(pos);
     }
     if (bounds.isValid()) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 11 });
-  }, [withCoords]);
+  }, [withCoords, recentlyAdded]);
 
   function toggleSet(set: Set<string>, key: string, setter: (s: Set<string>) => void) {
     const n = new Set(set);
@@ -391,6 +458,65 @@ export default function MapDispositionPage() {
           </div>
         )}
 
+        {/* Tour-Liste (horizontal scrollende Karten) */}
+        <div className="border-b border-gray-200 bg-white px-3 py-2">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[11px] uppercase text-gray-500">Touren (planned)</span>
+            <span className="text-[11px] text-gray-400">·</span>
+            <button
+              type="button"
+              onClick={() => setBulkMode((v) => !v)}
+              className={
+                'inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-medium transition-colors ' +
+                (bulkMode
+                  ? 'bg-green-600 text-white hover:bg-green-700'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300')
+              }
+            >
+              <Power size={12} />
+              Bulk-Add {bulkMode ? 'AN' : 'AUS'}
+            </button>
+            {recentlyAdded.size > 0 && (
+              <span className="text-[11px] text-green-700">
+                · {recentlyAdded.size} in dieser Sitzung hinzugefügt
+              </span>
+            )}
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {tours.length === 0 && (
+              <span className="text-xs text-gray-500 px-1 py-2">Keine planned Touren.</span>
+            )}
+            {tours.map((t) => {
+              const active = t.id === activeTourId;
+              const sub =
+                (t as Tour & { subcontractors?: { name?: string } | null }).subcontractors?.name ??
+                (t as { driver_name?: string }).driver_name ??
+                '';
+              const ldm = Number(t.total_ldm ?? 0);
+              const maxLdm = Number(t.max_ldm ?? 13.6);
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setActiveTourId((cur) => (cur === t.id ? null : t.id))}
+                  className={
+                    'shrink-0 rounded-lg border px-3 py-2 text-left text-xs transition-colors ' +
+                    (active
+                      ? 'border-yellow-400 bg-yellow-50 ring-2 ring-yellow-300'
+                      : 'border-gray-200 bg-white hover:bg-gray-50')
+                  }
+                >
+                  <div className="font-semibold text-gray-900">{t.tour_number}</div>
+                  {sub && <div className="text-gray-600">{sub}</div>}
+                  <div className="text-gray-500">
+                    {ldm.toFixed(1)} / {maxLdm.toFixed(1)} ldm
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="flex-1 min-h-0 relative">
           <div ref={mapDivRef} className="absolute inset-0" />
           <div className="absolute top-2 left-2 z-[1000] rounded bg-white/95 px-2 py-1 text-xs text-gray-700 shadow border border-gray-200">
@@ -399,13 +525,42 @@ export default function MapDispositionPage() {
               <span className="ml-2 text-red-700">· {withoutCoords.length} ohne Koord.</span>
             )}
           </div>
+          {hint && (
+            <div className="absolute top-2 right-2 z-[1000] rounded bg-blue-600 text-white px-3 py-1 text-xs shadow">
+              {hint}
+            </div>
+          )}
         </div>
 
-        <div className="border-t border-gray-200 bg-white px-4 py-2 text-sm text-gray-500 flex items-center justify-between gap-3">
-          <span>
-            <span className="font-medium text-gray-700">Aktive Tour:</span> –
+        <div className="border-t border-gray-200 bg-white px-4 py-2 text-sm flex items-center justify-between gap-3 flex-wrap">
+          <span className="flex items-center gap-2">
+            <span className="font-medium text-gray-700">Aktive Tour:</span>
+            {activeTour ? (
+              <>
+                <span className="font-semibold text-gray-900">{activeTour.tour_number}</span>
+                <span className="text-gray-600">
+                  {Number(activeTour.total_ldm ?? 0).toFixed(1)} ldm
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveTourId(null)}
+                  className="text-xs text-gray-500 underline"
+                >
+                  deaktivieren
+                </button>
+              </>
+            ) : (
+              <span className="text-gray-500">– keine</span>
+            )}
           </span>
-          <span className="text-xs italic">(Tour-Auswahl + Bulk-Add in Phase D)</span>
+          {bulkMode && !activeTour && (
+            <span className="text-xs text-orange-700">
+              Bulk-Add an, aber keine Tour gewählt — Pin-Klicks ignoriert.
+            </span>
+          )}
+          {assignMutation.isPending && (
+            <span className="text-xs text-gray-500">Speichere…</span>
+          )}
         </div>
       </main>
     </>

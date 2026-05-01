@@ -9,6 +9,9 @@ interface Props {
   packages: AxleLoadPackage[];
   vehicleType: string;
   trailerLength_m: number;
+  /** Optional: Pakete am Boden (posZ === 0) und Total fuer Hinweis-Banner. */
+  groundedCount?: number;
+  totalCount?: number;
 }
 
 const STATUS_BAR_COLOR: Record<AxleStatus, string> = {
@@ -27,13 +30,24 @@ function fmtKg(n: number): string {
   return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(n) + ' kg';
 }
 
-export default function AxleLoadPanel({ packages, vehicleType, trailerLength_m }: Props) {
+export default function AxleLoadPanel({
+  packages,
+  vehicleType,
+  trailerLength_m,
+  groundedCount,
+  totalCount,
+}: Props) {
   const result = useMemo(
     () => computeAxleLoads(packages, vehicleType, trailerLength_m),
     [packages, vehicleType, trailerLength_m],
   );
 
   const criticalAxles = result.axles.filter((a) => a.status === 'critical');
+  const showStackInfo =
+    typeof groundedCount === 'number' &&
+    typeof totalCount === 'number' &&
+    totalCount > 0;
+  const stackedCount = showStackInfo ? (totalCount as number) - (groundedCount as number) : 0;
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-3 mt-3">
@@ -43,6 +57,16 @@ export default function AxleLoadPanel({ packages, vehicleType, trailerLength_m }
           {vehicleType} · {trailerLength_m.toFixed(1)} m
         </div>
       </div>
+
+      {showStackInfo && (
+        <div className="mb-3 rounded bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-900">
+          📦 <strong>{groundedCount}</strong> von {totalCount} Paletten am Boden
+          {stackedCount > 0 && <> · {stackedCount} gestapelt</>}
+          {stackedCount === 0 && totalCount! > 0 && (
+            <> · <em>nichts stapelbar — Trailer evtl. voller als nötig</em></>
+          )}
+        </div>
+      )}
 
       {result.warnings.length > 0 && (
         <div className="mb-3 rounded bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">

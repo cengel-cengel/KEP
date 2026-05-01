@@ -13,6 +13,7 @@ import LoadingPlan3D from '../components/LoadingPlan3D';
 import AxleLoadPanel from '../components/AxleLoadPanel';
 import { api } from '../lib/api';
 import { computeStackingLdmMetrics } from '../lib/loadingLdm';
+import { canStackOn } from '../lib/stackingRules';
 
 const SVG_W = 900;
 const SVG_H = 550;
@@ -291,6 +292,8 @@ function findPreferredStackSlot(
   const candidates: { x: number; y: number; posZ: number }[] = [];
   for (const p of placed) {
     if (p.widthCm !== pw || p.lengthCm !== pl) continue;
+    // Basis muss stapelbar sein (Carlos-Regel via canStackOn)
+    if (!canStackOn(p, pkg).allowed) continue;
     const key = `${p.posX},${p.posY}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -1274,6 +1277,8 @@ export default function LoadingPlanPage() {
                         }))}
                         vehicleType={selectedVehicle?.type ?? selectedVehicleType}
                         trailerLength_m={vehicleDims.lengthCm / 100}
+                        groundedCount={placedPackages.filter((p) => p.posZ < 1e-6).length}
+                        totalCount={placedPackages.length}
                       />
                     </>
                   );

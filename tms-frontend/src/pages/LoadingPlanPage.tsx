@@ -13,6 +13,7 @@ import LoadingPlan3D from '../components/LoadingPlan3D';
 import AxleLoadPanel from '../components/AxleLoadPanel';
 import SecurementPanel from '../components/SecurementPanel';
 import { api } from '../lib/api';
+import { computeSecurement } from '../lib/loadSecurement';
 import { computeStackingLdmMetrics } from '../lib/loadingLdm';
 import { canStackOn } from '../lib/stackingRules';
 
@@ -697,6 +698,7 @@ export default function LoadingPlanPage() {
   const [zoom, setZoom] = useState(1.0);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedVehicleType, setSelectedVehicleType] = useState<string>('Jumbo');
+  const [securementMu, setSecurementMu] = useState<number>(0.4);
   const [removedShipmentIds, setRemovedShipmentIds] = useState<string[]>([]);
   const svg3dRef = useRef<SVGSVGElement | null>(null);
   const camDragRef = useRef(false);
@@ -1237,6 +1239,15 @@ export default function LoadingPlanPage() {
                 </div>
 
                 {viewMode === 'real3d' && (() => {
+                  const securementResult = computeSecurement(
+                    placedPackages.map((p) => ({
+                      id: p.id,
+                      shipmentId: p.shipmentId,
+                      weightKg: p.weightKg,
+                    })),
+                    { mu: securementMu },
+                  );
+                  const totalStraps = securementResult.totalStraps;
                   // Per-shipment Farb-Mapping (3D-spezifisch, SVG bleibt Stop-Farbe)
                   const SHIPMENT_COLORS = [
                     '#2563eb', '#16a34a', '#ca8a04', '#dc2626', '#9333ea',
@@ -1255,6 +1266,7 @@ export default function LoadingPlanPage() {
                           heightCm: vehicleDims.heightCm,
                         }}
                         vehicleType={selectedVehicle?.type ?? selectedVehicleType}
+                        securementStraps={totalStraps}
                         packages={placedPackages.map((p) => ({
                           id: p.id,
                           lengthCm: p.lengthCm,
@@ -1287,6 +1299,8 @@ export default function LoadingPlanPage() {
                           shipmentId: p.shipmentId,
                           weightKg: p.weightKg,
                         }))}
+                        mu={securementMu}
+                        onMuChange={setSecurementMu}
                       />
                     </>
                   );

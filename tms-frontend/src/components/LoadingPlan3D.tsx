@@ -1,5 +1,5 @@
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, GizmoHelper, GizmoViewport, Edges, Html } from '@react-three/drei';
+import { OrbitControls, GizmoHelper, GizmoViewport, Edges, Html, Line } from '@react-three/drei';
 import { useMemo, useRef, useState } from 'react';
 import {
   computeAxleLoads,
@@ -49,6 +49,8 @@ interface Props {
   packages: Plan3DPackage[];
   /** Optional: Wenn gesetzt, werden Achslast-Marker im 3D angezeigt. */
   vehicleType?: string;
+  /** Optional: Anzahl Spanngurte zur Visualisierung. */
+  securementStraps?: number;
 }
 
 const AXLE_COLOR: Record<AxleStatus, string> = {
@@ -57,7 +59,12 @@ const AXLE_COLOR: Record<AxleStatus, string> = {
   critical: '#dc2626',
 };
 
-export default function LoadingPlan3D({ vehicle, packages, vehicleType }: Props) {
+export default function LoadingPlan3D({
+  vehicle,
+  packages,
+  vehicleType,
+  securementStraps = 0,
+}: Props) {
   const trailer = useMemo(() => {
     const L = vehicle.lengthCm / 100;
     const W = vehicle.widthCm / 100;
@@ -179,6 +186,21 @@ export default function LoadingPlan3D({ vehicle, packages, vehicleType }: Props)
     if (!axleResult) return 0;
     return Math.max(0, ...axleResult.axles.map((a) => a.load_kg));
   }, [axleResult]);
+
+  // LS3: Spanngurt-Positionen + Spitzenhoehe entlang Trailer-Laenge
+  function peakHeightAt(xMeters: number): number {
+    let peak = 0;
+    for (const p of packages) {
+      const eff = effectivePos(p);
+      const x1 = eff.posY / 100;
+      const x2 = x1 + p.lengthCm / 100;
+      if (xMeters >= x1 - 1e-6 && xMeters <= x2 + 1e-6) {
+        const top = (eff.posZ + p.heightCm) / 100;
+        if (top > peak) peak = top;
+      }
+    }
+    return peak;
+  }
 
   // Camera Distance ~ 1.6 × Diagonale
   const cameraPos = useMemo<[number, number, number]>(() => {
@@ -442,6 +464,38 @@ export default function LoadingPlan3D({ vehicle, packages, vehicleType }: Props)
             })}
           </>
         )}
+
+        {/* LS3: Spanngurte als Linien ueber die Paletten */}
+        {securementStraps > 0 &&
+          Array.from({ length: securementStraps }).map((_, i) => {
+            const xRatio = (i + 0.5) / securementStraps;
+            const xM = trailer.L * xRatio;
+            const peak = peakHeightAt(xM);
+            const topY = (peak > 0 ? peak : 0.1) + 0.05;
+            return (
+              <group key={`strap-${i}`}>
+                <Line
+                  points={[
+                    [xM, 0.02, -trailer.W / 2 - 0.05],
+                    [xM, topY, -trailer.W / 2 + 0.1],
+                    [xM, topY, +trailer.W / 2 - 0.1],
+                    [xM, 0.02, +trailer.W / 2 + 0.05],
+                  ]}
+                  color="#10b981"
+                  lineWidth={3}
+                />
+                {/* Anker-Markierungen */}
+                <mesh position={[xM, 0.03, -trailer.W / 2 - 0.05]}>
+                  <sphereGeometry args={[0.05, 8, 6]} />
+                  <meshStandardMaterial color="#374151" />
+                </mesh>
+                <mesh position={[xM, 0.03, +trailer.W / 2 + 0.05]}>
+                  <sphereGeometry args={[0.05, 8, 6]} />
+                  <meshStandardMaterial color="#374151" />
+                </mesh>
+              </group>
+            );
+          })}
 
         <OrbitControls
           makeDefault

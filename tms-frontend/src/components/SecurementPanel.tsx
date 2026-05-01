@@ -6,6 +6,8 @@ import {
 
 interface Props {
   packages: SecurementPackage[];
+  mu?: number;
+  onMuChange?: (mu: number) => void;
 }
 
 const MU_OPTIONS: Array<{ value: number; label: string }> = [
@@ -26,8 +28,13 @@ interface ShipmentGroup {
   straps: number;
 }
 
-export default function SecurementPanel({ packages }: Props) {
-  const [mu, setMu] = useState<number>(0.4);
+export default function SecurementPanel({ packages, mu: muProp, onMuChange }: Props) {
+  const [muLocal, setMuLocal] = useState<number>(0.4);
+  const mu = muProp ?? muLocal;
+  const setMu = (v: number) => {
+    if (onMuChange) onMuChange(v);
+    else setMuLocal(v);
+  };
   const stfDaN = 5000;
 
   const result = useMemo(

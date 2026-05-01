@@ -1231,7 +1231,26 @@ export default function LoadingPlanPage() {
                   </div>
                 </div>
 
-                {viewMode === 'real3d' && <LoadingPlan3D />}
+                {viewMode === 'real3d' && (
+                  <LoadingPlan3D
+                    vehicle={{
+                      lengthCm: vehicleDims.lengthCm,
+                      widthCm: vehicleDims.widthCm,
+                      heightCm: vehicleDims.heightCm,
+                    }}
+                    packages={placedPackages.map((p) => ({
+                      id: p.id,
+                      lengthCm: p.lengthCm,
+                      widthCm: p.widthCm,
+                      heightCm: p.heightCm,
+                      posX: p.posX,
+                      posY: p.posY,
+                      posZ: p.posZ,
+                      color: p.color,
+                      isStackable: p.isStackable,
+                    }))}
+                  />
+                )}
 
                 {viewMode === '3d' && (
                   <div className="overflow-auto">

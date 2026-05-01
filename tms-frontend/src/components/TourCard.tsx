@@ -87,6 +87,11 @@ export default function TourCard({
   const freeLdm = stackingLdm ? stackingLdm.freeFloorLdm : Math.max(0, maxLdm - usedLdmTour);
   const freeLdmEffective = stackingLdm?.freeEffectiveLdm ?? null;
   const fillPct = maxLdmBar > 0 ? Math.min(100, (usedLdm / maxLdmBar) * 100) : 0;
+  // Überladung wird ueber EFFECTIVE LDM bestimmt (Stapelbarkeit beruecksichtigt).
+  // Boden-Bar darf >100% sein (z.B. wenn alles stapelbar) ohne 'Überladung'.
+  const overloadByEffective = stackingLdm
+    ? stackingLdm.effectivePct > 100
+    : usedLdm > maxLdmBar;
   const fillPctEffective =
     stackingLdm && maxLdmBar > 0 ? Math.min(100, (stackingLdm.effectiveUsed / maxLdmBar) * 100) : null;
   const shipmentCount = shipmentsList.length ?? (tour as Tour & { _count?: { shipments?: number } })._count?.shipments ?? 0;
@@ -303,7 +308,7 @@ export default function TourCard({
         </div>
         <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
           <div
-            className={`h-full rounded-full ${fillPct > 100 ? 'bg-red-500' : 'bg-[#1e40af]'}`}
+            className={`h-full rounded-full ${overloadByEffective ? 'bg-red-500' : 'bg-[#1e40af]'}`}
             style={{ width: `${Math.min(100, fillPct)}%` }}
           />
         </div>

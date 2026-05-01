@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import Navigation from '../components/Navigation';
 import ShipmentCard from '../components/ShipmentCard';
 import TourCard from '../components/TourCard';
@@ -585,8 +586,19 @@ export default function DispositionPage() {
       <Navigation />
 
       <main className="w-full flex-1 flex flex-col">
-        <div className="py-4">
-          <h1 className="text-2xl font-semibold text-gray-900 pl-4 sm:pl-6">Disposition</h1>
+        <div className="py-4 px-4 sm:px-6 flex items-center justify-between gap-3 flex-wrap">
+          <h1 className="text-2xl font-semibold text-gray-900">Disposition</h1>
+          <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-[#1e40af] text-white">
+              <span>Liste</span>
+            </span>
+            <Link
+              to="/disposition/map"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-white text-gray-700 hover:bg-gray-50 border-l border-gray-300"
+            >
+              <span>Karte</span>
+            </Link>
+          </div>
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-3 border-y border-gray-200 bg-gray-50 px-4 py-3">

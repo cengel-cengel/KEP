@@ -6,6 +6,7 @@ import ShipmentsPage from './pages/ShipmentsPage';
 import NewShipmentPage from './pages/NewShipmentPage';
 import BeladeplanPage from './pages/BeladeplanPage';
 import DispositionPage from './pages/DispositionPage';
+import MapDispositionPage from './pages/MapDispositionPage';
 import MapPage from './pages/MapPage';
 import ClearancePage from './pages/ClearancePage';
 import InvoicesPage from './pages/InvoicesPage';
@@ -76,6 +77,14 @@ export default function App() {
         element={
           <PrivateRoute>
             <DispositionPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/disposition/map"
+        element={
+          <PrivateRoute>
+            <MapDispositionPage />
           </PrivateRoute>
         }
       />

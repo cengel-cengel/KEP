@@ -271,6 +271,7 @@ export default function DispositionPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [tourDetailDragOver, setTourDetailDragOver] = useState(false);
+  const [undispatchedDragOver, setUndispatchedDragOver] = useState(false);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -493,7 +494,7 @@ export default function DispositionPage() {
   });
 
   const dispatchMutation = useMutation({
-    mutationFn: async ({ shipmentId, tourId }: { shipmentId: string; tourId: string }) => {
+    mutationFn: async ({ shipmentId, tourId }: { shipmentId: string; tourId: string | null }) => {
       await api.post(`/shipments/${shipmentId}/dispatch`, { tourId });
     },
     onError: (err: unknown) => {
@@ -681,7 +682,32 @@ export default function DispositionPage() {
           {/* Column 1: Undispatched */}
           <div
             style={{ width: `${col1Width}%`, height: '100%', overflow: 'hidden' }}
-            className="border border-gray-200 bg-white shadow-sm overflow-hidden flex flex-col min-h-0"
+            className={
+              'border bg-white shadow-sm overflow-hidden flex flex-col min-h-0 transition-colors ' +
+              (undispatchedDragOver ? 'border-blue-400 ring-2 ring-blue-300' : 'border-gray-200')
+            }
+            onDragOver={(e) => {
+              // Nur reagieren wenn application/json-Drop (Tour-Detail-Card)
+              if (Array.from(e.dataTransfer.types).includes('application/json')) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (!undispatchedDragOver) setUndispatchedDragOver(true);
+              }
+            }}
+            onDragLeave={() => setUndispatchedDragOver(false)}
+            onDrop={(e) => {
+              setUndispatchedDragOver(false);
+              try {
+                const json = e.dataTransfer.getData('application/json');
+                const data = JSON.parse(json) as { shipmentId?: string; fromTour?: boolean };
+                if (data.shipmentId && data.fromTour) {
+                  e.preventDefault();
+                  dispatchMutation.mutate({ shipmentId: data.shipmentId, tourId: null });
+                }
+              } catch {
+                /* ignore */
+              }
+            }}
           >
             <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
               <h2 className="font-medium text-gray-900">Nicht disponiert</h2>
@@ -1065,6 +1091,11 @@ export default function DispositionPage() {
                           dragShipmentIdRef.current = s.id;
                           e.dataTransfer.effectAllowed = 'move';
                           e.dataTransfer.setData('text/plain', s.id);
+                          // Damit "Nicht disponiert"-Spalte (application/json) auch erkennen kann:
+                          e.dataTransfer.setData(
+                            'application/json',
+                            JSON.stringify({ shipmentId: s.id, fromTour: true }),
+                          );
                         }}
                         onDragEnd={() => {
                           dragShipmentIdRef.current = null;

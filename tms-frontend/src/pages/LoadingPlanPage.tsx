@@ -9,6 +9,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import Navigation from '../components/Navigation';
+import LoadingPlan3D from '../components/LoadingPlan3D';
 import { api } from '../lib/api';
 import { computeStackingLdmMetrics } from '../lib/loadingLdm';
 
@@ -686,7 +687,7 @@ export default function LoadingPlanPage() {
     startXPosCm: number;
     startYPosCm: number;
   } | null>(null);
-  const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d');
+  const [viewMode, setViewMode] = useState<'2d' | '3d' | 'real3d'>('3d');
   const [rotation, setRotation] = useState({ x: 30, y: -45 });
   const [zoom, setZoom] = useState(1.0);
   const [isDragging, setIsDragging] = useState(false);
@@ -1198,7 +1199,11 @@ export default function LoadingPlanPage() {
               <div className="rounded-lg border border-gray-200 bg-white p-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-medium text-gray-900">
-                    {viewMode === '2d' ? '2D Laderaum (Draufsicht)' : '3D Laderaum (interaktiv)'}
+                    {viewMode === '2d'
+                      ? '2D Laderaum (Draufsicht)'
+                      : viewMode === '3d'
+                      ? '3D Laderaum (SVG)'
+                      : '3D Laderaum (Real3D · Beta)'}
                   </div>
                   <div className="inline-flex rounded border border-gray-300 overflow-hidden text-xs">
                     <button
@@ -1215,8 +1220,18 @@ export default function LoadingPlanPage() {
                     >
                       3D
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('real3d')}
+                      className={`px-2 py-1 border-l border-gray-300 ${viewMode === 'real3d' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700'}`}
+                      title="Echte 3D-Vorschau (Three.js, in Entwicklung)"
+                    >
+                      3D Beta
+                    </button>
                   </div>
                 </div>
+
+                {viewMode === 'real3d' && <LoadingPlan3D />}
 
                 {viewMode === '3d' && (
                   <div className="overflow-auto">

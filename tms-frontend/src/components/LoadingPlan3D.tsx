@@ -1,6 +1,12 @@
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, GizmoHelper, GizmoViewport, Edges } from '@react-three/drei';
+import { OrbitControls, GizmoHelper, GizmoViewport, Edges, Html } from '@react-three/drei';
 import { useMemo } from 'react';
+import {
+  computeAxleLoads,
+  VEHICLE_AXLES,
+  type AxleStatus,
+  type AxleLoadEntry,
+} from '../lib/axleLoad';
 
 /**
  * Phase B: Trailer + Pakete als 3D-Boxen.
@@ -29,6 +35,7 @@ export type Plan3DPackage = {
   posX: number; // cm, entlang Laenge
   posY: number; // cm, entlang Breite
   posZ: number; // cm, entlang Hoehe (Stack-Etage)
+  weightKg?: number;
   color?: string;
   isStackable?: boolean;
 };
@@ -36,15 +43,38 @@ export type Plan3DPackage = {
 interface Props {
   vehicle: Plan3DVehicle;
   packages: Plan3DPackage[];
+  /** Optional: Wenn gesetzt, werden Achslast-Marker im 3D angezeigt. */
+  vehicleType?: string;
 }
 
-export default function LoadingPlan3D({ vehicle, packages }: Props) {
+const AXLE_COLOR: Record<AxleStatus, string> = {
+  ok: '#10b981',
+  warning: '#f59e0b',
+  critical: '#dc2626',
+};
+
+export default function LoadingPlan3D({ vehicle, packages, vehicleType }: Props) {
   const trailer = useMemo(() => {
     const L = vehicle.lengthCm / 100;
     const W = vehicle.widthCm / 100;
     const H = vehicle.heightCm / 100;
     return { L, W, H };
   }, [vehicle.lengthCm, vehicle.widthCm, vehicle.heightCm]);
+
+  // Achslast-Berechnung (nur wenn vehicleType bekannt)
+  const axleResult = useMemo(() => {
+    if (!vehicleType || !VEHICLE_AXLES[vehicleType]) return null;
+    return computeAxleLoads(
+      packages.map((p) => ({ posY: p.posY, weightKg: p.weightKg ?? 0 })),
+      vehicleType,
+      trailer.L,
+    );
+  }, [packages, vehicleType, trailer.L]);
+
+  const maxAxleLoad = useMemo(() => {
+    if (!axleResult) return 0;
+    return Math.max(0, ...axleResult.axles.map((a) => a.load_kg));
+  }, [axleResult]);
 
   // Camera Distance ~ 1.6 × Diagonale
   const cameraPos = useMemo<[number, number, number]>(() => {
@@ -109,6 +139,92 @@ export default function LoadingPlan3D({ vehicle, packages }: Props) {
             </mesh>
           );
         })}
+
+        {/* Schwerpunkt + Achs-Marker (nur wenn vehicleType bekannt) */}
+        {axleResult && (
+          <>
+            {/* COG: gold-Kugel + Vertical-Stab vom Boden */}
+            <mesh position={[axleResult.centerOfGravity_m, 1.0, 0]}>
+              <sphereGeometry args={[0.18, 24, 16]} />
+              <meshStandardMaterial
+                color="#facc15"
+                emissive="#ca8a04"
+                emissiveIntensity={0.4}
+              />
+            </mesh>
+            <mesh position={[axleResult.centerOfGravity_m, 0.5, 0]}>
+              <cylinderGeometry args={[0.02, 0.02, 1.0, 12]} />
+              <meshStandardMaterial color="#ca8a04" />
+            </mesh>
+            <Html
+              position={[axleResult.centerOfGravity_m, 1.35, 0]}
+              center
+              style={{ pointerEvents: 'none' }}
+            >
+              <div
+                style={{
+                  background: 'rgba(250,204,21,0.95)',
+                  color: '#1f2937',
+                  padding: '2px 6px',
+                  borderRadius: 4,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                COG · {axleResult.centerOfGravity_m.toFixed(2)} m
+              </div>
+            </Html>
+
+            {/* Achsen-Indikatoren unter dem Trailer */}
+            {axleResult.axles.map((a: AxleLoadEntry) => {
+              const ratio = maxAxleLoad > 0 ? a.load_kg / maxAxleLoad : 0;
+              const arrowH = 0.25 + ratio * 0.7;
+              const color = AXLE_COLOR[a.status];
+              return (
+                <group
+                  key={a.label}
+                  position={[a.distanceFromFront_m, 0, 0]}
+                >
+                  {/* Bodenlinie (kurzer Streifen quer ueber Trailer-Breite) */}
+                  <mesh position={[0, 0.005, 0]}>
+                    <boxGeometry args={[0.06, 0.01, trailer.W + 0.4]} />
+                    <meshBasicMaterial color={color} />
+                  </mesh>
+                  {/* Pfeil-Schaft (Cylinder unter Trailer) */}
+                  <mesh position={[0, -arrowH / 2 - 0.05, 0]}>
+                    <cylinderGeometry args={[0.04, 0.04, arrowH, 12]} />
+                    <meshStandardMaterial color={color} />
+                  </mesh>
+                  {/* Pfeil-Spitze (Cone) */}
+                  <mesh position={[0, -arrowH - 0.18, 0]}>
+                    <coneGeometry args={[0.12, 0.18, 16]} />
+                    <meshStandardMaterial color={color} />
+                  </mesh>
+                  <Html
+                    position={[0, -arrowH - 0.4, 0]}
+                    center
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    <div
+                      style={{
+                        background: color,
+                        color: '#fff',
+                        padding: '1px 5px',
+                        borderRadius: 3,
+                        fontSize: 10,
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {Math.round(a.load_kg)} kg · {a.loadPercent.toFixed(0)}%
+                    </div>
+                  </Html>
+                </group>
+              );
+            })}
+          </>
+        )}
 
         <OrbitControls
           makeDefault

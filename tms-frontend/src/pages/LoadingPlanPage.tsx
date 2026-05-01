@@ -1250,6 +1250,7 @@ export default function LoadingPlanPage() {
                           widthCm: vehicleDims.widthCm,
                           heightCm: vehicleDims.heightCm,
                         }}
+                        vehicleType={selectedVehicle?.type ?? selectedVehicleType}
                         packages={placedPackages.map((p) => ({
                           id: p.id,
                           lengthCm: p.lengthCm,
@@ -1258,6 +1259,7 @@ export default function LoadingPlanPage() {
                           posX: p.posX,
                           posY: p.posY,
                           posZ: p.posZ,
+                          weightKg: p.weightKg,
                           color:
                             SHIPMENT_COLORS[
                               (shipIdx.get(p.shipmentId) ?? 0) % SHIPMENT_COLORS.length

@@ -270,6 +270,7 @@ export default function DispositionPage() {
   const [expandedRelations, setExpandedRelations] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [tourDetailDragOver, setTourDetailDragOver] = useState(false);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -1001,7 +1002,31 @@ export default function DispositionPage() {
                 </button>
               </div>
 
-              <div className="p-3 h-full overflow-y-auto">
+              <div
+                className={
+                  'p-3 h-full overflow-y-auto transition-colors ' +
+                  (tourDetailDragOver ? 'ring-2 ring-blue-400 bg-blue-50/40' : '')
+                }
+                onDragOver={(e) => {
+                  if (!selectedTourId) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  if (!tourDetailDragOver) setTourDetailDragOver(true);
+                }}
+                onDragLeave={() => setTourDetailDragOver(false)}
+                onDrop={(e) => {
+                  setTourDetailDragOver(false);
+                  if (!selectedTourId) return;
+                  e.preventDefault();
+                  try {
+                    const json = e.dataTransfer.getData('application/json');
+                    const { shipmentId } = JSON.parse(json) as { shipmentId?: string };
+                    if (shipmentId) dispatchMutation.mutate({ shipmentId, tourId: selectedTourId });
+                  } catch {
+                    /* ignore */
+                  }
+                }}
+              >
                 {loadingTourShipments ? (
                   <div className="flex items-center justify-center h-full">
                     <div className="animate-spin h-8 w-8 border-2 border-[#1e40af] border-t-transparent rounded-full" />

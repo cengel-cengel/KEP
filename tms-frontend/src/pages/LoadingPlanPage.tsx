@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import Navigation from '../components/Navigation';
 import LoadingPlan3D from '../components/LoadingPlan3D';
+import AxleLoadPanel from '../components/AxleLoadPanel';
 import { api } from '../lib/api';
 import { computeStackingLdmMetrics } from '../lib/loadingLdm';
 
@@ -1242,27 +1243,37 @@ export default function LoadingPlanPage() {
                     if (!shipIdx.has(p.shipmentId)) shipIdx.set(p.shipmentId, shipIdx.size);
                   }
                   return (
-                    <LoadingPlan3D
-                      vehicle={{
-                        lengthCm: vehicleDims.lengthCm,
-                        widthCm: vehicleDims.widthCm,
-                        heightCm: vehicleDims.heightCm,
-                      }}
-                      packages={placedPackages.map((p) => ({
-                        id: p.id,
-                        lengthCm: p.lengthCm,
-                        widthCm: p.widthCm,
-                        heightCm: p.heightCm,
-                        posX: p.posX,
-                        posY: p.posY,
-                        posZ: p.posZ,
-                        color:
-                          SHIPMENT_COLORS[
-                            (shipIdx.get(p.shipmentId) ?? 0) % SHIPMENT_COLORS.length
-                          ],
-                        isStackable: p.isStackable,
-                      }))}
-                    />
+                    <>
+                      <LoadingPlan3D
+                        vehicle={{
+                          lengthCm: vehicleDims.lengthCm,
+                          widthCm: vehicleDims.widthCm,
+                          heightCm: vehicleDims.heightCm,
+                        }}
+                        packages={placedPackages.map((p) => ({
+                          id: p.id,
+                          lengthCm: p.lengthCm,
+                          widthCm: p.widthCm,
+                          heightCm: p.heightCm,
+                          posX: p.posX,
+                          posY: p.posY,
+                          posZ: p.posZ,
+                          color:
+                            SHIPMENT_COLORS[
+                              (shipIdx.get(p.shipmentId) ?? 0) % SHIPMENT_COLORS.length
+                            ],
+                          isStackable: p.isStackable,
+                        }))}
+                      />
+                      <AxleLoadPanel
+                        packages={placedPackages.map((p) => ({
+                          posY: p.posY,
+                          weightKg: p.weightKg,
+                        }))}
+                        vehicleType={selectedVehicle?.type ?? selectedVehicleType}
+                        trailerLength_m={vehicleDims.lengthCm / 100}
+                      />
+                    </>
                   );
                 })()}
 

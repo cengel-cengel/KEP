@@ -1,6 +1,6 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import Navigation from '../components/Navigation';
 import ShipmentCard from '../components/ShipmentCard';
 import TourCard from '../components/TourCard';
@@ -269,6 +269,9 @@ export default function DispositionPage() {
   const [expandedCountries, setExpandedCountries] = useState<Set<string>>(new Set());
   const [expandedRelations, setExpandedRelations] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const [searchParams, setSearchParams] = useSearchParams();
 
   function toggleId(id: string) {
     setSelectedIds((prev) => {
@@ -319,6 +322,41 @@ export default function DispositionPage() {
       return data;
     },
   });
+
+  // Focus-Logik aus URL-Param ?focus=<id> (von Karten-Disposition)
+  useEffect(() => {
+    const focusId = searchParams.get('focus');
+    if (!focusId || undispatched.length === 0) return;
+    const target = undispatched.find((s) => s.id === focusId);
+    if (!target) return;
+    // Country + Relation expandieren
+    const cc = (
+      (target as { addresses_shipments_delivery_address_idToaddresses?: { country_code?: string } })
+        .addresses_shipments_delivery_address_idToaddresses?.country_code ??
+      target.deliveryAddress?.country_code ??
+      'XX'
+    ).toUpperCase();
+    const relCode = target.relation?.code ?? 'NONE';
+    setExpandedCountries((prev) => new Set(prev).add(cc));
+    setExpandedRelations((prev) => new Set(prev).add(`${cc}::${relCode}`));
+    setHighlightedId(focusId);
+    // Scroll nach kurzem Delay (Render abwarten)
+    const t1 = setTimeout(() => {
+      const el = cardRefs.current.get(focusId);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 200);
+    // Highlight + URL-Param nach 5s entfernen
+    const t2 = setTimeout(() => {
+      setHighlightedId(null);
+      const next = new URLSearchParams(searchParams);
+      next.delete('focus');
+      setSearchParams(next, { replace: true });
+    }, 5000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [searchParams, undispatched, setSearchParams]);
 
 
   const { data: tours = [], isLoading: loadingTours } = useQuery({
@@ -754,8 +792,14 @@ export default function DispositionPage() {
                                     const renderItem = (s: Shipment) => (
                                       <div
                                         key={s.id}
+                                        ref={(el) => {
+                                          if (el) cardRefs.current.set(s.id, el);
+                                          else cardRefs.current.delete(s.id);
+                                        }}
                                         className={`flex items-start gap-2 rounded-lg border transition-colors ${
-                                          selectedShipmentId === s.id
+                                          highlightedId === s.id
+                                            ? 'border-yellow-500 ring-2 ring-yellow-300 bg-yellow-50 animate-pulse'
+                                            : selectedShipmentId === s.id
                                             ? 'border-[#1e40af] bg-yellow-100'
                                             : selectedIds.has(s.id)
                                             ? 'border-blue-300 bg-blue-50'

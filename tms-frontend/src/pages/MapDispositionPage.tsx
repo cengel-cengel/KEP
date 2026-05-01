@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -69,6 +69,7 @@ export default function MapDispositionPage() {
   const [recentlyAdded, setRecentlyAdded] = useState<Set<string>>(new Set());
   const [hint, setHint] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: shipments = [] } = useQuery<Shipment[]>({
     queryKey: ['shipments', 'map-disposition', 'new', 'unassigned'],
@@ -114,10 +115,74 @@ export default function MapDispositionPage() {
   });
 
   // Refs für Click-Closure (immer aktueller State)
-  const stateRef = useRef({ bulkMode, activeTourId, recentlyAdded });
-  stateRef.current = { bulkMode, activeTourId, recentlyAdded };
+  const stateRef = useRef({ bulkMode, activeTourId, recentlyAdded, tours });
+  stateRef.current = { bulkMode, activeTourId, recentlyAdded, tours };
   const mutateRef = useRef(assignMutation.mutate);
   mutateRef.current = assignMutation.mutate;
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+
+  function escapeHtml(s: string): string {
+    return s.replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] || c,
+    );
+  }
+
+  function buildPopupHtml(s: Shipment): string {
+    const r = s as unknown as Record<string, unknown>;
+    const shipNo = (r.shipment_number as string) ?? s.shipmentNumber ?? s.id.slice(0, 6);
+    const customer =
+      (r.customers as { name?: string } | undefined)?.name ??
+      (r.customer as { name?: string } | undefined)?.name ??
+      '–';
+    const loadAddr =
+      (r.addresses_shipments_loading_address_idToaddresses as { city?: string; country_code?: string } | undefined) ??
+      (r.loadingAddress as { city?: string; country_code?: string } | undefined);
+    const delivAddr =
+      (r.addresses_shipments_delivery_address_idToaddresses as { city?: string; country_code?: string } | undefined) ??
+      (r.deliveryAddress as { city?: string; country_code?: string } | undefined);
+    const fromTo = `${loadAddr?.city ?? '?'} → ${delivAddr?.city ?? '?'}`;
+    const pkg = Number(r.package_count ?? 0);
+    const wt = Number(r.weight_kg ?? 0);
+    const ldm = Number(s.ldm ?? 0);
+    const tt = transportTypeLabel((s.transport_type ?? (r.transportType as string)) ?? '');
+    const rel = s.relation;
+    const relStr = rel ? `${rel.code}${rel.name ? ' – ' + rel.name : ''}` : '–';
+    const items = (s.shipment_package_items ?? []) as Array<{ stackable?: boolean }>;
+    const stackable =
+      items.length > 0 ? items.every((i) => i.stackable !== false) : true;
+    const stackTxt = stackable ? '🔵 Stapelbar' : '🔴 Nicht stapelbar';
+
+    const tourOptions = stateRef.current.tours
+      .map(
+        (t) =>
+          `<option value="${escapeHtml(t.id)}">${escapeHtml(t.tour_number ?? '')}</option>`,
+      )
+      .join('');
+
+    return `
+      <div style="font-size:12px; min-width:220px">
+        <div style="font-weight:600; font-size:13px; margin-bottom:2px">${escapeHtml(shipNo)}</div>
+        <div style="color:#374151">${escapeHtml(customer)}</div>
+        <div style="color:#6b7280; font-size:11px; margin-top:2px">${escapeHtml(fromTo)}</div>
+        <div style="color:#374151; margin-top:4px">${pkg} EP · ${wt.toFixed(0)} kg · ${ldm.toFixed(2)} ldm</div>
+        <div style="margin-top:4px"><span style="background:#eef2ff; color:#3730a3; padding:1px 6px; border-radius:4px; font-size:11px">${escapeHtml(tt)}</span></div>
+        <div style="color:#6b7280; font-size:11px; margin-top:2px">Relation: ${escapeHtml(relStr)}</div>
+        <div style="margin-top:2px; font-size:11px">${stackTxt}</div>
+        <div style="display:flex; gap:6px; margin-top:8px; align-items:center; flex-wrap:wrap">
+          <button data-action="goto-list" data-id="${escapeHtml(s.id)}"
+            style="background:#1e40af; color:#fff; border:none; border-radius:6px; padding:5px 8px; font-size:11px; cursor:pointer">
+            📋 Zur Liste
+          </button>
+          <select data-action="tour-select" data-id="${escapeHtml(s.id)}"
+            style="border:1px solid #d1d5db; border-radius:6px; padding:4px 6px; font-size:11px">
+            <option value="">➕ In Tour…</option>
+            ${tourOptions}
+          </select>
+        </div>
+      </div>
+    `;
+  }
 
   // Filter-Optionen aus Daten ableiten
   const countryOptions = useMemo(() => {
@@ -232,22 +297,51 @@ export default function MapDispositionPage() {
         }</div>`,
         { direction: 'top', opacity: 0.95 },
       );
+      marker.bindPopup(buildPopupHtml(s), { maxWidth: 280 });
       marker.on('click', () => {
         const st = stateRef.current;
-        if (!st.bulkMode) return; // Phase E uebernimmt Tooltip-Logik
+        if (!st.bulkMode) {
+          // Normal-Modus: Popup wird automatisch geöffnet (bindPopup)
+          return;
+        }
         if (!st.activeTourId) {
           setHint('Erst eine Tour auswählen.');
           setTimeout(() => setHint(null), 2500);
           return;
         }
-        if (st.recentlyAdded.has(s.id)) return; // schon zugewiesen
-        // Optimistic
+        if (st.recentlyAdded.has(s.id)) return;
         setRecentlyAdded((prev) => {
           const n = new Set(prev);
           n.add(s.id);
           return n;
         });
         mutateRef.current({ shipmentId: s.id, tourId: st.activeTourId });
+        marker.closePopup();
+      });
+      marker.on('popupopen', (e) => {
+        if (stateRef.current.bulkMode) {
+          marker.closePopup();
+          return;
+        }
+        const popupEl = (e as L.PopupEvent).popup.getElement();
+        if (!popupEl) return;
+        const gotoBtn = popupEl.querySelector<HTMLButtonElement>('[data-action="goto-list"]');
+        gotoBtn?.addEventListener('click', () => {
+          marker.closePopup();
+          navigateRef.current(`/disposition?focus=${encodeURIComponent(s.id)}`);
+        });
+        const sel = popupEl.querySelector<HTMLSelectElement>('[data-action="tour-select"]');
+        sel?.addEventListener('change', () => {
+          const tourId = sel.value;
+          if (!tourId) return;
+          setRecentlyAdded((prev) => {
+            const n = new Set(prev);
+            n.add(s.id);
+            return n;
+          });
+          mutateRef.current({ shipmentId: s.id, tourId });
+          marker.closePopup();
+        });
       });
       cluster.addLayer(marker);
       bounds.extend(pos);

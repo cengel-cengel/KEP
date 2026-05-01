@@ -67,19 +67,19 @@ export default function LoadingPlan3D({ vehicle, packages, vehicleType }: Props)
 
   // E1+E2: Drag-Override + Live-Validity.
   const [dragActive, setDragActive] = useState<string | null>(null);
-  const [dragOverrides, setDragOverrides] = useState<Map<string, { posX: number; posY: number }>>(
-    () => new Map(),
-  );
+  const [dragOverrides, setDragOverrides] = useState<
+    Map<string, { posX: number; posY: number; posZ: number }>
+  >(() => new Map());
   const [dragValid, setDragValid] = useState(true);
   const offsetRef = useRef<{ x: number; z: number }>({ x: 0, z: 0 });
-  const originalPosRef = useRef<{ posX: number; posY: number } | null>(null);
+  const originalPosRef = useRef<{ posX: number; posY: number; posZ: number } | null>(null);
 
   function effectivePos(p: Plan3DPackage): { posX: number; posY: number; posZ: number } {
     const ov = dragOverrides.get(p.id);
     return {
       posX: ov?.posX ?? p.posX,
       posY: ov?.posY ?? p.posY,
-      posZ: p.posZ,
+      posZ: ov?.posZ ?? p.posZ,
     };
   }
 
@@ -96,65 +96,73 @@ export default function LoadingPlan3D({ vehicle, packages, vehicleType }: Props)
     );
   }
 
-  function isPositionValid(p: Plan3DPackage, posX: number, posY: number): boolean {
+  /**
+   * Auto-Stack-Resolver:
+   * Sucht ab posZ=0 die erste Etage in der das Paket
+   * frei steht. Falls Etage besetzt → versuche Stapeln,
+   * canStackOn entscheidet. Trailer-Hoehe als Hard-Limit.
+   */
+  function resolveDrop(
+    p: Plan3DPackage,
+    posX: number,
+    posY: number,
+  ): { valid: boolean; suggestedZ: number; reason?: string } {
     const trailerW_cm = trailer.W * 100;
     const trailerL_cm = trailer.L * 100;
-    // Within trailer
-    if (posX < -TOL || posY < -TOL) return false;
-    if (posX + p.widthCm > trailerW_cm + TOL) return false;
-    if (posY + p.lengthCm > trailerL_cm + TOL) return false;
-
+    const trailerH_cm = trailer.H * 100;
+    if (posX < -TOL || posY < -TOL) {
+      return { valid: false, suggestedZ: 0, reason: 'Außerhalb Trailer' };
+    }
+    if (posX + p.widthCm > trailerW_cm + TOL || posY + p.lengthCm > trailerL_cm + TOL) {
+      return { valid: false, suggestedZ: 0, reason: 'Außerhalb Trailer' };
+    }
     const cand = {
       x1: posX,
       x2: posX + p.widthCm,
       y1: posY,
       y2: posY + p.lengthCm,
     };
-    // Footprint-Overlap auf gleicher Z-Etage
-    for (const other of packages) {
-      if (other.id === p.id) continue;
-      const op = effectivePos(other);
-      if (Math.abs(op.posZ - p.posZ) > TOL) continue;
-      const oth = {
-        x1: op.posX,
-        x2: op.posX + other.widthCm,
-        y1: op.posY,
-        y2: op.posY + other.lengthCm,
-      };
-      if (rectsOverlap(cand, oth)) return false;
-    }
-    // Wenn gestapelt: Basis muss vorhanden + canStackOn passen
-    if (p.posZ > TOL) {
-      let hasBase = false;
+    let posZ = 0;
+    for (let i = 0; i < 50; i++) {
+      const overlaps: Plan3DPackage[] = [];
       for (const other of packages) {
         if (other.id === p.id) continue;
         const op = effectivePos(other);
-        const otherTop = op.posZ + other.heightCm;
-        if (Math.abs(otherTop - p.posZ) > TOL) continue;
-        const base = {
+        if (Math.abs(op.posZ - posZ) > TOL) continue;
+        const oth = {
           x1: op.posX,
           x2: op.posX + other.widthCm,
           y1: op.posY,
           y2: op.posY + other.lengthCm,
         };
-        const fullyOn =
-          cand.x1 >= base.x1 - TOL &&
-          cand.x2 <= base.x2 + TOL &&
-          cand.y1 >= base.y1 - TOL &&
-          cand.y2 <= base.y2 + TOL;
-        if (!fullyOn) continue;
+        if (rectsOverlap(cand, oth)) overlaps.push(other);
+      }
+      if (overlaps.length === 0) {
+        if (posZ + p.heightCm > trailerH_cm + TOL) {
+          return { valid: false, suggestedZ: posZ, reason: 'Stapel zu hoch' };
+        }
+        return { valid: true, suggestedZ: posZ };
+      }
+      // Stapeln: jeder Overlap muss canStackOn allowen
+      for (const o of overlaps) {
         const ok = canStackOn(
-          { isStackable: other.isStackable !== false },
+          { isStackable: o.isStackable !== false },
           { isStackable: p.isStackable !== false },
         ).allowed;
-        if (ok) {
-          hasBase = true;
-          break;
+        if (!ok) {
+          return {
+            valid: false,
+            suggestedZ: posZ,
+            reason: 'Nicht stapelbar (Basis oder Paket)',
+          };
         }
       }
-      if (!hasBase) return false;
+      const top = Math.max(
+        ...overlaps.map((o) => effectivePos(o).posZ + o.heightCm),
+      );
+      posZ = top;
     }
-    return true;
+    return { valid: false, suggestedZ: posZ, reason: 'Stapel-Loop-Limit' };
   }
 
   // Achslast-Berechnung (nur wenn vehicleType bekannt)
@@ -237,7 +245,11 @@ export default function LoadingPlan3D({ vehicle, packages, vehicleType }: Props)
                   x: e.point.x - cx,
                   z: e.point.z - cz,
                 };
-                originalPosRef.current = { posX: eff.posX, posY: eff.posY };
+                originalPosRef.current = {
+                  posX: eff.posX,
+                  posY: eff.posY,
+                  posZ: eff.posZ,
+                };
                 setDragValid(true);
                 setDragActive(p.id);
               }}
@@ -272,20 +284,25 @@ export default function LoadingPlan3D({ vehicle, packages, vehicleType }: Props)
               const newCz = e.point.z - offsetRef.current.z;
               const newPosY = (newCx - lx / 2) * 100;
               const newPosX = (newCz + trailer.W / 2 - lz / 2) * 100;
+              const cur = dragOverrides.get(dragActive);
               setDragOverrides((prev) => {
                 const m = new Map(prev);
-                m.set(dragActive, { posX: newPosX, posY: newPosY });
+                m.set(dragActive, {
+                  posX: newPosX,
+                  posY: newPosY,
+                  posZ: cur?.posZ ?? pkg.posZ,
+                });
                 return m;
               });
-              setDragValid(isPositionValid(pkg, newPosX, newPosY));
+              setDragValid(resolveDrop(pkg, newPosX, newPosY).valid);
             }}
             onPointerUp={() => {
               const pkg = packages.find((p) => p.id === dragActive);
               const orig = originalPosRef.current;
               if (pkg) {
                 const cur = dragOverrides.get(pkg.id);
-                if (!dragValid || !cur) {
-                  // Revert
+                if (!cur) {
+                  // Nichts bewegt; revert für Sauberkeit
                   setDragOverrides((prev) => {
                     const m = new Map(prev);
                     if (orig) m.set(pkg.id, orig);
@@ -293,13 +310,17 @@ export default function LoadingPlan3D({ vehicle, packages, vehicleType }: Props)
                     return m;
                   });
                 } else {
-                  // Snap auf Grid (10 cm) und finalisieren
                   const snappedX = Math.round(cur.posX / SNAP_CM) * SNAP_CM;
                   const snappedY = Math.round(cur.posY / SNAP_CM) * SNAP_CM;
-                  if (isPositionValid(pkg, snappedX, snappedY)) {
+                  const r = resolveDrop(pkg, snappedX, snappedY);
+                  if (r.valid) {
                     setDragOverrides((prev) => {
                       const m = new Map(prev);
-                      m.set(pkg.id, { posX: snappedX, posY: snappedY });
+                      m.set(pkg.id, {
+                        posX: snappedX,
+                        posY: snappedY,
+                        posZ: r.suggestedZ,
+                      });
                       return m;
                     });
                   } else if (orig) {

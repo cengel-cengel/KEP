@@ -50,4 +50,9 @@ export class AdminController {
     const pending = await this.backfill.countPending();
     return { ...state, pending };
   }
+
+  @Get('backfill-coordinates/failed')
+  async failed() {
+    return this.backfill.getFailedDiagnostics();
+  }
 }

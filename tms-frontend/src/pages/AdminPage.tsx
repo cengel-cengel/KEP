@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, MapPin, Play } from 'lucide-react';
 import Navigation from '../components/Navigation';
@@ -12,6 +13,19 @@ interface BackfillStatus {
   lastRun: string | null;
   lastError: string | null;
   pending: number;
+}
+
+interface FailedDiagnostics {
+  count: number;
+  samples: Array<{
+    id: string;
+    country_code: string | null;
+    zip: string | null;
+    city: string | null;
+    name: string | null;
+  }>;
+  byCountry: Record<string, number>;
+  edgeCases: { emptyCity: string[]; specialChars: string[]; longZip: string[] };
 }
 
 const BATCH_SIZE = 100;
@@ -117,29 +131,112 @@ export default function AdminPage() {
             </div>
           )}
 
-          <button
-            type="button"
-            disabled={running || startMutation.isPending}
-            onClick={() => startMutation.mutate()}
-            className={
-              'inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white transition-colors ' +
-              (running || startMutation.isPending
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-[#1e40af] hover:bg-[#1e3a8a]') +
-              (running ? ' animate-pulse' : '')
-            }
-          >
-            <Play size={16} />
-            {running
-              ? 'Geocoding läuft…'
-              : startMutation.isPending
-              ? 'Starte…'
-              : pending === 0
-              ? 'Alle Adressen geocodiert'
-              : `Geocoding starten (Batch ${BATCH_SIZE})`}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={running || startMutation.isPending}
+              onClick={() => startMutation.mutate()}
+              className={
+                'inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white transition-colors ' +
+                (running || startMutation.isPending
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : 'bg-[#1e40af] hover:bg-[#1e3a8a]') +
+                (running ? ' animate-pulse' : '')
+              }
+            >
+              <Play size={16} />
+              {running
+                ? 'Geocoding läuft…'
+                : startMutation.isPending
+                ? 'Starte…'
+                : pending === 0
+                ? 'Alle Adressen geocodiert'
+                : `Geocoding starten (Batch ${BATCH_SIZE})`}
+            </button>
+            <DiagnosticsBlock />
+          </div>
         </section>
       </main>
+    </>
+  );
+}
+
+function DiagnosticsBlock() {
+  const [shown, setShown] = useState(false);
+  const { data, refetch, isFetching } = useQuery<FailedDiagnostics>({
+    queryKey: ['admin', 'backfill-coords-failed'],
+    queryFn: async () => {
+      const { data } = await api.get<FailedDiagnostics>('/admin/backfill-coordinates/failed');
+      return data;
+    },
+    enabled: false,
+  });
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setShown(true);
+          void refetch();
+        }}
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 font-medium"
+      >
+        🔍 Fehlende Adressen analysieren
+      </button>
+      {shown && (
+        <div className="basis-full mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm">
+          {isFetching && <div className="text-gray-500">Lade…</div>}
+          {!isFetching && data && (
+            <>
+              <div className="font-medium text-gray-900 mb-2">
+                {data.count} Adressen ohne Koordinaten
+              </div>
+              <div className="mb-3">
+                <div className="text-xs uppercase text-gray-500 mb-1">Nach Land</div>
+                <div className="flex flex-wrap gap-1">
+                  {Object.entries(data.byCountry)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([cc, n]) => (
+                      <span key={cc} className="inline-flex items-center gap-1 rounded bg-white border border-gray-300 px-2 py-0.5 text-xs">
+                        {cc}: <strong>{n}</strong>
+                      </span>
+                    ))}
+                </div>
+              </div>
+              <div className="mb-3 text-xs">
+                <div className="text-gray-500">
+                  emptyCity: {data.edgeCases.emptyCity.length} ·{' '}
+                  specialChars: {data.edgeCases.specialChars.length} ·{' '}
+                  longZip: {data.edgeCases.longZip.length}
+                </div>
+              </div>
+              <div className="text-xs uppercase text-gray-500 mb-1">Samples (max 30)</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-gray-500">
+                      <th className="py-1 pr-2">Land</th>
+                      <th className="py-1 pr-2">PLZ</th>
+                      <th className="py-1 pr-2">Stadt</th>
+                      <th className="py-1 pr-2">Name</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.samples.map((s) => (
+                      <tr key={s.id} className="border-t border-gray-200">
+                        <td className="py-1 pr-2">{s.country_code ?? '–'}</td>
+                        <td className="py-1 pr-2 font-mono">{s.zip ?? '–'}</td>
+                        <td className="py-1 pr-2">{s.city ?? '–'}</td>
+                        <td className="py-1 pr-2 text-gray-600">{s.name ?? '–'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </>
   );
 }

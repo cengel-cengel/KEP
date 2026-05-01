@@ -57,6 +57,42 @@ export class BackfillCoordinatesService {
     return Number(r[0]?.count ?? 0);
   }
 
+  async getFailedDiagnostics(): Promise<{
+    count: number;
+    samples: Array<{ id: string; country_code: string | null; zip: string | null; city: string | null; name: string | null }>;
+    byCountry: Record<string, number>;
+    edgeCases: { emptyCity: string[]; specialChars: string[]; longZip: string[] };
+  }> {
+    const all = await this.prisma.$queryRaw<
+      Array<{ id: string; country_code: string | null; zip: string | null; city: string | null; name: string | null }>
+    >`
+      SELECT id::text AS id, country_code, zip, city, name
+      FROM addresses
+      WHERE lat IS NULL
+    `;
+    const byCountry: Record<string, number> = {};
+    const emptyCity: string[] = [];
+    const specialChars: string[] = [];
+    const longZip: string[] = [];
+    for (const a of all) {
+      const cc = (a.country_code || '??').toUpperCase();
+      byCountry[cc] = (byCountry[cc] ?? 0) + 1;
+      if (!a.city || !a.city.trim()) {
+        if (emptyCity.length < 10) emptyCity.push(a.id);
+      } else if (/[^\p{L}\p{N}\s\-.,'/()]/u.test(a.city + ' ' + (a.zip ?? ''))) {
+        if (specialChars.length < 10) specialChars.push(a.id);
+      } else if ((a.zip ?? '').length > 10) {
+        if (longZip.length < 10) longZip.push(a.id);
+      }
+    }
+    return {
+      count: all.length,
+      samples: all.slice(0, 30),
+      byCountry,
+      edgeCases: { emptyCity, specialChars, longZip },
+    };
+  }
+
   /** Synchron: gibt die Zahl der zu bearbeitenden Adressen zurück. */
   async startJob(batchSize: number): Promise<{ total: number }> {
     if (this.state.running) {

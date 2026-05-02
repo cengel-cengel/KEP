@@ -1,8 +1,10 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
+import { Pencil } from 'lucide-react';
 import Navigation from '../components/Navigation';
 import ShipmentCard from '../components/ShipmentCard';
+import ShipmentEditModal from '../components/ShipmentEditModal';
 import TourCard from '../components/TourCard';
 import DispositionMap from '../components/DispositionMap';
 import type { SubcontractorOption } from '../components/TourCard';
@@ -272,6 +274,7 @@ export default function DispositionPage() {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [tourDetailDragOver, setTourDetailDragOver] = useState(false);
   const [undispatchedDragOver, setUndispatchedDragOver] = useState(false);
+  const [editingShipmentId, setEditingShipmentId] = useState<string | null>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -1125,6 +1128,20 @@ export default function DispositionPage() {
                                 <div className="font-semibold text-gray-900 truncate">
                                   {shipmentNumber}
                                 </div>
+                                {selectedTour && selectedTour.status !== 'released' && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingShipmentId(s.id);
+                                    }}
+                                    title="Sendung bearbeiten"
+                                    className="text-gray-400 hover:text-[#1e40af] p-0.5 rounded hover:bg-gray-100"
+                                    aria-label="Sendung bearbeiten"
+                                  >
+                                    <Pencil size={14} />
+                                  </button>
+                                )}
                               </div>
                               <div
                                 className="text-sm text-gray-600 mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis"
@@ -1273,6 +1290,24 @@ export default function DispositionPage() {
           </div>
         </div>
       </main>
+      {editingShipmentId && (() => {
+        const target =
+          tourShipments.find((x: { id: string }) => x.id === editingShipmentId) ??
+          undispatched.find((x) => x.id === editingShipmentId);
+        if (!target) {
+          setEditingShipmentId(null);
+          return null;
+        }
+        return (
+          <ShipmentEditModal
+            shipment={target as Shipment}
+            open={!!editingShipmentId}
+            onOpenChange={(o) => {
+              if (!o) setEditingShipmentId(null);
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

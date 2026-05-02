@@ -1312,7 +1312,7 @@ model nv_subunternehmer {
   id                          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name                        String           @db.VarChar(200)
   nv_tour_gebiet_id           String?          @db.Uuid
-  business_partner_id         String?          @db.Uuid
+  business_partner_id         String           @db.Uuid
   tarif_typ                   String           @default("TAGESPAUSCHALE") @db.VarChar(20)
   tarif_pro_stop_eur          Decimal?         @db.Decimal(10, 2)
   tarif_tagespauschale_eur    Decimal?         @db.Decimal(10, 2)
@@ -1322,7 +1322,7 @@ model nv_subunternehmer {
   created_at                  DateTime         @default(now()) @db.Timestamptz(6)
   updated_at                  DateTime         @default(now()) @db.Timestamptz(6)
   nv_tour_gebiet              nv_tour_gebiete? @relation("nv_subunternehmer_tour_gebiet", fields: [nv_tour_gebiet_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  business_partner            business_partners? @relation("nv_subunternehmer_bp", fields: [business_partner_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  business_partner            business_partners @relation("nv_subunternehmer_bp", fields: [business_partner_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
   default_for_stamm_touren    nv_stamm_touren[] @relation("nv_stamm_touren_default_sub")
 
   @@index([nv_tour_gebiet_id])

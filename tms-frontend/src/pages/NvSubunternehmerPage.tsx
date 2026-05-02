@@ -1,14 +1,20 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pencil, Plus, Power, Trash2, X } from 'lucide-react';
+import { ExternalLink, Pencil, Plus, Power, Trash2, X } from 'lucide-react';
 import { api } from '../lib/api';
 
+type BusinessPartner = {
+  id: string;
+  partner_number: string;
+  name: string;
+  partner_type: string;
+};
 type TourGebiet = { id: string; code: string; name: string };
 type Subunternehmer = {
   id: string;
   name: string;
   nv_tour_gebiet_id: string | null;
-  business_partner_id: string | null;
+  business_partner_id: string;
   tarif_typ: string;
   tarif_pro_stop_eur: string | number | null;
   tarif_tagespauschale_eur: string | number | null;
@@ -32,7 +38,6 @@ const FAHRZEUG_TYPEN = ['TRANSPORTER', '7_5T', '12T', '18T', '40T'];
 
 function emptyForm(): Partial<Subunternehmer> {
   return {
-    name: '',
     nv_tour_gebiet_id: null,
     tarif_typ: 'TAGESPAUSCHALE',
     tarif_tagespauschale_eur: 280,
@@ -234,7 +239,14 @@ export default function NvSubunternehmerPage() {
                     onChange={() => toggleSelect(s.id)}
                   />
                 </td>
-                <td className="px-3 py-2 font-medium">{s.name}</td>
+                <td className="px-3 py-2 font-medium">
+                  {s.business_partner?.name ?? s.name}
+                  {s.business_partner?.partner_number && (
+                    <span className="text-xs text-gray-500 ml-2 font-mono">
+                      {s.business_partner.partner_number}
+                    </span>
+                  )}
+                </td>
                 <td className="px-3 py-2 font-mono text-xs">
                   {s.nv_tour_gebiet?.code ?? '—'}
                 </td>
@@ -350,13 +362,25 @@ function SubModal({
     v: Subunternehmer[K] | null,
   ) => setForm((f) => ({ ...f, [k]: v }));
 
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickedBp, setPickedBp] = useState<BusinessPartner | null>(
+    initial.business_partner
+      ? {
+          id: initial.business_partner.id,
+          partner_number: initial.business_partner.partner_number,
+          name: initial.business_partner.name,
+          partner_type: 'SUBCONTRACTOR',
+        }
+      : null,
+  );
+
   const handleSave = () => {
-    if (!form.name?.trim()) {
-      alert('Name ist Pflichtfeld');
+    if (!form.business_partner_id) {
+      alert('Subunternehmer (Stammdaten) ist Pflichtfeld');
       return;
     }
     onSave({
-      name: form.name,
+      business_partner_id: form.business_partner_id,
       nv_tour_gebiet_id: form.nv_tour_gebiet_id ?? null,
       tarif_typ: form.tarif_typ ?? 'TAGESPAUSCHALE',
       tarif_pro_stop_eur:
@@ -387,14 +411,33 @@ function SubModal({
         <div className="p-4 space-y-3">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
-              Name *
+              Subunternehmer (Stammdaten) *
             </label>
-            <input
-              type="text"
-              value={form.name ?? ''}
-              onChange={(e) => update('name', e.target.value)}
-              className="w-full border rounded px-3 py-2 text-sm"
-            />
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="w-full border rounded px-3 py-2 text-sm text-left bg-white hover:bg-gray-50"
+            >
+              {pickedBp ? (
+                <span>
+                  <span className="font-medium">{pickedBp.name}</span>
+                  <span className="text-xs text-gray-500 ml-2 font-mono">
+                    {pickedBp.partner_number}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-gray-400">— bitte wählen —</span>
+              )}
+            </button>
+            <a
+              href="/masterdata"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1"
+            >
+              <ExternalLink size={12} />
+              Neuen Subunternehmer in Stammdaten anlegen
+            </a>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -520,6 +563,99 @@ function SubModal({
           >
             {saving ? 'Speichere...' : 'Speichern'}
           </button>
+        </div>
+      </div>
+
+      {pickerOpen && (
+        <SubcontractorPickerModal
+          onClose={() => setPickerOpen(false)}
+          onPicked={(bp) => {
+            setPickedBp(bp);
+            update('business_partner_id', bp.id);
+            setPickerOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function SubcontractorPickerModal({
+  onClose,
+  onPicked,
+}: {
+  onClose: () => void;
+  onPicked: (bp: BusinessPartner) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [debounced, setDebounced] = useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const partnersQ = useQuery<BusinessPartner[]>({
+    queryKey: ['masterdata', 'partners', 'SUBCONTRACTOR', debounced],
+    queryFn: async () =>
+      (
+        await api.get<BusinessPartner[]>('/masterdata/partners', {
+          params: { type: 'SUBCONTRACTOR', search: debounced || undefined },
+        })
+      ).data,
+  });
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <h3 className="font-semibold text-gray-800">Subunternehmer auswählen</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-3 border-b">
+          <input
+            type="text"
+            autoFocus
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Suche Name/Partner-Nr..."
+            className="w-full border rounded px-3 py-2 text-sm"
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {partnersQ.isLoading && (
+            <div className="p-3 text-sm text-gray-500">Lade...</div>
+          )}
+          {!partnersQ.isLoading && (partnersQ.data?.length ?? 0) === 0 && (
+            <div className="p-3 text-sm text-gray-500">
+              Keine Subunternehmer gefunden.
+            </div>
+          )}
+          {(partnersQ.data ?? []).slice(0, 100).map((bp) => (
+            <button
+              key={bp.id}
+              onClick={() => onPicked(bp)}
+              className="w-full text-left px-3 py-2 border-b hover:bg-blue-50 text-sm"
+            >
+              <div className="font-medium">{bp.name}</div>
+              <div className="text-xs text-gray-500 font-mono">
+                {bp.partner_number}
+              </div>
+            </button>
+          ))}
+        </div>
+        <div className="border-t px-3 py-2 bg-gray-50">
+          <a
+            href="/masterdata"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+          >
+            <ExternalLink size={12} />
+            Neuen Subunternehmer in Stammdaten anlegen
+          </a>
         </div>
       </div>
     </div>

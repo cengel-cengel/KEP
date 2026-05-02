@@ -90,7 +90,7 @@ async function main() {
         where: { id },
         create: {
           id,
-          name: `ERKA ${tg.code}`,
+          name: erka.name,
           nv_tour_gebiet_id: tg.id,
           business_partner_id: erka.id,
           tarif_typ: 'TAGESPAUSCHALE',
@@ -99,6 +99,7 @@ async function main() {
           aktiv: true,
         },
         update: {
+          name: erka.name,
           nv_tour_gebiet_id: tg.id,
           business_partner_id: erka.id,
           tarif_typ: 'TAGESPAUSCHALE',

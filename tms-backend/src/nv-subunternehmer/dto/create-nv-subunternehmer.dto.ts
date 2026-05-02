@@ -10,17 +10,12 @@ import {
 import { Type } from 'class-transformer';
 
 export class CreateNvSubunternehmerDto {
-  @IsString()
-  @MaxLength(200)
-  name!: string;
+  @IsUUID()
+  business_partner_id!: string;
 
   @IsOptional()
   @IsUUID()
   nv_tour_gebiet_id?: string | null;
-
-  @IsOptional()
-  @IsUUID()
-  business_partner_id?: string | null;
 
   @IsOptional()
   @IsIn(['PRO_STOP', 'TAGESPAUSCHALE', 'SPOT'])

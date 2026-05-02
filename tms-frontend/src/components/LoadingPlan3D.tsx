@@ -252,13 +252,24 @@ export default function LoadingPlan3D({
     return next;
   }
 
-  // Bug 1: applyGravity beim Initial-Render und bei
-  // Paket-Änderungen, damit floatende Items sofort fallen.
+  // Bug 1: applyGravity beim Initial-Render und bei echten
+  // Paket-Änderungen. Stable Signature verhindert Re-Run bei
+  // bloßen Parent-Re-Renders (neuer Array-Reference).
+  const packageSignature = useMemo(
+    () =>
+      packages
+        .map(
+          (p) =>
+            `${p.id}|${p.posX}|${p.posY}|${p.posZ}|${p.isStackable ? 1 : 0}`,
+        )
+        .join(';'),
+    [packages],
+  );
   useEffect(() => {
     setDragOverrides((prev) => applyGravity(prev));
-    // applyGravity haengt von packages ab; eslint-disable next-line
+    // applyGravity haengt von packages ab — Trigger via Signature.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [packages]);
+  }, [packageSignature]);
 
   // E2: Pure-Helper für Drop-Validität
   function rectsOverlap(
@@ -417,6 +428,12 @@ export default function LoadingPlan3D({
 
   return (
     <div className="relative w-full h-[480px] rounded-lg border border-gray-200 bg-gradient-to-b from-slate-50 to-slate-100 overflow-hidden">
+      <div className="absolute bottom-2 left-2 z-10 rounded bg-white/90 border border-gray-200 px-2 py-1 text-[11px] text-gray-600 shadow-sm pointer-events-none">
+        🖱️ Links: drehen · Rechts: pan · Rad: zoom
+        <span className="block sm:inline sm:ml-2 text-gray-500">
+          📱 Mobile: 1 Finger drehen · 2 Finger pan
+        </span>
+      </div>
       {alignmentTarget && (
         <div className="absolute top-2 right-2 z-20 rounded-lg border border-gray-300 bg-white/95 shadow-lg p-2 text-xs">
           <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -804,6 +821,7 @@ export default function LoadingPlan3D({
           makeDefault
           enableDamping
           dampingFactor={0.1}
+          enablePan={true}
           target={[trailer.L / 2, trailer.H / 2, 0]}
         />
         <GizmoHelper alignment="bottom-right" margin={[60, 60]}>

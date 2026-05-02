@@ -1,6 +1,6 @@
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, GizmoHelper, GizmoViewport, Edges, Html, Line } from '@react-three/drei';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   computeAxleLoads,
   VEHICLE_AXLES,
@@ -88,6 +88,11 @@ export default function LoadingPlan3D({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const offsetRef = useRef<{ x: number; z: number }>({ x: 0, z: 0 });
   const originalPosRef = useRef<{ posX: number; posY: number; posZ: number } | null>(null);
+  // OrbitControls-Ref fuer synchrones enable/disable beim Drag
+  const orbitRef = useRef<any>(null);
+  function setOrbit(enabled: boolean) {
+    if (orbitRef.current) orbitRef.current.enabled = enabled;
+  }
 
   // Stack-Alignment-Panel-State (nur bei Overhang sichtbar)
   type AlignmentMode = 'centered' | 'front' | 'back' | 'left' | 'right';
@@ -246,6 +251,14 @@ export default function LoadingPlan3D({
     }
     return next;
   }
+
+  // Bug 1: applyGravity beim Initial-Render und bei
+  // Paket-Änderungen, damit floatende Items sofort fallen.
+  useEffect(() => {
+    setDragOverrides((prev) => applyGravity(prev));
+    // applyGravity haengt von packages ab; eslint-disable next-line
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [packages]);
 
   // E2: Pure-Helper für Drop-Validität
   function rectsOverlap(
@@ -510,6 +523,7 @@ export default function LoadingPlan3D({
               }}
               onPointerDown={(e) => {
                 e.stopPropagation();
+                setOrbit(false); // synchron, vor React-Render
                 offsetRef.current = {
                   x: e.point.x - cx,
                   z: e.point.z - cz,
@@ -641,6 +655,7 @@ export default function LoadingPlan3D({
               originalPosRef.current = null;
               setDragActive(null);
               setDragValid(true);
+              setOrbit(true);
               document.body.style.cursor = '';
             }}
             onPointerLeave={() => {
@@ -657,6 +672,7 @@ export default function LoadingPlan3D({
               originalPosRef.current = null;
               setDragActive(null);
               setDragValid(true);
+              setOrbit(true);
               document.body.style.cursor = '';
             }}
           >
@@ -784,11 +800,11 @@ export default function LoadingPlan3D({
           })}
 
         <OrbitControls
+          ref={orbitRef}
           makeDefault
           enableDamping
           dampingFactor={0.1}
           target={[trailer.L / 2, trailer.H / 2, 0]}
-          enabled={!dragActive}
         />
         <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
           <GizmoViewport axisColors={['#ef4444', '#22c55e', '#3b82f6']} labelColor="#111827" />

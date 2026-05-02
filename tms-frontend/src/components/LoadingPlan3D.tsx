@@ -383,6 +383,30 @@ export default function LoadingPlan3D({
     return peak;
   }
 
+  // Camera-Presets (Phase C)
+  type CameraPreset = 'iso' | 'top' | 'side' | 'front';
+  const presetPositions = useMemo<Record<CameraPreset, { pos: [number, number, number]; target: [number, number, number] }>>(() => {
+    const L = trailer.L;
+    const W = trailer.W;
+    const H = trailer.H;
+    return {
+      iso:   { pos: [L * 0.6, H * 1.5 + 2, Math.max(L, W, H) * 1.4], target: [L / 2, H / 2, 0] },
+      top:   { pos: [L / 2, Math.max(L, 8) * 1.0, 0.01], target: [L / 2, 0, 0] },
+      side:  { pos: [L / 2, H / 2, Math.max(L, 6) * 0.9], target: [L / 2, H / 2, 0] },
+      front: { pos: [L + Math.max(L, 6) * 0.5, H / 2, 0], target: [L / 2, H / 2, 0] },
+    };
+  }, [trailer.L, trailer.W, trailer.H]);
+
+  const applyPreset = (preset: CameraPreset) => {
+    const orbit = orbitRef.current;
+    if (!orbit) return;
+    const cfg = presetPositions[preset];
+    const cam = orbit.object;
+    cam.position.set(cfg.pos[0], cfg.pos[1], cfg.pos[2]);
+    orbit.target.set(cfg.target[0], cfg.target[1], cfg.target[2]);
+    orbit.update();
+  };
+
   // Camera Distance ~ 1.6 × Diagonale
   const cameraPos = useMemo<[number, number, number]>(() => {
     const d = Math.max(trailer.L, trailer.W, trailer.H) * 1.4;
@@ -428,6 +452,32 @@ export default function LoadingPlan3D({
 
   return (
     <div className="relative w-full h-[480px] rounded-lg border border-gray-200 bg-gradient-to-b from-slate-50 to-slate-100 overflow-hidden">
+      <div className="absolute top-2 left-2 z-20 flex gap-1 bg-white/95 rounded border border-gray-300 shadow-sm p-1">
+        <button
+          type="button"
+          onClick={() => applyPreset('iso')}
+          className="px-2 py-1 text-xs rounded hover:bg-gray-100"
+          title="Isometrisch (Reset)"
+        >↺ Reset</button>
+        <button
+          type="button"
+          onClick={() => applyPreset('top')}
+          className="px-2 py-1 text-xs rounded hover:bg-gray-100"
+          title="Draufsicht"
+        >⊞ Top</button>
+        <button
+          type="button"
+          onClick={() => applyPreset('side')}
+          className="px-2 py-1 text-xs rounded hover:bg-gray-100"
+          title="Seitenansicht"
+        >↔ Side</button>
+        <button
+          type="button"
+          onClick={() => applyPreset('front')}
+          className="px-2 py-1 text-xs rounded hover:bg-gray-100"
+          title="Frontansicht"
+        >→ Front</button>
+      </div>
       <div className="absolute bottom-2 left-2 z-10 rounded bg-white/90 border border-gray-200 px-2 py-1 text-[11px] text-gray-600 shadow-sm pointer-events-none">
         🖱️ Links: drehen · Rechts: pan · Rad: zoom
         <span className="block sm:inline sm:ml-2 text-gray-500">

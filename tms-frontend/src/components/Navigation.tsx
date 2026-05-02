@@ -28,6 +28,7 @@ const navItems = [
   { to: '/masterdata', label: 'Stammdaten', matchPrefix: true as const },
   { to: '/shipments', label: 'Sendungen' },
   { to: '/disposition', label: 'Disposition' },
+  { to: '/nv-disposition', label: 'NV-Dispo' },
   { to: '/clearance', label: 'Abfertigung' },
   { to: '/hall', label: 'Halle' },
   { to: '/tours', label: 'Touren' },

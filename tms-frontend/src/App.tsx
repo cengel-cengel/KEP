@@ -6,6 +6,7 @@ import ShipmentsPage from './pages/ShipmentsPage';
 import NewShipmentPage from './pages/NewShipmentPage';
 import BeladeplanPage from './pages/BeladeplanPage';
 import DispositionPage from './pages/DispositionPage';
+import NvDispositionPage from './pages/NvDispositionPage';
 import MapDispositionPage from './pages/MapDispositionPage';
 import MapPage from './pages/MapPage';
 import ClearancePage from './pages/ClearancePage';
@@ -80,6 +81,14 @@ export default function App() {
         element={
           <PrivateRoute>
             <DispositionPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/nv-disposition"
+        element={
+          <PrivateRoute>
+            <NvDispositionPage />
           </PrivateRoute>
         }
       />

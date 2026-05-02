@@ -1301,6 +1301,7 @@ model nv_tour_gebiete {
   nv_gebiet       nv_gebiete          @relation("nv_tour_gebiete_gebiet", fields: [nv_gebiet_id], references: [id], onDelete: Cascade)
   relation        relations?          @relation("nv_tour_gebiete_relation", fields: [relation_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
   subunternehmer  nv_subunternehmer[] @relation("nv_subunternehmer_tour_gebiet")
+  stamm_touren    nv_stamm_touren[]   @relation("nv_stamm_touren_tour_gebiet")
 
   @@index([nv_gebiet_id])
   @@index([relation_id])
@@ -1321,7 +1322,27 @@ model nv_subunternehmer {
   updated_at                  DateTime         @default(now()) @db.Timestamptz(6)
   nv_tour_gebiet              nv_tour_gebiete? @relation("nv_subunternehmer_tour_gebiet", fields: [nv_tour_gebiet_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
   business_partner            business_partners? @relation("nv_subunternehmer_bp", fields: [business_partner_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  default_for_stamm_touren    nv_stamm_touren[] @relation("nv_stamm_touren_default_sub")
 
   @@index([nv_tour_gebiet_id])
   @@index([business_partner_id])
+}
+
+model nv_stamm_touren {
+  id                          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                        String              @unique @db.VarChar(40)
+  name                        String              @db.VarChar(120)
+  nv_tour_gebiet_id           String              @db.Uuid
+  default_subunternehmer_id   String?             @db.Uuid
+  wochentage                  String[]
+  start_zeit                  DateTime?           @db.Time(6)
+  fahrzeug_typ                String?             @db.VarChar(20)
+  aktiv                       Boolean             @default(true)
+  created_at                  DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime            @default(now()) @db.Timestamptz(6)
+  nv_tour_gebiet              nv_tour_gebiete     @relation("nv_stamm_touren_tour_gebiet", fields: [nv_tour_gebiet_id], references: [id], onDelete: Cascade)
+  default_subunternehmer      nv_subunternehmer?  @relation("nv_stamm_touren_default_sub", fields: [default_subunternehmer_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([nv_tour_gebiet_id])
+  @@index([default_subunternehmer_id])
 }

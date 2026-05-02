@@ -38,6 +38,7 @@ import { ReturnsModule } from './returns/returns.module';
 import { PricingHubModule } from './pricing-hub/pricing-hub.module';
 import { NvGebieteModule } from './nv-gebiete/nv-gebiete.module';
 import { NvSubunternehmerModule } from './nv-subunternehmer/nv-subunternehmer.module';
+import { NvStammTourenModule } from './nv-stamm-touren/nv-stamm-touren.module';
 
 @Module({
   imports: [
@@ -106,6 +107,7 @@ import { NvSubunternehmerModule } from './nv-subunternehmer/nv-subunternehmer.mo
     PricingHubModule,
     NvGebieteModule,
     NvSubunternehmerModule,
+    NvStammTourenModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -16,6 +16,7 @@ import AdminPage from './pages/AdminPage';
 import RoutingPage from './pages/RoutingPage';
 import NvGebietePage from './pages/NvGebietePage';
 import NvSubunternehmerPage from './pages/NvSubunternehmerPage';
+import NvStammTourenPage from './pages/NvStammTourenPage';
 import LoadingPlanPage from './pages/LoadingPlanPage';
 import CompletedToursPage from './pages/CompletedToursPage';
 import WorkstackPage from './pages/WorkstackPage';
@@ -157,6 +158,7 @@ export default function App() {
         <Route path="routing" element={<RoutingPage />} />
         <Route path="nv-gebiete" element={<NvGebietePage />} />
         <Route path="nv-subunternehmer" element={<NvSubunternehmerPage />} />
+        <Route path="nv-stamm-touren" element={<NvStammTourenPage />} />
         <Route path="pricing" element={<Navigate to="/pricing-hub" replace />} />
       </Route>
       <Route

@@ -132,7 +132,7 @@ export default function LoadingPlan3D({
       const ix = Math.max(0, Math.min(ax2, bx2) - Math.max(ax1, bx1));
       const iy = Math.max(0, Math.min(ay2, by2) - Math.max(ay1, by1));
       const pct = (ix * iy) / candArea;
-      if (pct >= 0.5 && pct > bestPct) {
+      if (pct > 0 && pct > bestPct) {
         bestPct = pct;
         best = { posX: oc.posX, posY: oc.posY, belowId: o.id };
       }

@@ -51,6 +51,12 @@ interface Props {
   vehicleType?: string;
   /** Optional: Anzahl Spanngurte zur Visualisierung. */
   securementStraps?: number;
+  /**
+   * Wird nach erfolgreichem Drag mit gueltiger Position aufgerufen.
+   * id ist die DB-uuid wenn vorhanden — sonst die synth-id.
+   * Caller entscheidet ob persistiert wird.
+   */
+  onPositionChange?: (id: string, posXCm: number, posYCm: number, posZCm: number) => void;
 }
 
 const AXLE_COLOR: Record<AxleStatus, string> = {
@@ -64,6 +70,7 @@ export default function LoadingPlan3D({
   packages,
   vehicleType,
   securementStraps = 0,
+  onPositionChange,
 }: Props) {
   const trailer = useMemo(() => {
     const L = vehicle.lengthCm / 100;
@@ -345,6 +352,9 @@ export default function LoadingPlan3D({
                       });
                       return m;
                     });
+                    if (onPositionChange) {
+                      onPositionChange(pkg.id, snappedX, snappedY, r.suggestedZ);
+                    }
                   } else if (orig) {
                     setDragOverrides((prev) => {
                       const m = new Map(prev);

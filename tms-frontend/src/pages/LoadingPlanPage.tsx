@@ -71,6 +71,22 @@ function matchVehicleType(apiType: string | undefined): string {
   return hit?.type ?? VEHICLES.find((v) => t.includes(v.type.toLowerCase()))?.type ?? 'Jumbo';
 }
 
+type ShipmentPackageItemLoad = {
+  id: string;
+  lineIndex: number;
+  packageType: string;
+  quantity: number;
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
+  weightKg: number;
+  stackable: boolean;
+  posXCm: number | null;
+  posYCm: number | null;
+  posZCm: number | null;
+  rotationDeg: number;
+};
+
 type ShipmentLoad = {
   id: string;
   shipmentNumber: string;
@@ -85,6 +101,7 @@ type ShipmentLoad = {
   isStackable: boolean;
   packageCount: number;
   packageType: string;
+  packageItems?: ShipmentPackageItemLoad[];
 };
 
 type OptimizeResponse = {
@@ -186,6 +203,8 @@ function polygonPoints(pts: Pt[]): string {
 
 interface Package {
   id: string;
+  /** Real DB-uuid des shipment_package_items (falls vorhanden) — sonst undefined fuer synth. */
+  dbItemId?: string;
   shipmentId: string;
   shipmentNumber: string;
   packageIndex: number;
@@ -196,6 +215,10 @@ interface Package {
   isStackable: boolean;
   color: string;
   stopOrder: number;
+  /** Initial-Position aus DB falls vorhanden — sonst null = Auto-Placer. */
+  storedPosX?: number | null;
+  storedPosY?: number | null;
+  storedPosZ?: number | null;
 }
 
 interface PlacedPackage extends Package {
@@ -209,6 +232,32 @@ function expandPackagesFromOrder(order: ShipmentLoad[]): Package[] {
   order.forEach((s, idx) => {
     const stopOrder = s.deliveryOrder ?? idx + 1;
     const color = STOP_COLORS[(Math.max(1, stopOrder) - 1) % STOP_COLORS.length];
+
+    // Wenn DB-Items vorhanden: 1 Package pro DB-Item mit echter id.
+    if (s.packageItems && s.packageItems.length > 0) {
+      s.packageItems.forEach((it, i) => {
+        list.push({
+          id: it.id,
+          dbItemId: it.id,
+          shipmentId: s.id,
+          shipmentNumber: s.shipmentNumber,
+          packageIndex: it.lineIndex || i + 1,
+          lengthCm: Number(it.lengthCm) || 120,
+          widthCm: Number(it.widthCm) || 80,
+          heightCm: Number(it.heightCm) || 120,
+          weightKg: Number(it.weightKg) || 0,
+          isStackable: it.stackable !== false,
+          color,
+          stopOrder,
+          storedPosX: it.posXCm,
+          storedPosY: it.posYCm,
+          storedPosZ: it.posZCm,
+        });
+      });
+      return;
+    }
+
+    // Fallback: synthetische Pakete aus Aggregat-Daten.
     const n = Math.max(1, Math.round(Number(s.packageCount) || 1));
     const lc = Number(s.lengthCm);
     const wc = Number(s.widthCm);
@@ -315,11 +364,38 @@ function findPreferredStackSlot(
 
 function placePackages(packages: Package[], trailerL: number, trailerW: number, trailerH: number): PlacedPackage[] {
   const placed: PlacedPackage[] = [];
+
+  // Phase 1: Pakete mit gespeicherter Position direkt setzen.
+  // Diese wirken im Anschluss als "Hindernisse" fuer Auto-Placer.
+  const remaining: Package[] = [];
+  for (const pkg of packages) {
+    if (
+      pkg.storedPosX != null &&
+      pkg.storedPosY != null &&
+      pkg.storedPosZ != null
+    ) {
+      const pw = Math.min(pkg.widthCm, trailerW);
+      const pl = Math.min(pkg.lengthCm, trailerL);
+      const ph = Math.min(pkg.heightCm, trailerH);
+      placed.push({
+        ...pkg,
+        widthCm: pw,
+        lengthCm: pl,
+        heightCm: ph,
+        posX: pkg.storedPosX,
+        posY: pkg.storedPosY,
+        posZ: pkg.storedPosZ,
+      });
+    } else {
+      remaining.push(pkg);
+    }
+  }
+
   let currentY = 0;
   let currentX = 0;
   let rowMaxLength = 0;
 
-  for (const pkg of packages) {
+  for (const pkg of remaining) {
     const pw = Math.min(pkg.widthCm, trailerW);
     const pl = Math.min(pkg.lengthCm, trailerL);
     const ph = Math.min(pkg.heightCm, trailerH);
@@ -866,6 +942,46 @@ export default function LoadingPlanPage() {
     },
   });
 
+  const persistItemPositionMutation = useMutation({
+    mutationFn: async (vars: {
+      itemId: string;
+      posXCm: number;
+      posYCm: number;
+      posZCm: number;
+    }) => {
+      const { itemId, posXCm, posYCm, posZCm } = vars;
+      await api.patch(`/loading/package-item/${itemId}/position`, {
+        posXCm: Math.round(posXCm),
+        posYCm: Math.round(posYCm),
+        posZCm: Math.round(posZCm),
+      });
+    },
+    onError: (e) => {
+      // eslint-disable-next-line no-console
+      console.warn('persistItemPosition failed:', e);
+    },
+  });
+
+  const handlePackagePosition = (
+    id: string,
+    posXCm: number,
+    posYCm: number,
+    posZCm: number,
+  ) => {
+    // Heuristik: synth-IDs enthalten ":pkg:" — die koennen wir nicht persistieren.
+    if (!id || id.includes(':pkg:')) {
+      // eslint-disable-next-line no-console
+      console.info('synth package, kann nicht persistiert werden:', id);
+      return;
+    }
+    persistItemPositionMutation.mutate({
+      itemId: id,
+      posXCm,
+      posYCm,
+      posZCm,
+    });
+  };
+
   const clearDraftMutation = useMutation({
     mutationFn: async () => {
       const { data } = await api.delete(`/loading/tour/${tourId}/draft`);
@@ -1267,6 +1383,7 @@ export default function LoadingPlanPage() {
                         }}
                         vehicleType={selectedVehicle?.type ?? selectedVehicleType}
                         securementStraps={totalStraps}
+                        onPositionChange={handlePackagePosition}
                         packages={placedPackages.map((p) => ({
                           id: p.id,
                           lengthCm: p.lengthCm,

@@ -719,6 +719,55 @@ export class ShipmentsService {
 
   // ── Sendung soft-löschen ─────────────────────────────────
   /** Setzt stackable auf ALLEN package_items der Sendung. */
+  /**
+   * Bulk-Patch fuer mehrere Sendungen: transportType,
+   * relationId, stackable, tourId. Atomar via $transaction.
+   */
+  async bulkPatch(
+    ids: string[],
+    patch: {
+      transportType?: string;
+      relationId?: string | null;
+      stackable?: boolean;
+      tourId?: string | null;
+    },
+    _userId: string,
+  ) {
+    if (!ids || ids.length === 0) {
+      throw new BadRequestException('ids darf nicht leer sein');
+    }
+    const data: Record<string, unknown> = {};
+    if (patch.transportType !== undefined) data.transport_type = patch.transportType;
+    if (patch.relationId !== undefined) data.relation_id = patch.relationId;
+    if (patch.tourId !== undefined) {
+      data.tour_id = patch.tourId;
+      data.status = patch.tourId ? 'dispatched' : 'new';
+    }
+    if (Object.keys(data).length === 0 && patch.stackable === undefined) {
+      throw new BadRequestException('patch enthaelt kein erlaubtes Feld');
+    }
+    const result = await this.prisma.$transaction(async (tx) => {
+      let updatedShipments = 0;
+      if (Object.keys(data).length > 0) {
+        const r = await tx.shipments.updateMany({
+          where: { id: { in: ids }, deleted_at: null },
+          data,
+        });
+        updatedShipments = r.count;
+      }
+      let updatedItems = 0;
+      if (patch.stackable !== undefined) {
+        const r2 = await tx.shipment_package_items.updateMany({
+          where: { shipment_id: { in: ids } },
+          data: { stackable: patch.stackable },
+        });
+        updatedItems = r2.count;
+      }
+      return { updatedShipments, updatedItems };
+    });
+    return { success: true, ids, ...result };
+  }
+
   async setStackable(id: string, stackable: boolean) {
     const shipment = await this.prisma.shipments.findUnique({
       where: { id },

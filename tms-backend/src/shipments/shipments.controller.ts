@@ -16,6 +16,7 @@ import { ShipmentsService } from './shipments.service';
 import { CreateShipmentDto } from './dto/create-shipment.dto';
 import { UpdateShipmentDto } from './dto/update-shipment.dto';
 import { DispatchShipmentDto } from './dto/dispatch-shipment.dto';
+import { BulkPatchShipmentsDto } from './dto/bulk-patch-shipments.dto';
 import { ListShipmentsQueryDto } from './dto/list-shipments-query.dto';
 import { ShipmentPricePreviewDto } from './dto/price-preview.dto';
 
@@ -84,6 +85,11 @@ export class ShipmentsController {
     @Body() body: { stackable: boolean },
   ) {
     return this.shipmentsService.setStackable(id, !!body.stackable);
+  }
+
+  @Post('bulk-patch')
+  async bulkPatch(@Body() dto: BulkPatchShipmentsDto, @Request() req: any) {
+    return this.shipmentsService.bulkPatch(dto.ids, dto.patch, req.user.userId);
   }
 
   @Post(':id/dispatch')

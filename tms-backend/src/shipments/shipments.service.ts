@@ -771,6 +771,59 @@ export class ShipmentsService {
     return { success: true, ids, ...result };
   }
 
+  /**
+   * Berechnet das Aggregat einer Sendung aus ihren Items
+   * (Bounding-Box + Summen) und schreibt es in shipments.
+   * Aufruf nach jedem Item-CRUD damit shipments-Aggregate
+   * konsistent zur items-Tabelle bleibt.
+   */
+  async recalcAggregateForShipment(shipmentId: string) {
+    const items = await this.prisma.shipment_package_items.findMany({
+      where: { shipment_id: shipmentId },
+      select: {
+        length_cm: true,
+        width_cm: true,
+        height_cm: true,
+        weight_kg: true,
+        quantity: true,
+      },
+    });
+    if (items.length === 0) return null;
+    let maxL = 0;
+    let maxW = 0;
+    let maxH = 0;
+    let totalKg = 0;
+    let totalCount = 0;
+    let totalCm3 = 0;
+    let totalLdm = 0;
+    for (const it of items) {
+      const L = Number(it.length_cm) || 0;
+      const W = Number(it.width_cm) || 0;
+      const H = Number(it.height_cm) || 0;
+      const kg = Number(it.weight_kg) || 0;
+      const qty = Math.max(1, Number(it.quantity) || 1);
+      if (L > maxL) maxL = L;
+      if (W > maxW) maxW = W;
+      if (H > maxH) maxH = H;
+      totalKg += kg * qty;
+      totalCount += qty;
+      totalCm3 += L * W * H * qty;
+      totalLdm += (qty * L * W) / 24000; // 240 cm Innenbreite
+    }
+    return this.prisma.shipments.update({
+      where: { id: shipmentId },
+      data: {
+        length_cm: maxL || null,
+        width_cm: maxW || null,
+        height_cm: maxH || null,
+        weight_kg: totalKg,
+        package_count: totalCount,
+        volume_m3: Math.round(totalCm3 / 1000) / 1000, // 3 Nachkommastellen
+        ldm: Math.round(totalLdm * 100) / 100,
+      },
+    });
+  }
+
   /** Erstellt ein neues shipment_package_item. line_index auto-vergeben. */
   async createPackageItem(dto: {
     shipmentId: string;
@@ -795,7 +848,7 @@ export class ShipmentsService {
       select: { line_index: true },
     });
     const nextIndex = (last?.line_index ?? 0) + 1;
-    return this.prisma.shipment_package_items.create({
+    const created = await this.prisma.shipment_package_items.create({
       data: {
         shipment_id: dto.shipmentId,
         line_index: nextIndex,
@@ -808,6 +861,8 @@ export class ShipmentsService {
         stackable: dto.stackable ?? true,
       },
     });
+    await this.recalcAggregateForShipment(dto.shipmentId);
+    return created;
   }
 
   async updatePackageItem(
@@ -824,7 +879,7 @@ export class ShipmentsService {
   ) {
     const item = await this.prisma.shipment_package_items.findUnique({
       where: { id: itemId },
-      select: { id: true },
+      select: { id: true, shipment_id: true },
     });
     if (!item) {
       throw new NotFoundException(`Package-Item ${itemId} nicht gefunden`);
@@ -837,21 +892,24 @@ export class ShipmentsService {
     if (dto.heightCm !== undefined) data.height_cm = dto.heightCm;
     if (dto.weightKg !== undefined) data.weight_kg = dto.weightKg;
     if (dto.stackable !== undefined) data.stackable = dto.stackable;
-    return this.prisma.shipment_package_items.update({
+    const updated = await this.prisma.shipment_package_items.update({
       where: { id: itemId },
       data,
     });
+    await this.recalcAggregateForShipment(item.shipment_id);
+    return updated;
   }
 
   async deletePackageItem(itemId: string) {
     const item = await this.prisma.shipment_package_items.findUnique({
       where: { id: itemId },
-      select: { id: true },
+      select: { id: true, shipment_id: true },
     });
     if (!item) {
       throw new NotFoundException(`Package-Item ${itemId} nicht gefunden`);
     }
     await this.prisma.shipment_package_items.delete({ where: { id: itemId } });
+    await this.recalcAggregateForShipment(item.shipment_id);
     return { success: true };
   }
 

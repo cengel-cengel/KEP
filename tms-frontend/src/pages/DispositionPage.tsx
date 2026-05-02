@@ -772,7 +772,9 @@ export default function DispositionPage() {
                               className="flex items-center gap-2 text-sm font-medium text-gray-900"
                             >
                               <span>{cExpanded ? '▼' : '▶'}</span>
-                              <span>{countryLabel(cg.code)}</span>
+                              <span style={{ fontFamily: '"Noto Color Emoji", "Segoe UI Emoji", "Apple Color Emoji", system-ui, sans-serif' }}>
+                                {countryLabel(cg.code)}
+                              </span>
                             </button>
                           </div>
                           <span className="text-xs text-gray-600">
@@ -1128,20 +1130,18 @@ export default function DispositionPage() {
                                 <div className="font-semibold text-gray-900 truncate">
                                   {shipmentNumber}
                                 </div>
-                                {selectedTour && selectedTour.status !== 'released' && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setEditingShipmentId(s.id);
-                                    }}
-                                    title="Sendung bearbeiten"
-                                    className="text-gray-400 hover:text-[#1e40af] p-0.5 rounded hover:bg-gray-100"
-                                    aria-label="Sendung bearbeiten"
-                                  >
-                                    <Pencil size={14} />
-                                  </button>
-                                )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingShipmentId(s.id);
+                                  }}
+                                  title="Sendung bearbeiten"
+                                  className="text-gray-400 hover:text-[#1e40af] p-0.5 rounded hover:bg-gray-100"
+                                  aria-label="Sendung bearbeiten"
+                                >
+                                  <Pencil size={14} />
+                                </button>
                               </div>
                               <div
                                 className="text-sm text-gray-600 mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis"

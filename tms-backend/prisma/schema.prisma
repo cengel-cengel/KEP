@@ -294,6 +294,7 @@ model shipments {
   relation                                           relations?                 @relation("shipments_relation", fields: [relation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   tours                                              tours?                     @relation(fields: [tour_id], references: [id], onUpdate: NoAction)
   surplus_items                                      surplus_items[]
+  nv_tour_stops                                      nv_tour_stops[]            @relation("nv_tour_stops_shipment")
 
   @@index([customer_id], map: "idx_shipments_customer")
   @@index([customer_ref], map: "idx_shipments_customer_ref")
@@ -1324,6 +1325,7 @@ model nv_subunternehmer {
   nv_tour_gebiet              nv_tour_gebiete? @relation("nv_subunternehmer_tour_gebiet", fields: [nv_tour_gebiet_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
   business_partner            business_partners @relation("nv_subunternehmer_bp", fields: [business_partner_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
   default_for_stamm_touren    nv_stamm_touren[] @relation("nv_stamm_touren_default_sub")
+  nv_touren                   nv_touren[]      @relation("nv_touren_sub")
 
   @@index([nv_tour_gebiet_id])
   @@index([business_partner_id])
@@ -1344,6 +1346,7 @@ model nv_stamm_touren {
   nv_tour_gebiet              nv_tour_gebiete     @relation("nv_stamm_touren_tour_gebiet", fields: [nv_tour_gebiet_id], references: [id], onDelete: Cascade)
   default_subunternehmer      nv_subunternehmer?  @relation("nv_stamm_touren_default_sub", fields: [default_subunternehmer_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
   stamm_kunden                nv_stamm_kunden[]   @relation("nv_stamm_kunden_tour")
+  nv_touren                   nv_touren[]         @relation("nv_touren_stamm_tour")
 
   @@index([nv_tour_gebiet_id])
   @@index([default_subunternehmer_id])
@@ -1366,4 +1369,54 @@ model nv_stamm_kunden {
   @@unique([nv_stamm_tour_id, customer_id], map: "nv_stamm_kunden_unique")
   @@index([nv_stamm_tour_id, standard_position])
   @@index([customer_id])
+}
+
+model nv_touren {
+  id                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nv_stamm_tour_id         String?             @db.Uuid
+  datum                    DateTime            @db.Date
+  status                   String              @default("PLANNING") @db.VarChar(20)
+  subunternehmer_id        String?             @db.Uuid
+  start_zeit               DateTime?           @db.Time(6)
+  end_zeit                 DateTime?           @db.Time(6)
+  fahrzeug_typ             String?             @db.VarChar(20)
+  notizen                  String?
+  fahrer_kosten_eur        Decimal?            @db.Decimal(10, 2)
+  fahrzeug_kosten_eur      Decimal?            @db.Decimal(10, 2)
+  kraftstoff_kosten_eur    Decimal?            @db.Decimal(10, 2)
+  dispo_kosten_eur         Decimal?            @db.Decimal(10, 2)
+  sonstige_kosten_eur      Decimal?            @db.Decimal(10, 2)
+  total_kosten_eur         Decimal?            @default(dbgenerated()) @db.Decimal(10, 2)
+  created_at               DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime            @default(now()) @db.Timestamptz(6)
+  nv_stamm_tour            nv_stamm_touren?    @relation("nv_touren_stamm_tour", fields: [nv_stamm_tour_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  subunternehmer           nv_subunternehmer?  @relation("nv_touren_sub", fields: [subunternehmer_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  stops                    nv_tour_stops[]     @relation("nv_tour_stops_tour")
+
+  @@index([datum, status])
+  @@index([nv_stamm_tour_id, datum])
+  @@index([subunternehmer_id])
+}
+
+model nv_tour_stops {
+  id                     String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nv_tour_id             String      @db.Uuid
+  shipment_id            String      @db.Uuid
+  position               Int
+  servicezeit_min        Int?
+  routing_klasse         String?     @db.VarChar(30)
+  service_zuschlaege     Json?
+  status                 String      @default("PLANNED") @db.VarChar(20)
+  ankunft_zeit           DateTime?   @db.Timestamptz(6)
+  abfahrt_zeit           DateTime?   @db.Timestamptz(6)
+  notizen                String?
+  created_at             DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime    @default(now()) @db.Timestamptz(6)
+  nv_tour                nv_touren   @relation("nv_tour_stops_tour", fields: [nv_tour_id], references: [id], onDelete: Cascade)
+  shipment               shipments   @relation("nv_tour_stops_shipment", fields: [shipment_id], references: [id], onDelete: Cascade)
+
+  @@unique([nv_tour_id, shipment_id], map: "nv_tour_stops_unique_shipment")
+  @@unique([nv_tour_id, position], map: "nv_tour_stops_unique_position")
+  @@index([nv_tour_id, position])
+  @@index([shipment_id])
 }

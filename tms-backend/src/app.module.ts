@@ -40,6 +40,7 @@ import { NvGebieteModule } from './nv-gebiete/nv-gebiete.module';
 import { NvSubunternehmerModule } from './nv-subunternehmer/nv-subunternehmer.module';
 import { NvStammTourenModule } from './nv-stamm-touren/nv-stamm-touren.module';
 import { NvStammKundenModule } from './nv-stamm-kunden/nv-stamm-kunden.module';
+import { NvTourenModule } from './nv-touren/nv-touren.module';
 
 @Module({
   imports: [
@@ -110,6 +111,7 @@ import { NvStammKundenModule } from './nv-stamm-kunden/nv-stamm-kunden.module';
     NvSubunternehmerModule,
     NvStammTourenModule,
     NvStammKundenModule,
+    NvTourenModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -64,8 +64,14 @@ export interface Shipment {
 
   shipment_package_items?: Array<{
     id?: string;
+    line_index?: number;
     stackable?: boolean;
     package_type?: string;
+    quantity?: number;
+    length_cm?: number;
+    width_cm?: number;
+    height_cm?: number;
+    weight_kg?: number | string;
   }>;
 
   relation_id?: string | null;

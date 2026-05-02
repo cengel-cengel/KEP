@@ -30,6 +30,31 @@ interface AddressForm {
   countryCode: string;
 }
 
+interface PackageItemForm {
+  /** Echte DB-uuid, oder Marker "new-<n>" fuer noch nicht persistierte Items. */
+  id: string;
+  /** TRUE wenn neu hinzugefuegt (kein Server-id). */
+  isNew: boolean;
+  packageType: string;
+  quantity: string;
+  lengthCm: string;
+  widthCm: string;
+  heightCm: string;
+  weightKg: string;
+  stackable: boolean;
+}
+
+const PACKAGE_TYPE_OPTIONS = [
+  { value: 'pallet_euro',     label: 'Euro-Pal' },
+  { value: 'pallet_one_way',  label: 'Einweg-Pal' },
+  { value: 'box',             label: 'Karton' },
+  { value: 'drum',            label: 'Fass' },
+  { value: 'bulk',            label: 'Bulk' },
+  { value: 'coil',            label: 'Coil' },
+  { value: 'container',       label: 'Container' },
+  { value: 'other',           label: 'Sonstige' },
+] as const;
+
 interface FormState {
   // Sendungsdaten
   transportType: string;
@@ -49,6 +74,10 @@ interface FormState {
   // Adressen
   loading: AddressForm;
   delivery: AddressForm;
+  // Pro-Item Maße (multi)
+  items: PackageItemForm[];
+  /** Bei Save zu loeschende DB-Items (echte ids). */
+  deletedItemIds: string[];
 }
 
 function isoDate(s?: string | null): string {
@@ -95,6 +124,43 @@ function buildInitial(s: Shipment): FormState {
     volumeM3: String((r.volume_m3 ?? r.volumeM3 ?? '') as string),
     loading: pickAddr(r, 'addresses_shipments_loading_address_idToaddresses', 'loadingAddress'),
     delivery: pickAddr(r, 'addresses_shipments_delivery_address_idToaddresses', 'deliveryAddress'),
+    items: ((s.shipment_package_items ?? []) as Array<{
+      id?: string;
+      package_type?: string;
+      quantity?: number;
+      length_cm?: number;
+      width_cm?: number;
+      height_cm?: number;
+      weight_kg?: number | string;
+      stackable?: boolean;
+    }>).map((it) => ({
+      id: it.id ?? `existing-${Math.random().toString(36).slice(2)}`,
+      isNew: false,
+      packageType: it.package_type ?? 'pallet_euro',
+      quantity: String(it.quantity ?? 1),
+      lengthCm: String(it.length_cm ?? ''),
+      widthCm: String(it.width_cm ?? ''),
+      heightCm: String(it.height_cm ?? ''),
+      weightKg: String(it.weight_kg ?? ''),
+      stackable: it.stackable !== false,
+    })),
+    deletedItemIds: [],
+  };
+}
+
+let newItemCounter = 0;
+function makeNewItem(): PackageItemForm {
+  newItemCounter++;
+  return {
+    id: `new-${newItemCounter}`,
+    isNew: true,
+    packageType: 'pallet_euro',
+    quantity: '1',
+    lengthCm: '120',
+    widthCm: '80',
+    heightCm: '100',
+    weightKg: '',
+    stackable: true,
   };
 }
 
@@ -102,6 +168,13 @@ function num(s: string): number | undefined {
   if (s.trim() === '') return undefined;
   const n = Number(s.replace(',', '.'));
   return Number.isFinite(n) ? n : undefined;
+}
+function numInt(s: string): number | undefined {
+  const n = num(s);
+  return n === undefined ? undefined : Math.round(n);
+}
+function numFloat(s: string): number | undefined {
+  return num(s);
 }
 
 /** Liefert nur die Felder die sich geaendert haben (Diff). */
@@ -167,6 +240,44 @@ export default function ShipmentEditModal({ shipment, open, onOpenChange }: Prop
       if (form.delivery.id && Object.keys(delivDiff).length > 0) {
         tasks.push(api.patch(`/addresses/${form.delivery.id}`, delivDiff));
       }
+      // Package-Items: DELETE / POST / PATCH
+      for (const id of form.deletedItemIds) {
+        tasks.push(api.delete(`/shipment-package-items/${id}`));
+      }
+      const initialItemsById = new Map(
+        initial.items.map((i) => [i.id, i] as const),
+      );
+      for (const it of form.items) {
+        if (it.isNew) {
+          tasks.push(
+            api.post(`/shipment-package-items`, {
+              shipmentId: shipment.id,
+              packageType: it.packageType,
+              quantity: numInt(it.quantity) ?? 1,
+              lengthCm: numInt(it.lengthCm),
+              widthCm: numInt(it.widthCm),
+              heightCm: numInt(it.heightCm),
+              weightKg: numFloat(it.weightKg) ?? 0,
+              stackable: it.stackable,
+            }),
+          );
+        } else {
+          const init = initialItemsById.get(it.id);
+          if (!init) continue;
+          const itemDiff: Record<string, unknown> = {};
+          if (it.packageType !== init.packageType) itemDiff.packageType = it.packageType;
+          if (it.quantity !== init.quantity) itemDiff.quantity = numInt(it.quantity);
+          if (it.lengthCm !== init.lengthCm) itemDiff.lengthCm = numInt(it.lengthCm);
+          if (it.widthCm !== init.widthCm) itemDiff.widthCm = numInt(it.widthCm);
+          if (it.heightCm !== init.heightCm) itemDiff.heightCm = numInt(it.heightCm);
+          if (it.weightKg !== init.weightKg) itemDiff.weightKg = numFloat(it.weightKg);
+          if (it.stackable !== init.stackable) itemDiff.stackable = it.stackable;
+          Object.keys(itemDiff).forEach((k) => itemDiff[k] === undefined && delete itemDiff[k]);
+          if (Object.keys(itemDiff).length > 0) {
+            tasks.push(api.patch(`/shipment-package-items/${it.id}`, itemDiff));
+          }
+        }
+      }
       if (tasks.length === 0) return { noop: true };
       await Promise.all(tasks);
       return { noop: false };
@@ -199,12 +310,48 @@ export default function ShipmentEditModal({ shipment, open, onOpenChange }: Prop
   function setAddr(which: 'loading' | 'delivery', patch: Partial<AddressForm>) {
     setForm((prev) => ({ ...prev, [which]: { ...prev[which], ...patch } }));
   }
+  function setItem(id: string, patch: Partial<PackageItemForm>) {
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.map((it) => (it.id === id ? { ...it, ...patch } : it)),
+    }));
+  }
+  function addItem() {
+    setForm((prev) => ({ ...prev, items: [...prev.items, makeNewItem()] }));
+  }
+  function removeItem(id: string) {
+    setForm((prev) => {
+      const target = prev.items.find((i) => i.id === id);
+      const items = prev.items.filter((i) => i.id !== id);
+      const deletedItemIds =
+        target && !target.isNew ? [...prev.deletedItemIds, target.id] : prev.deletedItemIds;
+      return { ...prev, items, deletedItemIds };
+    });
+  }
 
   const hasShipDiff = Object.keys(diffShipment(form, initial)).length > 0;
   const hasAddrDiff =
     Object.keys(diffAddress(form.loading, initial.loading)).length > 0 ||
     Object.keys(diffAddress(form.delivery, initial.delivery)).length > 0;
-  const dirty = hasShipDiff || hasAddrDiff;
+  const hasItemDiff = (() => {
+    if (form.deletedItemIds.length > 0) return true;
+    if (form.items.some((i) => i.isNew)) return true;
+    const initById = new Map(initial.items.map((i) => [i.id, i] as const));
+    return form.items.some((it) => {
+      const init = initById.get(it.id);
+      if (!init) return true;
+      return (
+        it.packageType !== init.packageType ||
+        it.quantity !== init.quantity ||
+        it.lengthCm !== init.lengthCm ||
+        it.widthCm !== init.widthCm ||
+        it.heightCm !== init.heightCm ||
+        it.weightKg !== init.weightKg ||
+        it.stackable !== init.stackable
+      );
+    });
+  })();
+  const dirty = hasShipDiff || hasAddrDiff || hasItemDiff;
 
   function renderAddressSection(label: string, which: 'loading' | 'delivery') {
     const a = form[which];
@@ -287,6 +434,92 @@ export default function ShipmentEditModal({ shipment, open, onOpenChange }: Prop
                   ))}
                 </select>
               </label>
+            </div>
+
+            <div className="rounded border border-gray-200 bg-gray-50 p-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase text-gray-500">
+                  Packstücke ({form.items.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={addItem}
+                  className="text-xs rounded border border-gray-300 bg-white px-2 py-1 hover:bg-gray-50"
+                >
+                  + Packstück
+                </button>
+              </div>
+              {form.items.length === 0 && (
+                <div className="text-[11px] text-gray-500 italic">Keine Packstücke. Klick + Packstück.</div>
+              )}
+              {form.items.map((it) => (
+                <div
+                  key={it.id}
+                  className="grid grid-cols-2 sm:grid-cols-7 gap-1.5 items-end bg-white rounded border border-gray-200 p-2"
+                >
+                  <label className="flex flex-col gap-0.5 col-span-2 sm:col-span-2">
+                    <span className="text-[10px] uppercase text-gray-500">Typ</span>
+                    <select
+                      value={it.packageType}
+                      onChange={(e) => setItem(it.id, { packageType: e.target.value })}
+                      className="rounded border border-gray-300 px-1.5 py-1 text-xs"
+                    >
+                      {PACKAGE_TYPE_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-0.5">
+                    <span className="text-[10px] uppercase text-gray-500">Anz.</span>
+                    <input type="number" min="1" value={it.quantity}
+                      onChange={(e) => setItem(it.id, { quantity: e.target.value })}
+                      className="rounded border border-gray-300 px-1.5 py-1 text-xs" />
+                  </label>
+                  <label className="flex flex-col gap-0.5">
+                    <span className="text-[10px] uppercase text-gray-500">L cm</span>
+                    <input type="number" min="1" value={it.lengthCm}
+                      onChange={(e) => setItem(it.id, { lengthCm: e.target.value })}
+                      className="rounded border border-gray-300 px-1.5 py-1 text-xs" />
+                  </label>
+                  <label className="flex flex-col gap-0.5">
+                    <span className="text-[10px] uppercase text-gray-500">B cm</span>
+                    <input type="number" min="1" value={it.widthCm}
+                      onChange={(e) => setItem(it.id, { widthCm: e.target.value })}
+                      className="rounded border border-gray-300 px-1.5 py-1 text-xs" />
+                  </label>
+                  <label className="flex flex-col gap-0.5">
+                    <span className="text-[10px] uppercase text-gray-500">H cm</span>
+                    <input type="number" min="1" value={it.heightCm}
+                      onChange={(e) => setItem(it.id, { heightCm: e.target.value })}
+                      className="rounded border border-gray-300 px-1.5 py-1 text-xs" />
+                  </label>
+                  <label className="flex flex-col gap-0.5">
+                    <span className="text-[10px] uppercase text-gray-500">kg</span>
+                    <input type="number" min="0" step="0.01" value={it.weightKg}
+                      onChange={(e) => setItem(it.id, { weightKg: e.target.value })}
+                      className="rounded border border-gray-300 px-1.5 py-1 text-xs" />
+                  </label>
+                  <div className="flex items-center justify-between sm:justify-start gap-2 col-span-2 sm:col-span-1">
+                    <label className="flex items-center gap-1 text-[11px]">
+                      <input
+                        type="checkbox"
+                        checked={it.stackable}
+                        onChange={(e) => setItem(it.id, { stackable: e.target.checked })}
+                      />
+                      Stapelbar
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => removeItem(it.id)}
+                      className="text-red-500 hover:text-red-700 text-sm"
+                      title="Packstück entfernen"
+                      aria-label="Packstück entfernen"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
 
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">

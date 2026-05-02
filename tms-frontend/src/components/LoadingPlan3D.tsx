@@ -529,16 +529,19 @@ export default function LoadingPlan3D({
               castShadow
               receiveShadow
               onPointerEnter={(e) => {
+                if (dragActive) return;
                 e.stopPropagation();
                 setHoveredId(p.id);
-                if (!dragActive) document.body.style.cursor = 'grab';
+                document.body.style.cursor = 'grab';
               }}
               onPointerLeave={(e) => {
+                if (dragActive) return;
                 e.stopPropagation();
                 setHoveredId((cur) => (cur === p.id ? null : cur));
-                if (!dragActive) document.body.style.cursor = '';
+                document.body.style.cursor = '';
               }}
               onPointerDown={(e) => {
+                if (dragActive) return;
                 e.stopPropagation();
                 setOrbit(false); // synchron, vor React-Render
                 offsetRef.current = {

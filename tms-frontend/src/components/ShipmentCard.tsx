@@ -76,6 +76,8 @@ export interface ShipmentCardProps {
   /** Bulk-Aktionen-Awareness: wenn shipment.id in selectedIds + size>1,
    *  wirken Stackable/Verkehrsart-Toggle auf alle markierten. */
   selectedIds?: Set<string>;
+  /** Klick auf Card-Body (außerhalb von interaktiven Elementen) */
+  onCardClick?: () => void;
 }
 
 export default function ShipmentCard({
@@ -83,6 +85,7 @@ export default function ShipmentCard({
   draggable = false,
   onLockBadgeClick,
   selectedIds,
+  onCardClick,
 }: ShipmentCardProps) {
   const useBulk = !!selectedIds && selectedIds.has(shipment.id) && selectedIds.size > 1;
   const bulkIds = useBulk ? Array.from(selectedIds!) : null;
@@ -193,8 +196,9 @@ export default function ShipmentCard({
     <div
       className={`group rounded-lg border bg-white p-3 shadow-sm transition-shadow hover:shadow ${
         hasLock ? 'border-red-500 ring-1 ring-red-200' : 'border-gray-200'
-      }`}
+      } ${onCardClick ? 'cursor-pointer' : ''}`}
       draggable={draggable}
+      onClick={onCardClick}
       onDragStart={draggable ? handleDragStart : undefined}
       role={draggable ? 'button' : undefined}
     >

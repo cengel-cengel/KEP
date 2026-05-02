@@ -5,6 +5,7 @@ import { Pencil } from 'lucide-react';
 import Navigation from '../components/Navigation';
 import ShipmentCard from '../components/ShipmentCard';
 import ShipmentEditModal from '../components/ShipmentEditModal';
+import ShipmentDetailModal from '../components/ShipmentDetailModal';
 import TourCard from '../components/TourCard';
 import DispositionMap from '../components/DispositionMap';
 import type { SubcontractorOption } from '../components/TourCard';
@@ -275,6 +276,9 @@ export default function DispositionPage() {
   const [tourDetailDragOver, setTourDetailDragOver] = useState(false);
   const [undispatchedDragOver, setUndispatchedDragOver] = useState(false);
   const [editingShipmentId, setEditingShipmentId] = useState<string | null>(null);
+  const [detailViewShipmentId, setDetailViewShipmentId] = useState<string | null>(null);
+  /** Quelle der Pfeil-Navigation: aktuelle gefilterte Liste. */
+  const [detailNavSource, setDetailNavSource] = useState<'undispatched' | 'tour'>('undispatched');
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -850,7 +854,16 @@ export default function DispositionPage() {
                                           className="flex-1 cursor-pointer"
                                           onClick={() => handleListShipmentClick(s.id)}
                                         >
-                                          <ShipmentCard shipment={s} draggable selectedIds={selectedIds} />
+                                          <ShipmentCard
+                                            shipment={s}
+                                            draggable
+                                            selectedIds={selectedIds}
+                                            onCardClick={() => {
+                                              setSelectedShipmentId(s.id);
+                                              setDetailNavSource('undispatched');
+                                              setDetailViewShipmentId(s.id);
+                                            }}
+                                          />
                                         </div>
                                       </div>
                                     );
@@ -1089,7 +1102,11 @@ export default function DispositionPage() {
                       return (
                         <div
                           key={s.id}
-                          onClick={() => setSelectedShipmentId(s.id)}
+                          onClick={() => {
+                            setSelectedShipmentId(s.id);
+                            setDetailNavSource('tour');
+                            setDetailViewShipmentId(s.id);
+                          }}
                         draggable
                           onDragOver={(e) => e.preventDefault()}
                         onDragStart={(e) => {
@@ -1305,6 +1322,46 @@ export default function DispositionPage() {
             onOpenChange={(o) => {
               if (!o) setEditingShipmentId(null);
             }}
+          />
+        );
+      })()}
+      {(() => {
+        // Detail-Modal: Quelle der Pfeil-Navigation = aktuell-gefilterte Liste,
+        // entweder undispatched (gruppiert, group-flat) oder Tour-Detail.
+        const groupFlat: Shipment[] =
+          detailNavSource === 'tour'
+            ? (sortedTourShipments as Shipment[])
+            : groupShipments(undispatched).flatMap((cg) =>
+                cg.relations.flatMap((rg) =>
+                  rg.kind === 'relation' ? rg.items : rg.subAxes.flatMap((a) => a.items),
+                ),
+              );
+        const handleNavigate = (dir: 'prev' | 'next') => {
+          const idx = groupFlat.findIndex((s) => s.id === detailViewShipmentId);
+          if (idx < 0 || groupFlat.length === 0) return;
+          const newIdx =
+            dir === 'next'
+              ? Math.min(groupFlat.length - 1, idx + 1)
+              : Math.max(0, idx - 1);
+          const next = groupFlat[newIdx];
+          if (next && next.id !== detailViewShipmentId) {
+            setDetailViewShipmentId(next.id);
+            setSelectedShipmentId(next.id);
+          }
+        };
+        return (
+          <ShipmentDetailModal
+            shipmentId={detailViewShipmentId}
+            shipments={groupFlat}
+            isOpen={!!detailViewShipmentId}
+            onClose={() => setDetailViewShipmentId(null)}
+            onEdit={() => {
+              if (detailViewShipmentId) {
+                setEditingShipmentId(detailViewShipmentId);
+                setDetailViewShipmentId(null);
+              }
+            }}
+            onNavigate={handleNavigate}
           />
         );
       })()}

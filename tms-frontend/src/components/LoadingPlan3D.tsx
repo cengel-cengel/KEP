@@ -88,6 +88,14 @@ export default function LoadingPlan3D({
   const offsetRef = useRef<{ x: number; z: number }>({ x: 0, z: 0 });
   const originalPosRef = useRef<{ posX: number; posY: number; posZ: number } | null>(null);
 
+  // Stack-Alignment-Panel-State (nur bei Overhang sichtbar)
+  type AlignmentMode = 'centered' | 'front' | 'back' | 'left' | 'right';
+  const [alignmentTarget, setAlignmentTarget] = useState<{
+    itemId: string;
+    belowId: string;
+    mode: AlignmentMode;
+  } | null>(null);
+
   function effectivePos(p: Plan3DPackage): { posX: number; posY: number; posZ: number } {
     const ov = dragOverrides.get(p.id);
     return {
@@ -106,10 +114,10 @@ export default function LoadingPlan3D({
     p: Plan3DPackage,
     posX: number,
     posY: number,
-  ): { posX: number; posY: number; viaStack: boolean } {
+  ): { posX: number; posY: number; viaStack: boolean; belowId?: string } {
     const candArea = Math.max(1, p.widthCm * p.lengthCm);
     let bestPct = 0;
-    let best: { posX: number; posY: number } | null = null;
+    let best: { posX: number; posY: number; belowId: string } | null = null;
     const ax1 = posX;
     const ax2 = posX + p.widthCm;
     const ay1 = posY;
@@ -126,15 +134,71 @@ export default function LoadingPlan3D({
       const pct = (ix * iy) / candArea;
       if (pct >= 0.5 && pct > bestPct) {
         bestPct = pct;
-        best = { posX: oc.posX, posY: oc.posY };
+        best = { posX: oc.posX, posY: oc.posY, belowId: o.id };
       }
     }
-    if (best) return { ...best, viaStack: true };
+    if (best) return { posX: best.posX, posY: best.posY, viaStack: true, belowId: best.belowId };
     return {
       posX: Math.round(posX / SNAP_CM) * SNAP_CM,
       posY: Math.round(posY / SNAP_CM) * SNAP_CM,
       viaStack: false,
     };
+  }
+
+  function isOverhang(below: Plan3DPackage, on: Plan3DPackage): boolean {
+    return on.widthCm > below.widthCm + TOL || on.lengthCm > below.lengthCm + TOL;
+  }
+
+  function computeAlignment(
+    below: Plan3DPackage,
+    on: Plan3DPackage,
+    mode: AlignmentMode,
+  ): { posX: number; posY: number } {
+    const bp = effectivePos(below);
+    let posX: number;
+    let posY: number;
+    // X-Achse (Breite)
+    switch (mode) {
+      case 'left':
+        posX = bp.posX;
+        break;
+      case 'right':
+        posX = bp.posX + below.widthCm - on.widthCm;
+        break;
+      case 'centered':
+      case 'front':
+      case 'back':
+      default:
+        posX = bp.posX + (below.widthCm - on.widthCm) / 2;
+    }
+    // Y-Achse (Länge)
+    switch (mode) {
+      case 'front':
+        posY = bp.posY;
+        break;
+      case 'back':
+        posY = bp.posY + below.lengthCm - on.lengthCm;
+        break;
+      case 'centered':
+      case 'left':
+      case 'right':
+      default:
+        posY = bp.posY + (below.lengthCm - on.lengthCm) / 2;
+    }
+    return { posX, posY };
+  }
+
+  function withinTrailer(
+    p: Plan3DPackage,
+    posX: number,
+    posY: number,
+  ): boolean {
+    return (
+      posX >= -TOL &&
+      posY >= -TOL &&
+      posX + p.widthCm <= trailer.W * 100 + TOL &&
+      posY + p.lengthCm <= trailer.L * 100 + TOL
+    );
   }
 
   /**
@@ -300,8 +364,87 @@ export default function LoadingPlan3D({
     return [trailer.L * 0.6, trailer.H * 1.5 + 2, d];
   }, [trailer]);
 
+  function applyAlignment(mode: AlignmentMode) {
+    if (!alignmentTarget) return;
+    const on = packages.find((x) => x.id === alignmentTarget.itemId);
+    const below = packages.find((x) => x.id === alignmentTarget.belowId);
+    if (!on || !below) return;
+    const { posX, posY } = computeAlignment(below, on, mode);
+    if (!withinTrailer(on, posX, posY)) return;
+    const r = resolveDrop(on, posX, posY);
+    if (!r.valid) return;
+    setAlignmentTarget({ ...alignmentTarget, mode });
+    setDragOverrides((prev) => {
+      const m = new Map(prev);
+      m.set(on.id, { posX, posY, posZ: r.suggestedZ });
+      return applyGravity(m);
+    });
+    if (onPositionChange) {
+      onPositionChange(on.id, posX, posY, r.suggestedZ);
+    }
+  }
+
+  function alignmentDisabled(mode: AlignmentMode): boolean {
+    if (!alignmentTarget) return true;
+    const on = packages.find((x) => x.id === alignmentTarget.itemId);
+    const below = packages.find((x) => x.id === alignmentTarget.belowId);
+    if (!on || !below) return true;
+    const { posX, posY } = computeAlignment(below, on, mode);
+    return !withinTrailer(on, posX, posY);
+  }
+
+  const ALIGN_BUTTONS: Array<{ mode: AlignmentMode; label: string }> = [
+    { mode: 'centered', label: 'Zentriert' },
+    { mode: 'front', label: 'Vorne' },
+    { mode: 'back', label: 'Hinten' },
+    { mode: 'left', label: 'Links' },
+    { mode: 'right', label: 'Rechts' },
+  ];
+
   return (
-    <div className="w-full h-[480px] rounded-lg border border-gray-200 bg-gradient-to-b from-slate-50 to-slate-100 overflow-hidden">
+    <div className="relative w-full h-[480px] rounded-lg border border-gray-200 bg-gradient-to-b from-slate-50 to-slate-100 overflow-hidden">
+      {alignmentTarget && (
+        <div className="absolute top-2 right-2 z-20 rounded-lg border border-gray-300 bg-white/95 shadow-lg p-2 text-xs">
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <span className="font-medium text-gray-800">Stack-Ausrichtung</span>
+            <button
+              type="button"
+              onClick={() => setAlignmentTarget(null)}
+              className="text-gray-400 hover:text-gray-700"
+              aria-label="Schließen"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {ALIGN_BUTTONS.map((b) => {
+              const active = alignmentTarget.mode === b.mode;
+              const disabled = alignmentDisabled(b.mode);
+              return (
+                <button
+                  key={b.mode}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => applyAlignment(b.mode)}
+                  title={
+                    disabled ? 'Würde Trailer-Grenze überschreiten' : undefined
+                  }
+                  className={
+                    'rounded border px-2 py-1 text-[11px] ' +
+                    (active
+                      ? 'bg-[#1e40af] text-white border-[#1e40af]'
+                      : disabled
+                      ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50')
+                  }
+                >
+                  {b.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <Canvas camera={{ position: cameraPos, fov: 45 }} shadows>
         <ambientLight intensity={0.5} />
         <directionalLight position={[8, 10, 5]} intensity={0.9} castShadow />
@@ -424,7 +567,27 @@ export default function LoadingPlan3D({
                     return m;
                   });
                 } else {
-                  const snap = snapXY(pkg, cur.posX, cur.posY);
+                  let snap = snapXY(pkg, cur.posX, cur.posY);
+                  // Overhang-Detection: Wenn auf groesserer Stack-Basis,
+                  // Standard centered-Alignment + Panel triggern.
+                  if (snap.viaStack && snap.belowId) {
+                    const belowId: string = snap.belowId;
+                    const below = packages.find((x) => x.id === belowId);
+                    if (below && isOverhang(below, pkg)) {
+                      const aligned = computeAlignment(below, pkg, 'centered');
+                      snap = {
+                        posX: aligned.posX,
+                        posY: aligned.posY,
+                        viaStack: true,
+                        belowId,
+                      };
+                      setAlignmentTarget({
+                        itemId: pkg.id,
+                        belowId,
+                        mode: 'centered',
+                      });
+                    }
+                  }
                   const r = resolveDrop(pkg, snap.posX, snap.posY);
                   if (r.valid) {
                     setDragOverrides((prev) => {

@@ -233,26 +233,37 @@ function expandPackagesFromOrder(order: ShipmentLoad[]): Package[] {
     const stopOrder = s.deliveryOrder ?? idx + 1;
     const color = STOP_COLORS[(Math.max(1, stopOrder) - 1) % STOP_COLORS.length];
 
-    // Wenn DB-Items vorhanden: 1 Package pro DB-Item mit echter id.
+    // Wenn DB-Items vorhanden: pro Quantity 1 Package (mit DB-uuid).
     if (s.packageItems && s.packageItems.length > 0) {
       s.packageItems.forEach((it, i) => {
-        list.push({
-          id: it.id,
-          dbItemId: it.id,
-          shipmentId: s.id,
-          shipmentNumber: s.shipmentNumber,
-          packageIndex: it.lineIndex || i + 1,
-          lengthCm: Number(it.lengthCm) || 120,
-          widthCm: Number(it.widthCm) || 80,
-          heightCm: Number(it.heightCm) || 120,
-          weightKg: Number(it.weightKg) || 0,
-          isStackable: it.stackable !== false,
-          color,
-          stopOrder,
-          storedPosX: it.posXCm,
-          storedPosY: it.posYCm,
-          storedPosZ: it.posZCm,
-        });
+        const qty = Math.max(1, Math.round(Number(it.quantity) || 1));
+        const lengthCm = Number(it.lengthCm) || 120;
+        const widthCm = Number(it.widthCm) || 80;
+        const heightCm = Number(it.heightCm) || 120;
+        const weightPerUnit = qty > 0 ? Number(it.weightKg) / qty : Number(it.weightKg);
+        for (let q = 1; q <= qty; q++) {
+          list.push({
+            id: qty === 1 ? it.id : `${it.id}:q${q}`,
+            // Nur das ERSTE der Quantity-Klone bekommt die echte DB-id
+            // (PATCH /shipment-package-items/:id fuer Position).
+            // Die anderen sind logische Duplikate ohne separater DB-Pos.
+            dbItemId: q === 1 ? it.id : undefined,
+            shipmentId: s.id,
+            shipmentNumber: s.shipmentNumber,
+            packageIndex: it.lineIndex || i + 1,
+            lengthCm,
+            widthCm,
+            heightCm,
+            weightKg: weightPerUnit,
+            isStackable: it.stackable !== false,
+            color,
+            stopOrder,
+            // storedPos nur fuer ersten Quantity-Klon
+            storedPosX: q === 1 ? it.posXCm : null,
+            storedPosY: q === 1 ? it.posYCm : null,
+            storedPosZ: q === 1 ? it.posZCm : null,
+          });
+        }
       });
       return;
     }
@@ -769,7 +780,9 @@ export default function LoadingPlanPage() {
     startXPosCm: number;
     startYPosCm: number;
   } | null>(null);
-  const [viewMode, setViewMode] = useState<'2d' | '3d' | 'real3d'>('3d');
+  // viewMode auf 'real3d' fixiert; '2d'/'3d' SVG-Code bleibt aktuell
+  // dormant fuer Notfall-Fallback, ist aber nicht mehr UI-zugaenglich.
+  const [viewMode] = useState<'2d' | '3d' | 'real3d'>('real3d');
   const [rotation, setRotation] = useState({ x: 30, y: -45 });
   const [zoom, setZoom] = useState(1.0);
   const [isDragging, setIsDragging] = useState(false);
@@ -1362,42 +1375,19 @@ export default function LoadingPlanPage() {
             <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-4">
               <div className="rounded-lg border border-gray-200 bg-white p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="font-medium text-gray-900">
-                    {viewMode === '2d'
-                      ? '2D Laderaum (Draufsicht)'
-                      : viewMode === '3d'
-                      ? '3D Laderaum (SVG)'
-                      : '3D Laderaum (Real3D · Beta)'}
-                  </div>
-                  <div className="inline-flex rounded border border-gray-300 overflow-hidden text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('2d')}
-                      className={`px-2 py-1 ${viewMode === '2d' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700'}`}
-                    >
-                      2D
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('3d')}
-                      className={`px-2 py-1 ${viewMode === '3d' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700'}`}
-                    >
-                      3D
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('real3d')}
-                      className={`px-2 py-1 border-l border-gray-300 ${viewMode === 'real3d' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700'}`}
-                      title="Echte 3D-Vorschau (Three.js, in Entwicklung)"
-                    >
-                      3D Beta
-                    </button>
-                  </div>
+                  <div className="font-medium text-gray-900">3D Laderaum</div>
                 </div>
 
                 {viewMode === 'real3d' && (() => {
+                  // P3: Spanngurte nur fuer Items mit positionierter Lage.
+                  const positionedPackages = placedPackages.filter(
+                    (p) =>
+                      Number.isFinite(p.posX) &&
+                      Number.isFinite(p.posY) &&
+                      Number.isFinite(p.posZ),
+                  );
                   const securementResult = computeSecurement(
-                    placedPackages.map((p) => ({
+                    positionedPackages.map((p) => ({
                       id: p.id,
                       shipmentId: p.shipmentId,
                       weightKg: p.weightKg,
@@ -1465,7 +1455,7 @@ export default function LoadingPlanPage() {
                         totalCount={placedPackages.length}
                       />
                       <SecurementPanel
-                        packages={placedPackages.map((p) => ({
+                        packages={positionedPackages.map((p) => ({
                           id: p.id,
                           shipmentId: p.shipmentId,
                           weightKg: p.weightKg,

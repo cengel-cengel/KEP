@@ -85,6 +85,7 @@ export default function LoadingPlan3D({
     Map<string, { posX: number; posY: number; posZ: number }>
   >(() => new Map());
   const [dragValid, setDragValid] = useState(true);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const offsetRef = useRef<{ x: number; z: number }>({ x: 0, z: 0 });
   const originalPosRef = useRef<{ posX: number; posY: number; posZ: number } | null>(null);
 
@@ -489,6 +490,7 @@ export default function LoadingPlan3D({
           const cy = eff.posZ / 100 + ly / 2;
           const cz = eff.posX / 100 - trailer.W / 2 + lz / 2;
           const isDragging = dragActive === p.id;
+          const isHover = hoveredId === p.id && !dragActive;
           const dragInvalid = isDragging && !dragValid;
           return (
             <mesh
@@ -496,6 +498,16 @@ export default function LoadingPlan3D({
               position={[cx, cy, cz]}
               castShadow
               receiveShadow
+              onPointerEnter={(e) => {
+                e.stopPropagation();
+                setHoveredId(p.id);
+                if (!dragActive) document.body.style.cursor = 'grab';
+              }}
+              onPointerLeave={(e) => {
+                e.stopPropagation();
+                setHoveredId((cur) => (cur === p.id ? null : cur));
+                if (!dragActive) document.body.style.cursor = '';
+              }}
               onPointerDown={(e) => {
                 e.stopPropagation();
                 offsetRef.current = {
@@ -509,18 +521,33 @@ export default function LoadingPlan3D({
                 };
                 setDragValid(true);
                 setDragActive(p.id);
+                document.body.style.cursor = 'grabbing';
               }}
             >
               <boxGeometry args={[lx, ly, lz]} />
               <meshStandardMaterial
                 color={p.color ?? '#9ca3af'}
                 emissive={
-                  dragInvalid ? '#dc2626' : isDragging ? '#fde047' : '#000000'
+                  dragInvalid
+                    ? '#dc2626'
+                    : isDragging
+                    ? '#fde047'
+                    : isHover
+                    ? '#d1d5db'
+                    : '#000000'
                 }
-                emissiveIntensity={isDragging ? 0.5 : 0}
+                emissiveIntensity={isDragging ? 0.5 : isHover ? 0.25 : 0}
               />
               <Edges
-                color={dragInvalid ? '#dc2626' : isDragging ? '#facc15' : '#1f2937'}
+                color={
+                  dragInvalid
+                    ? '#dc2626'
+                    : isDragging
+                    ? '#facc15'
+                    : isHover
+                    ? '#94a3b8'
+                    : '#1f2937'
+                }
                 threshold={1}
               />
             </mesh>
@@ -614,6 +641,7 @@ export default function LoadingPlan3D({
               originalPosRef.current = null;
               setDragActive(null);
               setDragValid(true);
+              document.body.style.cursor = '';
             }}
             onPointerLeave={() => {
               // Raus aus Plane = Cancel = Revert
@@ -629,6 +657,7 @@ export default function LoadingPlan3D({
               originalPosRef.current = null;
               setDragActive(null);
               setDragValid(true);
+              document.body.style.cursor = '';
             }}
           >
             <planeGeometry args={[trailer.L * 4, trailer.W * 4]} />

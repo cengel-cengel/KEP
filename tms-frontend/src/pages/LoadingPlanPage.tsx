@@ -942,6 +942,12 @@ export default function LoadingPlanPage() {
     },
   });
 
+  const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null);
+  function showToast(msg: string, type: 'ok' | 'err' = 'ok') {
+    setToast({ msg, type });
+    window.setTimeout(() => setToast(null), 2500);
+  }
+
   const persistItemPositionMutation = useMutation({
     mutationFn: async (vars: {
       itemId: string;
@@ -956,11 +962,34 @@ export default function LoadingPlanPage() {
         posZCm: Math.round(posZCm),
       });
     },
+    onSuccess: () => {
+      showToast('Position gespeichert');
+    },
     onError: (e) => {
       // eslint-disable-next-line no-console
       console.warn('persistItemPosition failed:', e);
+      showToast('Speichern fehlgeschlagen', 'err');
     },
   });
+
+  const resetPositionsMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post(`/loading/tour/${tourId}/reset-positions`);
+      return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['loading', 'optimize', tourId] });
+      showToast('Positionen zurückgesetzt');
+    },
+    onError: () => {
+      showToast('Reset fehlgeschlagen', 'err');
+    },
+  });
+
+  function handleResetPositions() {
+    if (!window.confirm('Alle gespeicherten Positionen verwerfen und Auto-Placement neu berechnen?')) return;
+    resetPositionsMutation.mutate();
+  }
 
   const handlePackagePosition = (
     id: string,
@@ -1153,6 +1182,18 @@ export default function LoadingPlanPage() {
   return (
     <div className="w-full min-h-screen bg-white flex flex-col">
       <Navigation />
+      {toast && (
+        <div
+          className={
+            'fixed top-4 right-4 z-50 rounded-lg shadow-lg px-4 py-2 text-sm border ' +
+            (toast.type === 'err'
+              ? 'bg-red-50 border-red-300 text-red-800'
+              : 'bg-emerald-50 border-emerald-300 text-emerald-800')
+          }
+        >
+          {toast.msg}
+        </div>
+      )}
       <main className="w-full flex-1 px-4 sm:px-6 py-4">
         <h1 className="text-2xl font-semibold text-gray-900 mb-4">Beladeplan</h1>
 
@@ -1375,6 +1416,19 @@ export default function LoadingPlanPage() {
                   }
                   return (
                     <>
+                      <div className="flex justify-end mb-2">
+                        <button
+                          type="button"
+                          onClick={handleResetPositions}
+                          disabled={resetPositionsMutation.isPending}
+                          className="text-xs rounded border border-gray-300 bg-white px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+                          title="Auto-Placement neu berechnen (alle gespeicherten Positionen löschen)"
+                        >
+                          {resetPositionsMutation.isPending
+                            ? 'Setze zurück…'
+                            : '↺ Auto-Placement neu berechnen'}
+                        </button>
+                      </div>
                       <LoadingPlan3D
                         vehicle={{
                           lengthCm: vehicleDims.lengthCm,

@@ -235,12 +235,22 @@ function expandPackagesFromOrder(order: ShipmentLoad[]): Package[] {
 
     // Wenn DB-Items vorhanden: pro Quantity 1 Package (mit DB-uuid).
     if (s.packageItems && s.packageItems.length > 0) {
+      // eslint-disable-next-line no-console
+      console.log('[3D-DIAG] shipment', s.shipmentNumber, 'items:', s.packageItems.length);
       s.packageItems.forEach((it, i) => {
         const qty = Math.max(1, Math.round(Number(it.quantity) || 1));
         const lengthCm = Number(it.lengthCm) || 120;
         const widthCm = Number(it.widthCm) || 80;
         const heightCm = Number(it.heightCm) || 120;
         const weightPerUnit = qty > 0 ? Number(it.weightKg) / qty : Number(it.weightKg);
+        // eslint-disable-next-line no-console
+        console.log(
+          '[3D-DIAG]   item',
+          it.id,
+          'qty=', it.quantity, '→', qty,
+          'L×W×H=', it.lengthCm, 'x', it.widthCm, 'x', it.heightCm,
+          'kg=', it.weightKg, '→ /unit', weightPerUnit,
+        );
         for (let q = 1; q <= qty; q++) {
           list.push({
             id: qty === 1 ? it.id : `${it.id}:q${q}`,
@@ -269,6 +279,13 @@ function expandPackagesFromOrder(order: ShipmentLoad[]): Package[] {
     }
 
     // Fallback: synthetische Pakete aus Aggregat-Daten.
+    // eslint-disable-next-line no-console
+    console.log('[3D-DIAG] shipment', s.shipmentNumber, 'NO packageItems → synth fallback', {
+      packageCount: s.packageCount,
+      lengthCm: s.lengthCm,
+      widthCm: s.widthCm,
+      heightCm: s.heightCm,
+    });
     const n = Math.max(1, Math.round(Number(s.packageCount) || 1));
     const lc = Number(s.lengthCm);
     const wc = Number(s.widthCm);
@@ -866,13 +883,30 @@ export default function LoadingPlanPage() {
   );
 
   const placedPackages = useMemo(
-    () =>
-      placePackages(
+    () => {
+      const r = placePackages(
         packagesFlat,
         vehicleDims.lengthCm,
         vehicleDims.widthCm,
         vehicleDims.heightCm,
-      ),
+      );
+      // eslint-disable-next-line no-console
+      console.log(
+        '[3D-DIAG] placedPackages count=',
+        r.length,
+        'trailer=',
+        vehicleDims,
+        'sample=',
+        r.slice(0, 5).map((p) => ({
+          id: p.id,
+          ship: p.shipmentNumber,
+          lwh: [p.lengthCm, p.widthCm, p.heightCm],
+          pos: [p.posX, p.posY, p.posZ],
+          color: p.color,
+        })),
+      );
+      return r;
+    },
     [packagesFlat, vehicleDims.lengthCm, vehicleDims.widthCm, vehicleDims.heightCm],
   );
 

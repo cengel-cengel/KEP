@@ -97,6 +97,91 @@ export default function LoadingPlan3D({
     };
   }
 
+  /**
+   * Bug 3: Snap-to-Stack.
+   * Wenn das gedraggte Paket >=50% Footprint-Overlap mit einem
+   * anderen Paket hat, snap auf dessen X/Y. Sonst: 10-cm-Grid.
+   */
+  function snapXY(
+    p: Plan3DPackage,
+    posX: number,
+    posY: number,
+  ): { posX: number; posY: number; viaStack: boolean } {
+    const candArea = Math.max(1, p.widthCm * p.lengthCm);
+    let bestPct = 0;
+    let best: { posX: number; posY: number } | null = null;
+    const ax1 = posX;
+    const ax2 = posX + p.widthCm;
+    const ay1 = posY;
+    const ay2 = posY + p.lengthCm;
+    for (const o of packages) {
+      if (o.id === p.id) continue;
+      const oc = effectivePos(o);
+      const bx1 = oc.posX;
+      const bx2 = oc.posX + o.widthCm;
+      const by1 = oc.posY;
+      const by2 = oc.posY + o.lengthCm;
+      const ix = Math.max(0, Math.min(ax2, bx2) - Math.max(ax1, bx1));
+      const iy = Math.max(0, Math.min(ay2, by2) - Math.max(ay1, by1));
+      const pct = (ix * iy) / candArea;
+      if (pct >= 0.5 && pct > bestPct) {
+        bestPct = pct;
+        best = { posX: oc.posX, posY: oc.posY };
+      }
+    }
+    if (best) return { ...best, viaStack: true };
+    return {
+      posX: Math.round(posX / SNAP_CM) * SNAP_CM,
+      posY: Math.round(posY / SNAP_CM) * SNAP_CM,
+      viaStack: false,
+    };
+  }
+
+  /**
+   * Bug 2: Gravity. Items mit posZ > 0 fallen auf naechste
+   * Stuetz-Oberkante (oder Boden). Iterativ.
+   */
+  function applyGravity(
+    overrides: Map<string, { posX: number; posY: number; posZ: number }>,
+  ): Map<string, { posX: number; posY: number; posZ: number }> {
+    const next = new Map(overrides);
+    const getPos = (p: Plan3DPackage) => {
+      const ov = next.get(p.id);
+      return ov ?? { posX: p.posX, posY: p.posY, posZ: p.posZ };
+    };
+    for (let safety = 0; safety < 50; safety++) {
+      let changed = false;
+      for (const p of packages) {
+        const cur = getPos(p);
+        if (cur.posZ <= TOL) continue;
+        let supportTop = 0;
+        const ax1 = cur.posX;
+        const ax2 = cur.posX + p.widthCm;
+        const ay1 = cur.posY;
+        const ay2 = cur.posY + p.lengthCm;
+        for (const o of packages) {
+          if (o.id === p.id) continue;
+          const oc = getPos(o);
+          const otherTop = oc.posZ + o.heightCm;
+          if (otherTop > cur.posZ + TOL) continue; // nicht darunter
+          const bx1 = oc.posX;
+          const bx2 = oc.posX + o.widthCm;
+          const by1 = oc.posY;
+          const by2 = oc.posY + o.lengthCm;
+          if (ax2 - TOL <= bx1 || bx2 - TOL <= ax1 || ay2 - TOL <= by1 || by2 - TOL <= ay1) continue;
+          if (otherTop > supportTop) supportTop = otherTop;
+        }
+        const newZ = Math.max(0, supportTop);
+        if (Math.abs(newZ - cur.posZ) > TOL) {
+          next.set(p.id, { posX: cur.posX, posY: cur.posY, posZ: newZ });
+          changed = true;
+        }
+      }
+      if (!changed) break;
+    }
+    return next;
+  }
+
   // E2: Pure-Helper für Drop-Validität
   function rectsOverlap(
     a: { x1: number; x2: number; y1: number; y2: number },
@@ -339,27 +424,26 @@ export default function LoadingPlan3D({
                     return m;
                   });
                 } else {
-                  const snappedX = Math.round(cur.posX / SNAP_CM) * SNAP_CM;
-                  const snappedY = Math.round(cur.posY / SNAP_CM) * SNAP_CM;
-                  const r = resolveDrop(pkg, snappedX, snappedY);
+                  const snap = snapXY(pkg, cur.posX, cur.posY);
+                  const r = resolveDrop(pkg, snap.posX, snap.posY);
                   if (r.valid) {
                     setDragOverrides((prev) => {
                       const m = new Map(prev);
                       m.set(pkg.id, {
-                        posX: snappedX,
-                        posY: snappedY,
+                        posX: snap.posX,
+                        posY: snap.posY,
                         posZ: r.suggestedZ,
                       });
-                      return m;
+                      return applyGravity(m);
                     });
                     if (onPositionChange) {
-                      onPositionChange(pkg.id, snappedX, snappedY, r.suggestedZ);
+                      onPositionChange(pkg.id, snap.posX, snap.posY, r.suggestedZ);
                     }
                   } else if (orig) {
                     setDragOverrides((prev) => {
                       const m = new Map(prev);
                       m.set(pkg.id, orig);
-                      return m;
+                      return applyGravity(m);
                     });
                   }
                 }

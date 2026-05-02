@@ -73,13 +73,19 @@ export interface ShipmentCardProps {
   shipment: Shipment;
   draggable?: boolean;
   onLockBadgeClick?: () => void;
+  /** Bulk-Aktionen-Awareness: wenn shipment.id in selectedIds + size>1,
+   *  wirken Stackable/Verkehrsart-Toggle auf alle markierten. */
+  selectedIds?: Set<string>;
 }
 
 export default function ShipmentCard({
   shipment,
   draggable = false,
   onLockBadgeClick,
+  selectedIds,
 }: ShipmentCardProps) {
+  const useBulk = !!selectedIds && selectedIds.has(shipment.id) && selectedIds.size > 1;
+  const bulkIds = useBulk ? Array.from(selectedIds!) : null;
   const row = shipment as {
     customers?: { name: string };
     business_partner?: { name?: string; partner_number?: string };
@@ -117,7 +123,14 @@ export default function ShipmentCard({
   const queryClient = useQueryClient();
   const stackableMutation = useMutation({
     mutationFn: async (next: boolean) => {
-      await api.patch(`/shipments/${shipment.id}/stackable`, { stackable: next });
+      if (bulkIds) {
+        await api.post(`/shipments/bulk-patch`, {
+          ids: bulkIds,
+          patch: { stackable: next },
+        });
+      } else {
+        await api.patch(`/shipments/${shipment.id}/stackable`, { stackable: next });
+      }
     },
     onMutate: async (next: boolean) => {
       setOptimisticStackable(next);
@@ -138,7 +151,14 @@ export default function ShipmentCard({
   const currentTransportType = optimisticTransportType ?? persistedTransportType ?? '';
   const transportMutation = useMutation({
     mutationFn: async (next: string) => {
-      await api.patch(`/shipments/${shipment.id}`, { transportType: next });
+      if (bulkIds) {
+        await api.post(`/shipments/bulk-patch`, {
+          ids: bulkIds,
+          patch: { transportType: next },
+        });
+      } else {
+        await api.patch(`/shipments/${shipment.id}`, { transportType: next });
+      }
     },
     onMutate: async (next: string) => {
       setOptimisticTransportType(next);

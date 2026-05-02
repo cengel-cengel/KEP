@@ -845,7 +845,7 @@ export default function DispositionPage() {
                                           className="flex-1 cursor-pointer"
                                           onClick={() => handleListShipmentClick(s.id)}
                                         >
-                                          <ShipmentCard shipment={s} draggable />
+                                          <ShipmentCard shipment={s} draggable selectedIds={selectedIds} />
                                         </div>
                                       </div>
                                     );

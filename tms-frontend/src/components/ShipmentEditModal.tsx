@@ -279,12 +279,6 @@ export default function ShipmentEditModal({ shipment, open, onOpenChange }: Prop
     },
   });
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    mutation.mutate();
-  }
-
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
@@ -333,6 +327,38 @@ export default function ShipmentEditModal({ shipment, open, onOpenChange }: Prop
     });
   })();
   const dirty = hasShipDiff || hasAddrDiff || hasItemDiff;
+
+  function handleSubmit(e?: React.FormEvent) {
+    e?.preventDefault();
+    setError(null);
+    if (!dirty) return;
+    mutation.mutate();
+  }
+
+  // Keyboard-Shortcuts: Esc schliesst (mit Confirm wenn dirty),
+  // Cmd/Ctrl+S speichert (auch bei Input-Fokus — Standard-Verhalten).
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        if (!pending && dirty) handleSubmit();
+        return;
+      }
+      if (e.key === 'Escape') {
+        if (dirty) {
+          if (window.confirm('Ungespeicherte Änderungen verwerfen?')) {
+            onOpenChange(false);
+          }
+        } else {
+          onOpenChange(false);
+        }
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, dirty, pending]);
 
   function renderAddressSection(label: string, which: 'loading' | 'delivery') {
     const a = form[which];
@@ -545,7 +571,11 @@ export default function ShipmentEditModal({ shipment, open, onOpenChange }: Prop
               </div>
             )}
 
-            <div className="flex justify-end gap-2 pt-2 border-t">
+            <div className="flex justify-between items-center gap-2 pt-2 border-t">
+              <span className="text-[11px] text-gray-500 hidden sm:inline">
+                Cmd/Ctrl+S: Speichern · ESC: Schließen
+              </span>
+              <div className="flex gap-2 ml-auto">
               <Dialog.Close asChild>
                 <button type="button" className="px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-50">
                   Abbrechen
@@ -558,6 +588,7 @@ export default function ShipmentEditModal({ shipment, open, onOpenChange }: Prop
               >
                 {pending ? 'Speichere…' : dirty ? 'Speichern' : 'Keine Änderungen'}
               </button>
+              </div>
             </div>
           </form>
         </Dialog.Content>

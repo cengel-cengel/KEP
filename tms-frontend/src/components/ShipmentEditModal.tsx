@@ -56,7 +56,8 @@ const PACKAGE_TYPE_OPTIONS = [
 ] as const;
 
 interface FormState {
-  // Sendungsdaten
+  // Sendungsdaten (Aggregat-Mengen sind nicht mehr editierbar —
+  // werden im Backend aus items berechnet).
   transportType: string;
   freightPayer: string;
   customerRef: string;
@@ -64,17 +65,10 @@ interface FormState {
   comment: string;
   loadingDate: string;
   deliveryDate: string;
-  packageCount: string;
-  weightKg: string;
-  lengthCm: string;
-  widthCm: string;
-  heightCm: string;
-  ldm: string;
-  volumeM3: string;
   // Adressen
   loading: AddressForm;
   delivery: AddressForm;
-  // Pro-Item Maße (multi)
+  // Pro-Item Maße (Single-Source-of-Truth)
   items: PackageItemForm[];
   /** Bei Save zu loeschende DB-Items (echte ids). */
   deletedItemIds: string[];
@@ -115,13 +109,6 @@ function buildInitial(s: Shipment): FormState {
     comment: (r.comment as string) ?? '',
     loadingDate: isoDate((r.loading_date ?? r.loadingDate) as string),
     deliveryDate: isoDate((r.delivery_date ?? r.deliveryDate) as string),
-    packageCount: String((r.package_count ?? r.packageCount ?? '') as string),
-    weightKg: String((r.weight_kg ?? r.weightKg ?? '') as string),
-    lengthCm: String((r.length_cm ?? r.lengthCm ?? '') as string),
-    widthCm: String((r.width_cm ?? r.widthCm ?? '') as string),
-    heightCm: String((r.height_cm ?? r.heightCm ?? '') as string),
-    ldm: String(s.ldm ?? ''),
-    volumeM3: String((r.volume_m3 ?? r.volumeM3 ?? '') as string),
     loading: pickAddr(r, 'addresses_shipments_loading_address_idToaddresses', 'loadingAddress'),
     delivery: pickAddr(r, 'addresses_shipments_delivery_address_idToaddresses', 'deliveryAddress'),
     items: ((s.shipment_package_items ?? []) as Array<{
@@ -187,13 +174,7 @@ function diffShipment(form: FormState, init: FormState): Record<string, unknown>
   if (form.comment !== init.comment) out.comment = form.comment || null;
   if (form.loadingDate !== init.loadingDate && form.loadingDate) out.loadingDate = form.loadingDate;
   if (form.deliveryDate !== init.deliveryDate && form.deliveryDate) out.deliveryDate = form.deliveryDate;
-  if (form.packageCount !== init.packageCount) out.packageCount = num(form.packageCount);
-  if (form.weightKg !== init.weightKg) out.weightKg = num(form.weightKg);
-  if (form.lengthCm !== init.lengthCm) out.lengthCm = num(form.lengthCm);
-  if (form.widthCm !== init.widthCm) out.widthCm = num(form.widthCm);
-  if (form.heightCm !== init.heightCm) out.heightCm = num(form.heightCm);
-  if (form.ldm !== init.ldm) out.ldm = num(form.ldm);
-  if (form.volumeM3 !== init.volumeM3) out.volumeM3 = num(form.volumeM3);
+  // Aggregat-Mengen werden im Backend aus items berechnet — kein Diff hier.
   // undefined-Eintraege entfernen
   Object.keys(out).forEach((k) => out[k] === undefined && delete out[k]);
   return out;
@@ -522,52 +503,7 @@ export default function ShipmentEditModal({ shipment, open, onOpenChange }: Prop
               ))}
             </div>
 
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase text-gray-600">Stk</span>
-                <input type="number" min="0" value={form.packageCount}
-                  onChange={(e) => set('packageCount', e.target.value)}
-                  className="rounded border border-gray-300 px-2 py-1.5" />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase text-gray-600">Gewicht kg</span>
-                <input type="number" min="0" step="0.01" value={form.weightKg}
-                  onChange={(e) => set('weightKg', e.target.value)}
-                  className="rounded border border-gray-300 px-2 py-1.5" />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase text-gray-600">Länge cm</span>
-                <input type="number" min="0" value={form.lengthCm}
-                  onChange={(e) => set('lengthCm', e.target.value)}
-                  className="rounded border border-gray-300 px-2 py-1.5" />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase text-gray-600">Breite cm</span>
-                <input type="number" min="0" value={form.widthCm}
-                  onChange={(e) => set('widthCm', e.target.value)}
-                  className="rounded border border-gray-300 px-2 py-1.5" />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase text-gray-600">Höhe cm</span>
-                <input type="number" min="0" value={form.heightCm}
-                  onChange={(e) => set('heightCm', e.target.value)}
-                  className="rounded border border-gray-300 px-2 py-1.5" />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase text-gray-600">LDM</span>
-                <input type="number" min="0" step="0.01" value={form.ldm}
-                  onChange={(e) => set('ldm', e.target.value)}
-                  className="rounded border border-gray-300 px-2 py-1.5" />
-              </label>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase text-gray-600">Volumen m³</span>
-                <input type="number" min="0" step="0.001" value={form.volumeM3}
-                  onChange={(e) => set('volumeM3', e.target.value)}
-                  className="rounded border border-gray-300 px-2 py-1.5" />
-              </label>
+            <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1">
                 <span className="text-[11px] uppercase text-gray-600">Ladedatum</span>
                 <input type="date" value={form.loadingDate}

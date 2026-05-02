@@ -37,6 +37,7 @@
     "seed:erka-nv": "ts-node --transpile-only scripts/seed-erka-nv.ts",
     "seed:backfill-relations": "ts-node --transpile-only scripts/backfill-shipment-relations.ts",
     "seed:backfill-coords": "ts-node --transpile-only scripts/backfill-coordinates.ts",
+    "seed:nv-gebiete": "ts-node --transpile-only scripts/seed-nv-gebiete.ts",
     "recalc:aggregates": "ts-node --transpile-only scripts/recalc-shipment-aggregates.ts"
   },
   "dependencies": {

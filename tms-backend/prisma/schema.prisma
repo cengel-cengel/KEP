@@ -968,6 +968,7 @@ model relations {
   shipments                shipments[]            @relation("shipments_relation")
   sub_conditions           sub_conditions[]
   zip_relation_mappings    zip_relation_mapping[]
+  nv_tour_gebiete          nv_tour_gebiete[]      @relation("nv_tour_gebiete_relation")
 }
 
 model zip_relation_mapping {
@@ -1271,4 +1272,34 @@ enum user_role {
   clearance
   accounting
   readonly
+}
+
+model nv_gebiete {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code            String            @unique @db.VarChar(40)
+  name            String            @db.VarChar(120)
+  plz_ranges      Json?
+  gebiet_typ      String            @default("STANDARD") @db.VarChar(20)
+  aktiv           Boolean           @default(true)
+  created_at      DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime          @default(now()) @db.Timestamptz(6)
+  tour_gebiete    nv_tour_gebiete[] @relation("nv_tour_gebiete_gebiet")
+}
+
+model nv_tour_gebiete {
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nv_gebiet_id    String              @db.Uuid
+  code            String              @unique @db.VarChar(40)
+  name            String              @db.VarChar(120)
+  plz_pattern     Json?
+  relation_id     String?             @db.Uuid
+  farbe           String?             @db.VarChar(9)
+  aktiv           Boolean             @default(true)
+  created_at      DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime            @default(now()) @db.Timestamptz(6)
+  nv_gebiet       nv_gebiete          @relation("nv_tour_gebiete_gebiet", fields: [nv_gebiet_id], references: [id], onDelete: Cascade)
+  relation        relations?          @relation("nv_tour_gebiete_relation", fields: [relation_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([nv_gebiet_id])
+  @@index([relation_id])
 }

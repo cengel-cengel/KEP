@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MouseEvent as ReactMouseEvent,
-  type TouchEvent as ReactTouchEvent,
-} from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import Navigation from '../components/Navigation';
@@ -16,10 +9,6 @@ import { api } from '../lib/api';
 import { computeSecurement } from '../lib/loadSecurement';
 import { computeStackingLdmMetrics } from '../lib/loadingLdm';
 import { canStackOn } from '../lib/stackingRules';
-
-const SVG_W = 900;
-const SVG_H = 550;
-const LEGEND_H = 88;
 
 /** Sattelzug-Standard, falls API keine Werte liefert */
 const DEFAULT_TRAILER_CM = { lengthCm: 1360, widthCm: 240, heightCm: 270 };
@@ -126,80 +115,6 @@ type OptimizeResponse = {
   }>;
 };
 
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
-  const c = hex.replace('#', '');
-  const n = Number.parseInt(c, 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}
-
-function rgbToHex(r: number, g: number, b: number): string {
-  const clamp = (v: number) => Math.min(255, Math.max(0, Math.round(v)));
-  return `#${[clamp(r), clamp(g), clamp(b)]
-    .map((x) => x.toString(16).padStart(2, '0'))
-    .join('')}`;
-}
-
-function lightenHex(hex: string, pct: number): string {
-  const { r, g, b } = hexToRgb(hex);
-  const f = 1 + pct / 100;
-  return rgbToHex(r * f, g * f, b * f);
-}
-
-function darkenHex(hex: string, pct: number): string {
-  const { r, g, b } = hexToRgb(hex);
-  const f = 1 - pct / 100;
-  return rgbToHex(r * f, g * f, b * f);
-}
-
-/** Koordinaten: x = Breite (links→rechts), y = Länge/Tiefe (hinten→vorne), z = Höhe */
-function trailerScale(lengthCm: number, widthCm: number): number {
-  return 700 / (lengthCm + widthCm * 0.8660254037844386);
-}
-
-function toScreen(
-  x: number,
-  y: number,
-  z: number,
-  rotX: number,
-  rotY: number,
-  zoom: number,
-  scale: number,
-): { sx: number; sy: number; tz: number } {
-  const rY = (rotY * Math.PI) / 180;
-  const rX = (rotX * Math.PI) / 180;
-  const cosY = Math.cos(rY);
-  const sinY = Math.sin(rY);
-  const cosX = Math.cos(rX);
-  const sinX = Math.sin(rX);
-  const x1 = x * cosY - y * sinY;
-  const y1 = x * sinY + y * cosY;
-  const y2 = y1 * cosX - z * sinX;
-  const z2 = y1 * sinX + z * cosX;
-  return {
-    sx: x1 * scale * zoom,
-    sy: -z2 * scale * zoom,
-    tz: y2,
-  };
-}
-
-type Pt = { x: number; y: number };
-
-function screenPoints(
-  corners: [number, number, number][],
-  rotX: number,
-  rotY: number,
-  zoom: number,
-  scale: number,
-): Pt[] {
-  return corners.map(([cx, cy, cz]) => {
-    const p = toScreen(cx, cy, cz, rotX, rotY, zoom, scale);
-    return { x: p.sx, y: p.sy };
-  });
-}
-
-function polygonPoints(pts: Pt[]): string {
-  return pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
-}
 
 interface Package {
   id: string;
@@ -525,261 +440,6 @@ function packagesVolumeCm3(packs: PlacedPackage[]): number {
 }
 
 /** Quader: x,y,z = Ecke unten-hinten-links in Trailer-Koordinaten; dx=Breite, dy=Tiefe, dz=Höhe */
-function IsometricPackageBox(props: {
-  x: number;
-  y: number;
-  z: number;
-  dx: number;
-  dy: number;
-  dz: number;
-  rotX: number;
-  rotY: number;
-  zoom: number;
-  scale: number;
-  baseColor: string;
-  label: string;
-  tooltip: string;
-  isOverflow?: boolean;
-  onMouseDown?: (e: ReactMouseEvent<SVGPolygonElement>) => void;
-}) {
-  const { x, y, z, dx, dy, dz, rotX, rotY, zoom, scale, baseColor, label, tooltip, onMouseDown, isOverflow } = props;
-  const p000 = toScreen(x, y, z, rotX, rotY, zoom, scale);
-  const p010 = toScreen(x, y + dy, z, rotX, rotY, zoom, scale);
-  const p110 = toScreen(x + dx, y + dy, z, rotX, rotY, zoom, scale);
-  const p001 = toScreen(x, y, z + dz, rotX, rotY, zoom, scale);
-  const p101 = toScreen(x + dx, y, z + dz, rotX, rotY, zoom, scale);
-  const p011 = toScreen(x, y + dy, z + dz, rotX, rotY, zoom, scale);
-  const p111 = toScreen(x + dx, y + dy, z + dz, rotX, rotY, zoom, scale);
-
-  const top: Pt[] = [
-    { x: p001.sx, y: p001.sy },
-    { x: p101.sx, y: p101.sy },
-    { x: p111.sx, y: p111.sy },
-    { x: p011.sx, y: p011.sy },
-  ];
-  const faceLeft: Pt[] = [
-    { x: p000.sx, y: p000.sy },
-    { x: p001.sx, y: p001.sy },
-    { x: p011.sx, y: p011.sy },
-    { x: p010.sx, y: p010.sy },
-  ];
-  const faceRight: Pt[] = [
-    { x: p010.sx, y: p010.sy },
-    { x: p011.sx, y: p011.sy },
-    { x: p111.sx, y: p111.sy },
-    { x: p110.sx, y: p110.sy },
-  ];
-
-  const topC = lightenHex(baseColor, 20);
-  const midC = baseColor;
-  const darkC = darkenHex(baseColor, 20);
-  const cx = (top[0].x + top[1].x + top[2].x + top[3].x) / 4;
-  const cy = (top[0].y + top[1].y + top[2].y + top[3].y) / 4;
-  return (
-    <g
-      style={{ cursor: onMouseDown ? 'move' : 'default' }}
-      onMouseDown={(e) => e.stopPropagation()}
-      onTouchStart={(e) => e.stopPropagation()}
-    >
-      <polygon
-        points={polygonPoints(faceRight)}
-        fill={darkC}
-        stroke="#000000"
-        strokeWidth={0.5}
-        strokeDasharray={isOverflow ? '3 2' : undefined}
-        onMouseDown={onMouseDown}
-      >
-        <title>{tooltip}</title>
-      </polygon>
-      <polygon
-        points={polygonPoints(faceLeft)}
-        fill={midC}
-        stroke="#000000"
-        strokeWidth={0.5}
-        strokeDasharray={isOverflow ? '3 2' : undefined}
-        onMouseDown={onMouseDown}
-      >
-        <title>{tooltip}</title>
-      </polygon>
-      <polygon
-        points={polygonPoints(top)}
-        fill={topC}
-        stroke="#000000"
-        strokeWidth={0.5}
-        strokeDasharray={isOverflow ? '3 2' : undefined}
-        onMouseDown={onMouseDown}
-      >
-        <title>{tooltip}</title>
-      </polygon>
-      <text
-        x={cx}
-        y={cy}
-        fontSize={8}
-        fill="#0f172a"
-        textAnchor="middle"
-        dominantBaseline="middle"
-        pointerEvents="none"
-        style={{ fontWeight: 600 }}
-      >
-        {label.length > 14 ? `${label.slice(0, 12)}…` : label}
-      </text>
-    </g>
-  );
-}
-
-/** Boden + Rückwand (y=0 hinten); Vorderseite (y=L) offen, kein Dach */
-function TrailerFloorAndBackIso(props: { L: number; W: number; H: number; rotX: number; rotY: number; zoom: number; scale: number }) {
-  const { L, W, H, rotX, rotY, zoom, scale } = props;
-  const floor = screenPoints(
-    [
-      [0, 0, 0],
-      [W, 0, 0],
-      [W, L, 0],
-      [0, L, 0],
-    ],
-    rotX, rotY, zoom, scale,
-  );
-  const back = screenPoints(
-    [
-      [0, 0, 0],
-      [W, 0, 0],
-      [W, 0, H],
-      [0, 0, H],
-    ],
-    rotX, rotY, zoom, scale,
-  );
-  return (
-    <g>
-      <polygon points={polygonPoints(floor)} fill="#e5e7eb" stroke="none" opacity={0.3} />
-      <polygon points={polygonPoints(back)} fill="#1f2937" stroke="none" opacity={0.4} />
-    </g>
-  );
-}
-
-function TrailerLeftWallGlass(props: { L: number; W: number; H: number; rotX: number; rotY: number; zoom: number; scale: number }) {
-  const { L, W, H, rotX, rotY, zoom, scale } = props;
-  void W;
-  const face = screenPoints(
-    [
-      [0, 0, 0],
-      [0, L, 0],
-      [0, L, H],
-      [0, 0, H],
-    ],
-    rotX, rotY, zoom, scale,
-  );
-  return <polygon points={polygonPoints(face)} fill="#94a3b8" stroke="none" opacity={0.15} />;
-}
-
-/** „Obere Wand“ = Deckfläche leicht angedeutet (transparent) */
-function TrailerCeilingGlass(props: { L: number; W: number; H: number; rotX: number; rotY: number; zoom: number; scale: number }) {
-  const { L, W, H, rotX, rotY, zoom, scale } = props;
-  const ceil = screenPoints(
-    [
-      [0, 0, H],
-      [W, 0, H],
-      [W, L, H],
-      [0, L, H],
-    ],
-    rotX, rotY, zoom, scale,
-  );
-  return <polygon points={polygonPoints(ceil)} fill="#64748b" stroke="none" opacity={0.1} />;
-}
-
-/** Nur Kanten; vorne (y=L) offen */
-function TrailerEdgesIso(props: { L: number; W: number; H: number; rotX: number; rotY: number; zoom: number; scale: number }) {
-  const { L, W, H, rotX, rotY, zoom, scale } = props;
-  const floor = screenPoints(
-    [
-      [0, 0, 0],
-      [W, 0, 0],
-      [W, L, 0],
-      [0, L, 0],
-      [0, 0, 0],
-    ],
-    rotX, rotY, zoom, scale,
-  );
-  return (
-    <g fill="none" stroke="#374151" strokeWidth={1}>
-      <polyline points={polygonPoints(floor)} />
-      <polyline
-        points={polygonPoints(
-          screenPoints(
-            [
-              [0, 0, 0],
-              [W, 0, 0],
-              [W, 0, H],
-              [0, 0, H],
-              [0, 0, 0],
-            ],
-            rotX, rotY, zoom, scale,
-          ),
-        )}
-      />
-      <polyline
-        points={polygonPoints(
-          screenPoints(
-            [
-              [W, 0, 0],
-              [W, L, 0],
-              [W, L, H],
-              [W, 0, H],
-              [W, 0, 0],
-            ],
-            rotX, rotY, zoom, scale,
-          ),
-        )}
-      />
-      <polyline
-        points={polygonPoints(
-          screenPoints(
-            [
-              [0, L, 0],
-              [W, L, 0],
-              [W, L, H],
-              [0, L, H],
-              [0, L, 0],
-            ],
-            rotX, rotY, zoom, scale,
-          ),
-        )}
-      />
-      <polyline
-        points={polygonPoints(
-          screenPoints(
-            [
-              [0, 0, 0],
-              [0, L, 0],
-            ],
-            rotX, rotY, zoom, scale,
-          ),
-        )}
-      />
-      <polyline
-        points={polygonPoints(
-          screenPoints(
-            [
-              [0, 0, H],
-              [0, L, H],
-            ],
-            rotX, rotY, zoom, scale,
-          ),
-        )}
-      />
-      <polyline
-        points={polygonPoints(
-          screenPoints(
-            [
-              [W, 0, H],
-              [W, L, H],
-            ],
-            rotX, rotY, zoom, scale,
-          ),
-        )}
-      />
-    </g>
-  );
-}
 
 export default function LoadingPlanPage() {
   const { tourId } = useParams<{ tourId: string }>();
@@ -790,25 +450,10 @@ export default function LoadingPlanPage() {
   const [manualPosById, setManualPosById] = useState<
     Record<string, { xPosCm: number; yPosCm: number; rotationAngle: number; stackLevel: number }>
   >({});
-  const [dragState, setDragState] = useState<{
-    shipmentId: string;
-    startClientX: number;
-    startClientY: number;
-    startXPosCm: number;
-    startYPosCm: number;
-  } | null>(null);
-  // viewMode auf 'real3d' fixiert; '2d'/'3d' SVG-Code bleibt aktuell
-  // dormant fuer Notfall-Fallback, ist aber nicht mehr UI-zugaenglich.
-  const [viewMode] = useState<'2d' | '3d' | 'real3d'>('real3d');
-  const [rotation, setRotation] = useState({ x: 30, y: -45 });
-  const [zoom, setZoom] = useState(1.0);
-  const [isDragging, setIsDragging] = useState(false);
+  // Phase G: viewMode entfernt — nur LoadingPlan3D bleibt.
   const [selectedVehicleType, setSelectedVehicleType] = useState<string>('Jumbo');
   const [securementMu, setSecurementMu] = useState<number>(0.4);
   const [removedShipmentIds, setRemovedShipmentIds] = useState<string[]>([]);
-  const svg3dRef = useRef<SVGSVGElement | null>(null);
-  const camDragRef = useRef(false);
-  const camLastRef = useRef({ x: 0, y: 0 });
 
   const optimizeQuery = useQuery({
     queryKey: ['loading', 'optimize', tourId],
@@ -867,20 +512,7 @@ export default function LoadingPlanPage() {
 
   const packagesFlat = useMemo(() => expandPackagesFromOrder(activeOrder), [activeOrder]);
 
-  const minPkgHeightByShipmentId = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const p of packagesFlat) {
-      const h = Math.max(1, p.heightCm);
-      const cur = m.get(p.shipmentId);
-      if (cur === undefined || h < cur) m.set(p.shipmentId, h);
-    }
-    return m;
-  }, [packagesFlat]);
 
-  const isoScale = useMemo(
-    () => trailerScale(vehicleDims.lengthCm, vehicleDims.widthCm),
-    [vehicleDims.lengthCm, vehicleDims.widthCm],
-  );
 
   const placedPackages = useMemo(
     () => {
@@ -954,7 +586,6 @@ export default function LoadingPlanPage() {
     volUtil > 100 ||
     (weightUtil != null && weightUtil > 100);
 
-  const layoutUtil = optimizeQuery.data?.layout?.utilizationPercent;
 
   const applyOrderMutation = useMutation({
     mutationFn: async (shipmentIds: string[]) => {
@@ -1087,15 +718,6 @@ export default function LoadingPlanPage() {
     },
   });
 
-  const svg2d = useMemo(() => {
-    const layout = optimizeQuery.data?.layout;
-    if (!layout) return null;
-    const floorW = SVG_W - 32;
-    const floorH = SVG_H - LEGEND_H - 48;
-    const sx = floorW / Math.max(1, vehicleDims.lengthCm);
-    const sy = floorH / Math.max(1, vehicleDims.widthCm);
-    return { floorW, floorH, sx, sy, layout };
-  }, [optimizeQuery.data?.layout, vehicleDims.lengthCm, vehicleDims.widthCm]);
 
   useEffect(() => {
     setManualPosById({});
@@ -1107,16 +729,6 @@ export default function LoadingPlanPage() {
     setSelectedVehicleType(matchVehicleType(optimizeQuery.data.recommendedVehicle.type));
   }, [tourId, optimizeQuery.isSuccess, optimizeQuery.data?.recommendedVehicle?.type]);
 
-  useEffect(() => {
-    const el = svg3dRef.current;
-    if (!el || viewMode !== '3d') return;
-    const onWheel = (ev: WheelEvent) => {
-      ev.preventDefault();
-      setZoom((prev) => Math.max(0.3, Math.min(3, prev + ev.deltaY * -0.001)));
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, [viewMode]);
 
   useEffect(() => {
     const rows = optimizeQuery.data?.draftItems ?? [];
@@ -1135,66 +747,9 @@ export default function LoadingPlanPage() {
     });
   }, [optimizeQuery.data?.draft?.updated_at, optimizeQuery.data?.draftItems, tourId]);
 
-  const gridCm = 10;
 
-  const render3dPackages = useMemo(() => {
-    return placedPackages
-      .map((p) => {
-        const man = manualPosById[p.shipmentId];
-        const rot = (((man?.rotationAngle ?? 0) % 360) + 360) % 360;
-        let dx = p.widthCm;
-        let dy = p.lengthCm;
-        if (rot === 90 || rot === 270) {
-          const t = dx;
-          dx = dy;
-          dy = t;
-        }
-        const ox = p.posX + (man?.yPosCm ?? 0);
-        const oy = p.posY + (man?.xPosCm ?? 0);
-        const stepH = minPkgHeightByShipmentId.get(p.shipmentId) ?? p.heightCm;
-        const oz = p.posZ + ((man?.stackLevel ?? 1) - 1) * stepH;
-        const center = toScreen(
-          ox + dx / 2,
-          oy + dy / 2,
-          oz + p.heightCm / 2,
-          rotation.x,
-          rotation.y,
-          zoom,
-          isoScale,
-        );
-        return { p, ox, oy, oz, dx, dy, depth: center.tz };
-      })
-      .sort((a, b) => a.depth - b.depth);
-  }, [placedPackages, manualPosById, rotation, zoom, isoScale, minPkgHeightByShipmentId]);
 
-  const legendStops = useMemo(() => {
-    const map = new Map<number, { city: string; color: string }>();
-    activeOrder.forEach((s, idx) => {
-      const stopNum = s.deliveryOrder ?? idx + 1;
-      const si = (Math.max(1, stopNum) - 1) % STOP_COLORS.length;
-      if (!map.has(stopNum)) {
-        map.set(stopNum, { city: s.deliveryCity || '—', color: STOP_COLORS[si] });
-      }
-    });
-    return [...map.entries()].sort((a, b) => a[0] - b[0]);
-  }, [activeOrder]);
 
-  const svgPadTop = useMemo(() => {
-    if (!svg2d) return 0;
-    let pad = 36;
-    for (const s of activeOrder) {
-      const override = manualPosById[s.id];
-      const sl = Math.min(6, Math.max(1, Math.round(override?.stackLevel ?? 1)));
-      const mh = minPkgHeightByShipmentId.get(s.id) ?? 100;
-      pad = Math.max(pad, (sl - 1) * Math.min(24, Math.max(8, mh * 0.12)) + 28);
-    }
-    return pad;
-  }, [svg2d, activeOrder, manualPosById, minPkgHeightByShipmentId]);
-
-  const resetView = () => {
-    setRotation({ x: 30, y: -45 });
-    setZoom(1);
-  };
 
   const removeShipment = (shipmentId: string) => {
     setRemovedShipmentIds((prev) => (prev.includes(shipmentId) ? prev : [...prev, shipmentId]));
@@ -1204,27 +759,8 @@ export default function LoadingPlanPage() {
     setRemovedShipmentIds((prev) => prev.filter((id) => id !== shipmentId));
   };
 
-  const startCamDrag = (clientX: number, clientY: number) => {
-    camDragRef.current = true;
-    camLastRef.current = { x: clientX, y: clientY };
-    setIsDragging(true);
-  };
 
-  const moveCamDrag = (clientX: number, clientY: number) => {
-    if (!camDragRef.current) return;
-    const dx = clientX - camLastRef.current.x;
-    const dy = clientY - camLastRef.current.y;
-    camLastRef.current = { x: clientX, y: clientY };
-    setRotation((prev) => ({
-      x: Math.max(-80, Math.min(80, prev.x + dy * 0.5)),
-      y: prev.y + dx * 0.5,
-    }));
-  };
 
-  const endCamDrag = () => {
-    camDragRef.current = false;
-    setIsDragging(false);
-  };
 
   return (
     <div className="w-full min-h-screen bg-white flex flex-col">
@@ -1322,14 +858,6 @@ export default function LoadingPlanPage() {
                     Gew: {weightUtil?.toFixed(0) ?? '—'}%
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={resetView}
-                  className="px-2 py-1 text-xs rounded border border-gray-300 bg-white hover:bg-gray-50"
-                >
-                  ⟳ Reset Ansicht
-                </button>
-                <span className="text-xs text-gray-500">Ziehen = Drehen · Scroll = Zoom</span>
               </div>
               <div className="space-y-2 text-sm">
                 <div className="text-gray-800 leading-relaxed bg-blue-50 p-3 rounded border border-blue-200 space-y-2">
@@ -1412,7 +940,7 @@ export default function LoadingPlanPage() {
                   <div className="font-medium text-gray-900">3D Laderaum</div>
                 </div>
 
-                {viewMode === 'real3d' && (() => {
+                {(() => {
                   // P3: Spanngurte nur fuer Items mit positionierter Lage.
                   const positionedPackages = placedPackages.filter(
                     (p) =>
@@ -1501,274 +1029,6 @@ export default function LoadingPlanPage() {
                   );
                 })()}
 
-                {viewMode === '3d' && (
-                  <div className="overflow-auto">
-                    <svg
-                      ref={svg3dRef}
-                      width={SVG_W}
-                      height={SVG_H}
-                      viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-                      className="bg-slate-50"
-                      style={{ touchAction: 'none', cursor: isDragging ? 'grabbing' : 'grab' }}
-                      onMouseDown={(e) => startCamDrag(e.clientX, e.clientY)}
-                      onMouseMove={(e) => moveCamDrag(e.clientX, e.clientY)}
-                      onMouseUp={endCamDrag}
-                      onMouseLeave={endCamDrag}
-                      onTouchStart={(e: ReactTouchEvent<SVGSVGElement>) => {
-                        const t = e.touches[0];
-                        if (!t) return;
-                        startCamDrag(t.clientX, t.clientY);
-                      }}
-                      onTouchMove={(e: ReactTouchEvent<SVGSVGElement>) => {
-                        const t = e.touches[0];
-                        if (!t) return;
-                        moveCamDrag(t.clientX, t.clientY);
-                      }}
-                      onTouchEnd={endCamDrag}
-                      onTouchCancel={endCamDrag}
-                    >
-                      <g transform={`translate(${SVG_W / 2},${(SVG_H - LEGEND_H) / 2 + 26})`}>
-                        <TrailerFloorAndBackIso
-                          L={vehicleDims.lengthCm}
-                          W={vehicleDims.widthCm}
-                          H={vehicleDims.heightCm}
-                          rotX={rotation.x}
-                          rotY={rotation.y}
-                          zoom={zoom}
-                          scale={isoScale}
-                        />
-                        {render3dPackages.map(({ p, ox, oy, oz, dx, dy }) => {
-                          const depthFromRear = Math.round(oy);
-                          const tip = [
-                            `${p.shipmentNumber} · Paket ${p.packageIndex}`,
-                            `${Math.round(p.lengthCm)}×${Math.round(p.widthCm)}×${Math.round(p.heightCm)} cm`,
-                            `${p.weightKg.toLocaleString('de-DE', { maximumFractionDigits: 0 })} kg`,
-                            `Tiefe von hinten: ${depthFromRear} cm`,
-                          ].join('\n');
-                          const overflow =
-                            ox + dx > vehicleDims.widthCm + 1e-6 ||
-                            oy + dy > vehicleDims.lengthCm + 1e-6 ||
-                            oz + p.heightCm > vehicleDims.heightCm + 1e-6;
-                          return (
-                            <IsometricPackageBox
-                              key={p.id}
-                              x={ox}
-                              y={oy}
-                              z={oz}
-                              dx={dx}
-                              dy={dy}
-                              dz={p.heightCm}
-                              rotX={rotation.x}
-                              rotY={rotation.y}
-                              zoom={zoom}
-                              scale={isoScale}
-                              baseColor={overflow ? '#ef4444' : p.color}
-                              label={`${p.shipmentNumber}·${p.packageIndex}`}
-                              tooltip={tip}
-                              isOverflow={overflow}
-                            />
-                          );
-                        })}
-                        <TrailerLeftWallGlass
-                          L={vehicleDims.lengthCm}
-                          W={vehicleDims.widthCm}
-                          H={vehicleDims.heightCm}
-                          rotX={rotation.x}
-                          rotY={rotation.y}
-                          zoom={zoom}
-                          scale={isoScale}
-                        />
-                        <TrailerCeilingGlass
-                          L={vehicleDims.lengthCm}
-                          W={vehicleDims.widthCm}
-                          H={vehicleDims.heightCm}
-                          rotX={rotation.x}
-                          rotY={rotation.y}
-                          zoom={zoom}
-                          scale={isoScale}
-                        />
-                        <TrailerEdgesIso
-                          L={vehicleDims.lengthCm}
-                          W={vehicleDims.widthCm}
-                          H={vehicleDims.heightCm}
-                          rotX={rotation.x}
-                          rotY={rotation.y}
-                          zoom={zoom}
-                          scale={isoScale}
-                        />
-                      </g>
-                      <g transform={`translate(16,${SVG_H - LEGEND_H + 8})`}>
-                        <text x={0} y={0} fontSize={11} fill="#374151" fontWeight={600}>
-                          Stopp-Legende (Farbe = Entladereihenfolge)
-                        </text>
-                        {legendStops.slice(0, 8).map(([num, info], i) => (
-                          <g key={num} transform={`translate(${(i % 4) * 210},${16 + Math.floor(i / 4) * 22})`}>
-                            <rect width={14} height={14} fill={info.color} stroke="#000" strokeWidth={1} />
-                            <text x={20} y={12} fontSize={11} fill="#1f2937">
-                              Stopp {num}: {info.city}
-                            </text>
-                          </g>
-                        ))}
-                      </g>
-                    </svg>
-                    <div className="mt-2 text-xs text-gray-600 space-y-1">
-                      <p>
-                        Packstücke einzeln platziert; Trailer {vehicleDims.lengthCm} cm (Tiefe) ×{' '}
-                        {vehicleDims.widthCm} cm (Breite) × {vehicleDims.heightCm} cm (Höhe); Basis-SCALE ≈{' '}
-                        {isoScale.toFixed(4)} px/cm; Ladekante vorn offen. Ziehen = Kamera drehen · Scroll =
-                        Zoom.
-                      </p>
-                      <p>
-                        Volumenanteil Packstücke / Laderaum: <strong>{volUtil.toFixed(1)}%</strong>
-                        {layoutUtil != null && (
-                          <>
-                            {' '}
-                            · API-Score <strong>{layoutUtil.toFixed(1)}%</strong>
-                          </>
-                        )}
-                        .
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {viewMode === '2d' && svg2d && (
-                  <div className="overflow-auto">
-                    <svg
-                      width={SVG_W}
-                      height={svg2d.floorH + svgPadTop + LEGEND_H}
-                      viewBox={`0 0 ${SVG_W} ${svg2d.floorH + svgPadTop + LEGEND_H}`}
-                      onMouseMove={(e) => {
-                        if (!dragState || !svg2d) return;
-                        const dxPx = e.clientX - dragState.startClientX;
-                        const dyPx = e.clientY - dragState.startClientY;
-                        const dxCm = dxPx / svg2d.sx;
-                        const dyCm = dyPx / svg2d.sy;
-                        const snap = (v: number) => Math.max(0, Math.round(v / gridCm) * gridCm);
-                        setManualPosById((prev) => {
-                          const cur = prev[dragState.shipmentId] ?? {
-                            xPosCm: dragState.startXPosCm,
-                            yPosCm: dragState.startYPosCm,
-                            rotationAngle: 0,
-                            stackLevel: 1,
-                          };
-                          return {
-                            ...prev,
-                            [dragState.shipmentId]: {
-                              ...cur,
-                              xPosCm: snap(dragState.startXPosCm + dxCm),
-                              yPosCm: snap(dragState.startYPosCm + dyCm),
-                            },
-                          };
-                        });
-                      }}
-                      onMouseUp={() => setDragState(null)}
-                      onMouseLeave={() => setDragState(null)}
-                    >
-                      <g transform={`translate(16,${svgPadTop})`}>
-                        <text x={6} y={14} fontSize={11} fill="#374151">
-                          Hinten (Ladekante)
-                        </text>
-                        <text x={svg2d.floorW - 120} y={14} fontSize={11} fill="#374151">
-                          Vorne (Tür)
-                        </text>
-                        <rect
-                          x={0}
-                          y={20}
-                          width={svg2d.floorW}
-                          height={svg2d.floorH - 20}
-                          fill="#f9fafb"
-                          stroke="#6b7280"
-                          strokeWidth={2}
-                        />
-                        {placedPackages.map((p) => {
-                          const man = manualPosById[p.shipmentId];
-                          const lenCm = p.lengthCm;
-                          const widCm = p.widthCm;
-                          const yLen = p.posY + (man?.xPosCm ?? 0);
-                          const xWid = p.posX + (man?.yPosCm ?? 0);
-                          const rot2d = ((((man?.rotationAngle ?? 0) % 360) + 360) % 360);
-                          let effLen = lenCm;
-                          let effWid = widCm;
-                          if (rot2d === 90 || rot2d === 270) {
-                            const t = effLen;
-                            effLen = effWid;
-                            effWid = t;
-                          }
-                          const baseX = Math.round(yLen * svg2d.sx);
-                          const baseY = Math.round(20 + xWid * svg2d.sy);
-                          const w = Math.max(6, Math.round(effLen * svg2d.sx));
-                          const h = Math.max(6, Math.round(effWid * svg2d.sy));
-                          const stepH2d = minPkgHeightByShipmentId.get(p.shipmentId) ?? p.heightCm;
-                          const zTier =
-                            Math.round((p.posZ + ((man?.stackLevel ?? 1) - 1) * stepH2d) / 20) * 2;
-                          const tx = baseX + zTier;
-                          const ty = baseY + zTier;
-                          const tip = [
-                            `${p.shipmentNumber} · Paket ${p.packageIndex}`,
-                            `${Math.round(lenCm)}×${Math.round(widCm)}×${Math.round(p.heightCm)} cm`,
-                            `${p.weightKg.toLocaleString('de-DE', { maximumFractionDigits: 0 })} kg`,
-                            `Tiefe von hinten: ${Math.round(yLen)} cm`,
-                          ].join('\n');
-                          const startDrag = (e: ReactMouseEvent<SVGRectElement>) => {
-                            e.preventDefault();
-                            const cur = manualPosById[p.shipmentId] ?? {
-                              xPosCm: 0,
-                              yPosCm: 0,
-                              rotationAngle: 0,
-                              stackLevel: 1,
-                            };
-                            setDragState({
-                              shipmentId: p.shipmentId,
-                              startClientX: e.clientX,
-                              startClientY: e.clientY,
-                              startXPosCm: cur.xPosCm,
-                              startYPosCm: cur.yPosCm,
-                            });
-                          };
-                          return (
-                            <g key={p.id}>
-                              <rect
-                                x={tx}
-                                y={ty}
-                                width={w}
-                                height={h}
-                                fill={p.color}
-                                stroke="#1f2937"
-                                strokeWidth={1}
-                                rx={2}
-                                style={{ cursor: 'move' }}
-                                onMouseDown={startDrag}
-                              >
-                                <title>{tip}</title>
-                              </rect>
-                              <text x={tx + 3} y={ty + 12} fontSize={8} fill="#111827" pointerEvents="none">
-                                {p.packageIndex}
-                              </text>
-                            </g>
-                          );
-                        })}
-                      </g>
-                      <g transform={`translate(16,${svg2d.floorH + svgPadTop + 8})`}>
-                        <text x={0} y={0} fontSize={11} fill="#374151" fontWeight={600}>
-                          Stopp-Legende
-                        </text>
-                        {legendStops.slice(0, 8).map(([num, info], i) => (
-                          <g key={num} transform={`translate(${(i % 4) * 210},${16 + Math.floor(i / 4) * 22})`}>
-                            <rect width={14} height={14} fill={info.color} stroke="#000" strokeWidth={1} />
-                            <text x={20} y={12} fontSize={11} fill="#1f2937">
-                              Stopp {num}: {info.city}
-                            </text>
-                          </g>
-                        ))}
-                      </g>
-                    </svg>
-                    <div className="mt-2 text-xs text-gray-600">
-                      2D: Draufsicht (Länge horizontal, Breite vertikal), gleiche Packdaten wie 3D; ziehen am
-                      obersten Rechteck.
-                    </div>
-                  </div>
-                )}
               </div>
 
               <div className="rounded-lg border border-gray-200 bg-white p-3">

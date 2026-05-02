@@ -22,6 +22,9 @@ export default function MasterDataLayout() {
         <NavLink to="/masterdata/nv-gebiete" className={subNavClass}>
           NV-Gebiete
         </NavLink>
+        <NavLink to="/masterdata/nv-subunternehmer" className={subNavClass}>
+          NV-Subunternehmer
+        </NavLink>
         <NavLink to="/pricing-hub" className={subNavClass}>
           Preise &amp; Kosten
         </NavLink>

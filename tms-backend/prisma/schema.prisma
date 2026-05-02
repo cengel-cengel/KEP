@@ -888,6 +888,7 @@ model business_partners {
   network_partner_relations relations[]                 @relation("business_partners_network_partner_relations")
   routing_rules             routing_rules[]
   shipments                 shipments[]
+  nv_subunternehmer         nv_subunternehmer[]         @relation("nv_subunternehmer_bp")
 }
 
 model partner_contacts {
@@ -1299,7 +1300,28 @@ model nv_tour_gebiete {
   updated_at      DateTime            @default(now()) @db.Timestamptz(6)
   nv_gebiet       nv_gebiete          @relation("nv_tour_gebiete_gebiet", fields: [nv_gebiet_id], references: [id], onDelete: Cascade)
   relation        relations?          @relation("nv_tour_gebiete_relation", fields: [relation_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  subunternehmer  nv_subunternehmer[] @relation("nv_subunternehmer_tour_gebiet")
 
   @@index([nv_gebiet_id])
   @@index([relation_id])
+}
+
+model nv_subunternehmer {
+  id                          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                        String           @db.VarChar(200)
+  nv_tour_gebiet_id           String?          @db.Uuid
+  business_partner_id         String?          @db.Uuid
+  tarif_typ                   String           @default("TAGESPAUSCHALE") @db.VarChar(20)
+  tarif_pro_stop_eur          Decimal?         @db.Decimal(10, 2)
+  tarif_tagespauschale_eur    Decimal?         @db.Decimal(10, 2)
+  fahrzeug_typ                String?          @db.VarChar(20)
+  notiz                       String?
+  aktiv                       Boolean          @default(true)
+  created_at                  DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime         @default(now()) @db.Timestamptz(6)
+  nv_tour_gebiet              nv_tour_gebiete? @relation("nv_subunternehmer_tour_gebiet", fields: [nv_tour_gebiet_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  business_partner            business_partners? @relation("nv_subunternehmer_bp", fields: [business_partner_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([nv_tour_gebiet_id])
+  @@index([business_partner_id])
 }

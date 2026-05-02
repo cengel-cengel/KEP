@@ -37,6 +37,7 @@ import { DriverModule } from './driver/driver.module';
 import { ReturnsModule } from './returns/returns.module';
 import { PricingHubModule } from './pricing-hub/pricing-hub.module';
 import { NvGebieteModule } from './nv-gebiete/nv-gebiete.module';
+import { NvSubunternehmerModule } from './nv-subunternehmer/nv-subunternehmer.module';
 
 @Module({
   imports: [
@@ -104,6 +105,7 @@ import { NvGebieteModule } from './nv-gebiete/nv-gebiete.module';
     ReturnsModule,
     PricingHubModule,
     NvGebieteModule,
+    NvSubunternehmerModule,
   ],
   controllers: [AppController],
   providers: [AppService],

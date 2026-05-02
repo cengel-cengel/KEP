@@ -32,6 +32,15 @@ export class NvTourenController {
     return this.svc.list({ datum, status });
   }
 
+  @Get('eligible-shipments')
+  eligibleShipments(
+    @Query('datum') datum: string,
+    @Query('nv_tour_gebiet_id') nv_tour_gebiet_id?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.svc.eligibleShipments({ datum, nv_tour_gebiet_id, search });
+  }
+
   @Get(':id')
   getOne(@Param('id') id: string) {
     return this.svc.getOne(id);

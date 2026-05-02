@@ -279,6 +279,124 @@ export class NvTourenService {
     return { count: items.length };
   }
 
+  async eligibleShipments(filter: {
+    datum: string;
+    nv_tour_gebiet_id?: string;
+    search?: string;
+  }) {
+    const datum = new Date(filter.datum);
+
+    const tourGebiete = await this.prisma.nv_tour_gebiete.findMany({
+      where: filter.nv_tour_gebiet_id
+        ? { id: filter.nv_tour_gebiet_id, aktiv: true }
+        : { aktiv: true },
+      select: { id: true, code: true, name: true, plz_pattern: true },
+    });
+
+    type TG = { id: string; code: string; name: string; plzSet: Set<string> };
+    const gebiete: TG[] = tourGebiete.map((g) => {
+      const plz = Array.isArray(g.plz_pattern)
+        ? (g.plz_pattern as unknown[]).filter(
+            (x): x is string => typeof x === 'string',
+          )
+        : [];
+      return {
+        id: g.id,
+        code: g.code,
+        name: g.name,
+        plzSet: new Set(plz),
+      };
+    });
+
+    const allPlz = new Set<string>();
+    for (const g of gebiete) for (const p of g.plzSet) allPlz.add(p);
+
+    const stoppedShipmentIds = new Set(
+      (
+        await this.prisma.nv_tour_stops.findMany({
+          select: { shipment_id: true },
+        })
+      ).map((s) => s.shipment_id),
+    );
+
+    const stammKunden = await this.prisma.nv_stamm_kunden.findMany({
+      where: { aktiv: true },
+      select: { customer_id: true },
+    });
+    const stammKundenIds = new Set(stammKunden.map((s) => s.customer_id));
+
+    const where: any = {
+      delivery_date: datum,
+      deleted_at: null,
+      id: { notIn: [...stoppedShipmentIds] },
+    };
+    if (filter.search) {
+      where.OR = [
+        { shipment_number: { contains: filter.search, mode: 'insensitive' } },
+        {
+          customers: {
+            name: { contains: filter.search, mode: 'insensitive' },
+          },
+        },
+      ];
+    }
+
+    const shipments = await this.prisma.shipments.findMany({
+      where,
+      orderBy: [{ delivery_date: 'asc' }, { created_at: 'asc' }],
+      include: {
+        customers: {
+          select: { id: true, customer_number: true, name: true },
+        },
+        addresses_shipments_delivery_address_idToaddresses: {
+          select: {
+            id: true,
+            street: true,
+            zip: true,
+            city: true,
+            country_code: true,
+          },
+        },
+      },
+      take: 500,
+    });
+
+    return shipments
+      .map((s) => {
+        const delivery_address =
+          s.addresses_shipments_delivery_address_idToaddresses;
+        const zip = delivery_address?.zip ?? '';
+        let matched_tour_gebiet_id: string | null = null;
+        let matched_tour_gebiet_code: string | null = null;
+        for (const g of gebiete) {
+          if (zip && g.plzSet.has(zip)) {
+            matched_tour_gebiet_id = g.id;
+            matched_tour_gebiet_code = g.code;
+            break;
+          }
+        }
+        const {
+          addresses_shipments_delivery_address_idToaddresses: _a,
+          customers,
+          ...rest
+        } = s;
+        return {
+          ...rest,
+          customer: customers,
+          delivery_address,
+          matched_tour_gebiet_id,
+          matched_tour_gebiet_code,
+          is_stamm_kunde:
+            !!s.customer_id && stammKundenIds.has(s.customer_id),
+        };
+      })
+      .filter((s) =>
+        filter.nv_tour_gebiet_id
+          ? s.matched_tour_gebiet_id === filter.nv_tour_gebiet_id
+          : allPlz.size === 0 || s.matched_tour_gebiet_id !== null,
+      );
+  }
+
   async copyStammKunden(tourId: string) {
     const tour = await this.prisma.nv_touren.findUnique({
       where: { id: tourId },

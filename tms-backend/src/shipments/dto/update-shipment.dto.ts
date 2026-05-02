@@ -57,6 +57,18 @@ export class UpdateShipmentDto {
 
   @IsOptional()
   @IsNumber()
+  lengthCm?: number;
+
+  @IsOptional()
+  @IsNumber()
+  widthCm?: number;
+
+  @IsOptional()
+  @IsNumber()
+  heightCm?: number;
+
+  @IsOptional()
+  @IsNumber()
   weightKg?: number;
 
   @IsOptional()

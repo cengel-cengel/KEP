@@ -1,7 +1,36 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pencil, Plus, Power, Trash2, X } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  Pencil,
+  Plus,
+  Power,
+  Trash2,
+  Users,
+  X,
+} from 'lucide-react';
 import { api } from '../lib/api';
+
+const ROUTING_KLASSEN = [
+  'STAMMROUTE',
+  'KLEINER_SCHLENKER',
+  'MITTLERER_UMWEG',
+  'SEPARATER_TOURAST',
+] as const;
+
+type Customer = { id: string; customer_number: string; name: string };
+type StammKunde = {
+  id: string;
+  nv_stamm_tour_id: string;
+  customer_id: string;
+  standard_position: number;
+  standard_servicezeit_min: number | null;
+  routing_klasse: string | null;
+  notizen: string | null;
+  aktiv: boolean;
+  customer?: Customer;
+};
 
 type TourGebiet = { id: string; code: string; name: string };
 type Subunternehmer = { id: string; name: string };
@@ -41,6 +70,7 @@ export default function NvStammTourenPage() {
   const [search, setSearch] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const tourQ = useQuery<TourGebiet[]>({
     queryKey: ['nv-tour-gebiete'],
@@ -181,7 +211,13 @@ export default function NvStammTourenPage() {
               </tr>
             )}
             {filtered.map((t) => (
-              <tr key={t.id} className="border-b border-gray-100">
+              <tr
+                key={t.id}
+                className={`border-b border-gray-100 cursor-pointer ${
+                  detailId === t.id ? 'bg-blue-50' : 'hover:bg-gray-50'
+                }`}
+                onClick={() => setDetailId(t.id)}
+              >
                 <td className="px-3 py-2 font-mono text-xs">{t.code}</td>
                 <td className="px-3 py-2">{t.name}</td>
                 <td className="px-3 py-2 font-mono text-xs">
@@ -207,7 +243,17 @@ export default function NvStammTourenPage() {
                     {t.aktiv ? 'aktiv' : 'inaktiv'}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-right whitespace-nowrap">
+                <td
+                  className="px-3 py-2 text-right whitespace-nowrap"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    onClick={() => setDetailId(t.id)}
+                    className="text-gray-500 hover:text-gray-700 mr-2"
+                    title="Stamm-Kunden"
+                  >
+                    <Users size={16} />
+                  </button>
                   <button
                     onClick={() => toggleAktiv(t)}
                     className="text-gray-500 hover:text-gray-700 mr-2"
@@ -259,6 +305,13 @@ export default function NvStammTourenPage() {
           }}
           saving={createMut.isPending || updateMut.isPending}
           isCreate={creating}
+        />
+      )}
+
+      {detailId && (
+        <StammKundenDrawer
+          tour={stammQ.data?.find((t) => t.id === detailId) ?? null}
+          onClose={() => setDetailId(null)}
         />
       )}
     </div>
@@ -465,6 +518,291 @@ function StammTourModal({
           >
             {saving ? 'Speichere...' : 'Speichern'}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StammKundenDrawer({
+  tour,
+  onClose,
+}: {
+  tour: StammTour | null;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const tourId = tour?.id ?? '';
+  const [showPicker, setShowPicker] = useState(false);
+
+  const kundenQ = useQuery<StammKunde[]>({
+    queryKey: ['nv-stamm-touren', tourId, 'kunden'],
+    queryFn: async () =>
+      (await api.get<StammKunde[]>(`/nv-stamm-touren/${tourId}/kunden`)).data,
+    enabled: !!tourId,
+  });
+
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: ['nv-stamm-touren', tourId, 'kunden'] });
+
+  const updateMut = useMutation({
+    mutationFn: async (input: { id: string; patch: Partial<StammKunde> }) =>
+      (await api.patch(`/nv-stamm-kunden/${input.id}`, input.patch)).data,
+    onSuccess: invalidate,
+  });
+  const deleteMut = useMutation({
+    mutationFn: async (id: string) =>
+      (await api.delete(`/nv-stamm-kunden/${id}`)).data,
+    onSuccess: invalidate,
+  });
+  const reorderMut = useMutation({
+    mutationFn: async (
+      items: { id: string; standard_position: number }[],
+    ) => (await api.post('/nv-stamm-kunden/reorder', { items })).data,
+    onSuccess: invalidate,
+  });
+
+  const moveItem = (idx: number, dir: -1 | 1) => {
+    const list = kundenQ.data ?? [];
+    const target = idx + dir;
+    if (target < 0 || target >= list.length) return;
+    const a = list[idx];
+    const b = list[target];
+    reorderMut.mutate([
+      { id: a.id, standard_position: b.standard_position },
+      { id: b.id, standard_position: a.standard_position },
+    ]);
+  };
+
+  if (!tour) return null;
+
+  return (
+    <div className="fixed inset-0 z-40">
+      <div
+        className="absolute inset-0 bg-black/30"
+        onClick={onClose}
+      />
+      <aside className="absolute right-0 top-0 h-full w-full sm:w-[520px] bg-white shadow-xl flex flex-col">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div>
+            <h2 className="font-semibold text-gray-800">{tour.name}</h2>
+            <p className="text-xs text-gray-500 font-mono">{tour.code}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50">
+          <span className="text-sm font-medium text-gray-700">
+            Stamm-Kunden ({kundenQ.data?.length ?? 0})
+          </span>
+          <button
+            onClick={() => setShowPicker(true)}
+            className="bg-blue-600 text-white text-xs rounded px-2 py-1 flex items-center gap-1 hover:bg-blue-700"
+          >
+            <Plus size={14} />
+            Kunde hinzufügen
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {kundenQ.isLoading && (
+            <div className="p-4 text-sm text-gray-500">Lade...</div>
+          )}
+          {!kundenQ.isLoading && (kundenQ.data?.length ?? 0) === 0 && (
+            <div className="p-4 text-sm text-gray-500">
+              Keine Stamm-Kunden zugeordnet.
+            </div>
+          )}
+          <ul className="divide-y divide-gray-100">
+            {(kundenQ.data ?? []).map((k, idx) => (
+              <li key={k.id} className="p-3 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono text-gray-500 w-6 text-right">
+                    {k.standard_position}
+                  </span>
+                  <span className="font-medium flex-1">
+                    {k.customer?.name ?? '—'}
+                  </span>
+                  <button
+                    onClick={() => moveItem(idx, -1)}
+                    disabled={idx === 0 || reorderMut.isPending}
+                    className="text-gray-500 hover:text-gray-700 disabled:opacity-30"
+                    title="Nach oben"
+                  >
+                    <ArrowUp size={16} />
+                  </button>
+                  <button
+                    onClick={() => moveItem(idx, 1)}
+                    disabled={
+                      idx === (kundenQ.data?.length ?? 0) - 1 ||
+                      reorderMut.isPending
+                    }
+                    className="text-gray-500 hover:text-gray-700 disabled:opacity-30"
+                    title="Nach unten"
+                  >
+                    <ArrowDown size={16} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `Kunde "${k.customer?.name}" aus Stamm-Tour entfernen?`,
+                        )
+                      )
+                        deleteMut.mutate(k.id);
+                    }}
+                    className="text-red-600 hover:text-red-800"
+                    title="Entfernen"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pl-8">
+                  <div>
+                    <label className="block text-[10px] text-gray-500 uppercase tracking-wide">
+                      Servicezeit (Min)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={k.standard_servicezeit_min ?? ''}
+                      onChange={(e) =>
+                        updateMut.mutate({
+                          id: k.id,
+                          patch: {
+                            standard_servicezeit_min:
+                              e.target.value === ''
+                                ? null
+                                : Number(e.target.value),
+                          },
+                        })
+                      }
+                      className="w-full border rounded px-2 py-1 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 uppercase tracking-wide">
+                      Routing-Klasse
+                    </label>
+                    <select
+                      value={k.routing_klasse ?? ''}
+                      onChange={(e) =>
+                        updateMut.mutate({
+                          id: k.id,
+                          patch: {
+                            routing_klasse: e.target.value || null,
+                          },
+                        })
+                      }
+                      className="w-full border rounded px-2 py-1 text-sm"
+                    >
+                      <option value="">—</option>
+                      {ROUTING_KLASSEN.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </aside>
+
+      {showPicker && (
+        <CustomerPicker
+          existingIds={(kundenQ.data ?? []).map((k) => k.customer_id)}
+          tourId={tour.id}
+          onClose={() => setShowPicker(false)}
+          onPicked={() => {
+            setShowPicker(false);
+            invalidate();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CustomerPicker({
+  existingIds,
+  tourId,
+  onClose,
+  onPicked,
+}: {
+  existingIds: string[];
+  tourId: string;
+  onClose: () => void;
+  onPicked: () => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [debounced, setDebounced] = useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const customersQ = useQuery<Customer[]>({
+    queryKey: ['customers', 'picker', debounced],
+    queryFn: async () => {
+      const params = debounced ? { search: debounced } : {};
+      return (await api.get<Customer[]>('/customers', { params })).data;
+    },
+  });
+
+  const addMut = useMutation({
+    mutationFn: async (customer_id: string) =>
+      (
+        await api.post('/nv-stamm-kunden', {
+          nv_stamm_tour_id: tourId,
+          customer_id,
+        })
+      ).data,
+    onSuccess: onPicked,
+  });
+
+  return (
+    <div className="absolute inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <h3 className="font-semibold text-gray-800">Kunde auswählen</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-3 border-b">
+          <input
+            type="text"
+            autoFocus
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Suche Kundenname/Nummer..."
+            className="w-full border rounded px-3 py-2 text-sm"
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {customersQ.isLoading && (
+            <div className="p-3 text-sm text-gray-500">Lade...</div>
+          )}
+          {(customersQ.data ?? [])
+            .filter((c) => !existingIds.includes(c.id))
+            .slice(0, 100)
+            .map((c) => (
+              <button
+                key={c.id}
+                onClick={() => addMut.mutate(c.id)}
+                disabled={addMut.isPending}
+                className="w-full text-left px-3 py-2 border-b hover:bg-blue-50 text-sm disabled:opacity-50"
+              >
+                <div className="font-medium">{c.name}</div>
+                <div className="text-xs text-gray-500 font-mono">
+                  {c.customer_number}
+                </div>
+              </button>
+            ))}
         </div>
       </div>
     </div>

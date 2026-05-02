@@ -39,6 +39,7 @@ import { PricingHubModule } from './pricing-hub/pricing-hub.module';
 import { NvGebieteModule } from './nv-gebiete/nv-gebiete.module';
 import { NvSubunternehmerModule } from './nv-subunternehmer/nv-subunternehmer.module';
 import { NvStammTourenModule } from './nv-stamm-touren/nv-stamm-touren.module';
+import { NvStammKundenModule } from './nv-stamm-kunden/nv-stamm-kunden.module';
 
 @Module({
   imports: [
@@ -108,6 +109,7 @@ import { NvStammTourenModule } from './nv-stamm-touren/nv-stamm-touren.module';
     NvGebieteModule,
     NvSubunternehmerModule,
     NvStammTourenModule,
+    NvStammKundenModule,
   ],
   controllers: [AppController],
   providers: [AppService],

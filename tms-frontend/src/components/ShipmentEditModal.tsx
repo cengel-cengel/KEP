@@ -21,7 +21,17 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
+interface AddressForm {
+  id: string | null;
+  name: string;
+  street: string;
+  zip: string;
+  city: string;
+  countryCode: string;
+}
+
 interface FormState {
+  // Sendungsdaten
   transportType: string;
   freightPayer: string;
   customerRef: string;
@@ -31,8 +41,14 @@ interface FormState {
   deliveryDate: string;
   packageCount: string;
   weightKg: string;
+  lengthCm: string;
+  widthCm: string;
+  heightCm: string;
   ldm: string;
   volumeM3: string;
+  // Adressen
+  loading: AddressForm;
+  delivery: AddressForm;
 }
 
 function isoDate(s?: string | null): string {
@@ -40,6 +56,24 @@ function isoDate(s?: string | null): string {
   const d = new Date(s);
   if (isNaN(d.getTime())) return '';
   return d.toISOString().slice(0, 10);
+}
+
+function pickAddr(
+  obj: Record<string, unknown>,
+  longKey: string,
+  shortKey: string,
+): AddressForm {
+  const a =
+    (obj[shortKey] as Record<string, unknown> | undefined) ??
+    (obj[longKey] as Record<string, unknown> | undefined);
+  return {
+    id: (a?.id as string) ?? null,
+    name: (a?.name as string) ?? '',
+    street: (a?.street as string) ?? '',
+    zip: (a?.zip as string) ?? '',
+    city: (a?.city as string) ?? '',
+    countryCode: ((a?.country_code as string) ?? (a?.countryCode as string) ?? 'DE').toUpperCase(),
+  };
 }
 
 function buildInitial(s: Shipment): FormState {
@@ -54,30 +88,94 @@ function buildInitial(s: Shipment): FormState {
     deliveryDate: isoDate((r.delivery_date ?? r.deliveryDate) as string),
     packageCount: String((r.package_count ?? r.packageCount ?? '') as string),
     weightKg: String((r.weight_kg ?? r.weightKg ?? '') as string),
+    lengthCm: String((r.length_cm ?? r.lengthCm ?? '') as string),
+    widthCm: String((r.width_cm ?? r.widthCm ?? '') as string),
+    heightCm: String((r.height_cm ?? r.heightCm ?? '') as string),
     ldm: String(s.ldm ?? ''),
     volumeM3: String((r.volume_m3 ?? r.volumeM3 ?? '') as string),
+    loading: pickAddr(r, 'addresses_shipments_loading_address_idToaddresses', 'loadingAddress'),
+    delivery: pickAddr(r, 'addresses_shipments_delivery_address_idToaddresses', 'deliveryAddress'),
   };
+}
+
+function num(s: string): number | undefined {
+  if (s.trim() === '') return undefined;
+  const n = Number(s.replace(',', '.'));
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** Liefert nur die Felder die sich geaendert haben (Diff). */
+function diffShipment(form: FormState, init: FormState): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (form.transportType !== init.transportType) out.transportType = form.transportType;
+  if (form.freightPayer !== init.freightPayer) out.freightPayer = form.freightPayer || null;
+  if (form.customerRef !== init.customerRef) out.customerRef = form.customerRef || undefined;
+  if (form.customerNote !== init.customerNote) out.customerNote = form.customerNote || null;
+  if (form.comment !== init.comment) out.comment = form.comment || null;
+  if (form.loadingDate !== init.loadingDate && form.loadingDate) out.loadingDate = form.loadingDate;
+  if (form.deliveryDate !== init.deliveryDate && form.deliveryDate) out.deliveryDate = form.deliveryDate;
+  if (form.packageCount !== init.packageCount) out.packageCount = num(form.packageCount);
+  if (form.weightKg !== init.weightKg) out.weightKg = num(form.weightKg);
+  if (form.lengthCm !== init.lengthCm) out.lengthCm = num(form.lengthCm);
+  if (form.widthCm !== init.widthCm) out.widthCm = num(form.widthCm);
+  if (form.heightCm !== init.heightCm) out.heightCm = num(form.heightCm);
+  if (form.ldm !== init.ldm) out.ldm = num(form.ldm);
+  if (form.volumeM3 !== init.volumeM3) out.volumeM3 = num(form.volumeM3);
+  // undefined-Eintraege entfernen
+  Object.keys(out).forEach((k) => out[k] === undefined && delete out[k]);
+  return out;
+}
+
+function diffAddress(form: AddressForm, init: AddressForm): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (form.name !== init.name) out.name = form.name;
+  if (form.street !== init.street) out.street = form.street;
+  if (form.zip !== init.zip) out.zip = form.zip;
+  if (form.city !== init.city) out.city = form.city;
+  if (form.countryCode !== init.countryCode) out.countryCode = form.countryCode;
+  return out;
 }
 
 export default function ShipmentEditModal({ shipment, open, onOpenChange }: Props) {
   const [form, setForm] = useState<FormState>(() => buildInitial(shipment));
+  const [initial, setInitial] = useState<FormState>(() => buildInitial(shipment));
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
     if (open) {
-      setForm(buildInitial(shipment));
+      const init = buildInitial(shipment);
+      setForm(init);
+      setInitial(init);
       setError(null);
     }
   }, [open, shipment]);
 
   const mutation = useMutation({
-    mutationFn: async (payload: Record<string, unknown>) => {
-      await api.patch(`/shipments/${shipment.id}`, payload);
+    mutationFn: async () => {
+      const shipDiff = diffShipment(form, initial);
+      const loadDiff = diffAddress(form.loading, initial.loading);
+      const delivDiff = diffAddress(form.delivery, initial.delivery);
+      const tasks: Promise<unknown>[] = [];
+      if (Object.keys(shipDiff).length > 0) {
+        tasks.push(api.patch(`/shipments/${shipment.id}`, shipDiff));
+      }
+      if (form.loading.id && Object.keys(loadDiff).length > 0) {
+        tasks.push(api.patch(`/addresses/${form.loading.id}`, loadDiff));
+      }
+      if (form.delivery.id && Object.keys(delivDiff).length > 0) {
+        tasks.push(api.patch(`/addresses/${form.delivery.id}`, delivDiff));
+      }
+      if (tasks.length === 0) return { noop: true };
+      await Promise.all(tasks);
+      return { noop: false };
     },
+    onMutate: () => setPending(true),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['shipments'] });
       void queryClient.invalidateQueries({ queryKey: ['tours'] });
+      setPending(false);
       onOpenChange(false);
     },
     onError: (e: unknown) => {
@@ -85,42 +183,58 @@ export default function ShipmentEditModal({ shipment, open, onOpenChange }: Prop
         (e as { response?: { data?: { message?: string } } }).response?.data?.message ??
         'Speichern fehlgeschlagen.';
       setError(typeof msg === 'string' ? msg : 'Speichern fehlgeschlagen.');
+      setPending(false);
     },
   });
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const num = (s: string) => (s.trim() === '' ? undefined : Number(s.replace(',', '.')));
-    const payload: Record<string, unknown> = {
-      transportType: form.transportType,
-      freightPayer: form.freightPayer || null,
-      customerRef: form.customerRef || undefined,
-      customerNote: form.customerNote || null,
-      comment: form.comment || null,
-      loadingDate: form.loadingDate || undefined,
-      deliveryDate: form.deliveryDate || undefined,
-      packageCount: num(form.packageCount),
-      weightKg: num(form.weightKg),
-      ldm: num(form.ldm),
-      volumeM3: num(form.volumeM3),
-    };
-    Object.keys(payload).forEach((k) => {
-      if (payload[k] === undefined) delete payload[k];
-    });
-    mutation.mutate(payload);
+    mutation.mutate();
   }
-
-  const r = shipment as unknown as Record<string, unknown>;
-  const loadAddr =
-    (r.loadingAddress as { name?: string; city?: string; zip?: string; country_code?: string } | undefined) ??
-    (r.addresses_shipments_loading_address_idToaddresses as { name?: string; city?: string; zip?: string; country_code?: string } | undefined);
-  const delivAddr =
-    (r.deliveryAddress as { name?: string; city?: string; zip?: string; country_code?: string } | undefined) ??
-    (r.addresses_shipments_delivery_address_idToaddresses as { name?: string; city?: string; zip?: string; country_code?: string } | undefined);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+  function setAddr(which: 'loading' | 'delivery', patch: Partial<AddressForm>) {
+    setForm((prev) => ({ ...prev, [which]: { ...prev[which], ...patch } }));
+  }
+
+  const hasShipDiff = Object.keys(diffShipment(form, initial)).length > 0;
+  const hasAddrDiff =
+    Object.keys(diffAddress(form.loading, initial.loading)).length > 0 ||
+    Object.keys(diffAddress(form.delivery, initial.delivery)).length > 0;
+  const dirty = hasShipDiff || hasAddrDiff;
+
+  function renderAddressSection(label: string, which: 'loading' | 'delivery') {
+    const a = form[which];
+    return (
+      <div className="rounded border border-gray-200 bg-gray-50 p-2 space-y-1.5">
+        <div className="text-[11px] font-semibold uppercase text-gray-500">{label}</div>
+        <input type="text" placeholder="Name"
+          value={a.name}
+          onChange={(e) => setAddr(which, { name: e.target.value })}
+          className="w-full rounded border border-gray-300 px-2 py-1 bg-white" />
+        <input type="text" placeholder="Straße"
+          value={a.street}
+          onChange={(e) => setAddr(which, { street: e.target.value })}
+          className="w-full rounded border border-gray-300 px-2 py-1 bg-white" />
+        <div className="grid grid-cols-3 gap-1.5">
+          <input type="text" placeholder="PLZ"
+            value={a.zip}
+            onChange={(e) => setAddr(which, { zip: e.target.value })}
+            className="col-span-1 rounded border border-gray-300 px-2 py-1 bg-white" />
+          <input type="text" placeholder="Ort"
+            value={a.city}
+            onChange={(e) => setAddr(which, { city: e.target.value })}
+            className="col-span-2 rounded border border-gray-300 px-2 py-1 bg-white" />
+        </div>
+        <input type="text" placeholder="Land (ISO)" maxLength={2}
+          value={a.countryCode}
+          onChange={(e) => setAddr(which, { countryCode: e.target.value.toUpperCase() })}
+          className="w-20 rounded border border-gray-300 px-2 py-1 bg-white uppercase" />
+      </div>
+    );
   }
 
   return (
@@ -143,17 +257,9 @@ export default function ShipmentEditModal({ shipment, open, onOpenChange }: Prop
           </div>
 
           <form onSubmit={handleSubmit} className="p-5 space-y-4 text-sm">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded border border-gray-200 bg-gray-50 p-2">
-                <div className="text-[11px] font-semibold uppercase text-gray-500 mb-1">Versender (read-only)</div>
-                <div>{loadAddr?.name ?? '–'}</div>
-                <div className="text-gray-600">{loadAddr?.zip ?? ''} {loadAddr?.city ?? ''} · {loadAddr?.country_code ?? ''}</div>
-              </div>
-              <div className="rounded border border-gray-200 bg-gray-50 p-2">
-                <div className="text-[11px] font-semibold uppercase text-gray-500 mb-1">Empfänger (read-only)</div>
-                <div>{delivAddr?.name ?? '–'}</div>
-                <div className="text-gray-600">{delivAddr?.zip ?? ''} {delivAddr?.city ?? ''} · {delivAddr?.country_code ?? ''}</div>
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {renderAddressSection('Versender', 'loading')}
+              {renderAddressSection('Empfänger', 'delivery')}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -183,42 +289,60 @@ export default function ShipmentEditModal({ shipment, open, onOpenChange }: Prop
               </label>
             </div>
 
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-semibold uppercase text-gray-600">Packstücke</span>
+                <span className="text-[11px] uppercase text-gray-600">Stk</span>
                 <input type="number" min="0" value={form.packageCount}
                   onChange={(e) => set('packageCount', e.target.value)}
                   className="rounded border border-gray-300 px-2 py-1.5" />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-semibold uppercase text-gray-600">Gewicht (kg)</span>
+                <span className="text-[11px] uppercase text-gray-600">Gewicht kg</span>
                 <input type="number" min="0" step="0.01" value={form.weightKg}
                   onChange={(e) => set('weightKg', e.target.value)}
                   className="rounded border border-gray-300 px-2 py-1.5" />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-semibold uppercase text-gray-600">LDM</span>
+                <span className="text-[11px] uppercase text-gray-600">Länge cm</span>
+                <input type="number" min="0" value={form.lengthCm}
+                  onChange={(e) => set('lengthCm', e.target.value)}
+                  className="rounded border border-gray-300 px-2 py-1.5" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] uppercase text-gray-600">Breite cm</span>
+                <input type="number" min="0" value={form.widthCm}
+                  onChange={(e) => set('widthCm', e.target.value)}
+                  className="rounded border border-gray-300 px-2 py-1.5" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] uppercase text-gray-600">Höhe cm</span>
+                <input type="number" min="0" value={form.heightCm}
+                  onChange={(e) => set('heightCm', e.target.value)}
+                  className="rounded border border-gray-300 px-2 py-1.5" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] uppercase text-gray-600">LDM</span>
                 <input type="number" min="0" step="0.01" value={form.ldm}
                   onChange={(e) => set('ldm', e.target.value)}
                   className="rounded border border-gray-300 px-2 py-1.5" />
               </label>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-semibold uppercase text-gray-600">Volumen (m³)</span>
+                <span className="text-[11px] uppercase text-gray-600">Volumen m³</span>
                 <input type="number" min="0" step="0.001" value={form.volumeM3}
                   onChange={(e) => set('volumeM3', e.target.value)}
                   className="rounded border border-gray-300 px-2 py-1.5" />
               </label>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-semibold uppercase text-gray-600">Ladedatum</span>
+                <span className="text-[11px] uppercase text-gray-600">Ladedatum</span>
                 <input type="date" value={form.loadingDate}
                   onChange={(e) => set('loadingDate', e.target.value)}
                   className="rounded border border-gray-300 px-2 py-1.5" />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-semibold uppercase text-gray-600">Lieferdatum</span>
+                <span className="text-[11px] uppercase text-gray-600">Lieferdatum</span>
                 <input type="date" value={form.deliveryDate}
                   onChange={(e) => set('deliveryDate', e.target.value)}
                   className="rounded border border-gray-300 px-2 py-1.5" />
@@ -226,21 +350,21 @@ export default function ShipmentEditModal({ shipment, open, onOpenChange }: Prop
             </div>
 
             <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-semibold uppercase text-gray-600">Kundenreferenz</span>
+              <span className="text-[11px] uppercase text-gray-600">Kundenreferenz</span>
               <input type="text" value={form.customerRef}
                 onChange={(e) => set('customerRef', e.target.value)}
                 className="rounded border border-gray-300 px-2 py-1.5" />
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-semibold uppercase text-gray-600">Notiz / Kundenhinweis</span>
+              <span className="text-[11px] uppercase text-gray-600">Notiz / Kundenhinweis</span>
               <textarea rows={2} value={form.customerNote}
                 onChange={(e) => set('customerNote', e.target.value)}
                 className="rounded border border-gray-300 px-2 py-1.5" />
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-semibold uppercase text-gray-600">Bemerkung (intern)</span>
+              <span className="text-[11px] uppercase text-gray-600">Bemerkung (intern)</span>
               <textarea rows={2} value={form.comment}
                 onChange={(e) => set('comment', e.target.value)}
                 className="rounded border border-gray-300 px-2 py-1.5" />
@@ -260,10 +384,10 @@ export default function ShipmentEditModal({ shipment, open, onOpenChange }: Prop
               </Dialog.Close>
               <button
                 type="submit"
-                disabled={mutation.isPending}
+                disabled={pending || !dirty}
                 className="px-4 py-1.5 rounded bg-[#1e40af] text-white hover:bg-[#1e3a8a] disabled:opacity-50"
               >
-                {mutation.isPending ? 'Speichere…' : 'Speichern'}
+                {pending ? 'Speichere…' : dirty ? 'Speichern' : 'Keine Änderungen'}
               </button>
             </div>
           </form>

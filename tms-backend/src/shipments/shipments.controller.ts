@@ -17,6 +17,7 @@ import { CreateShipmentDto } from './dto/create-shipment.dto';
 import { UpdateShipmentDto } from './dto/update-shipment.dto';
 import { DispatchShipmentDto } from './dto/dispatch-shipment.dto';
 import { BulkPatchShipmentsDto } from './dto/bulk-patch-shipments.dto';
+import { CreatePackageItemDto, UpdatePackageItemDto } from './dto/package-item.dto';
 import { ListShipmentsQueryDto } from './dto/list-shipments-query.dto';
 import { ShipmentPricePreviewDto } from './dto/price-preview.dto';
 
@@ -104,5 +105,31 @@ export class ShipmentsController {
   @Get('price-preview')
   async pricePreview(@Query() query: ShipmentPricePreviewDto) {
     return this.shipmentsService.previewPrice(query);
+  }
+}
+
+@ApiTags('shipment-package-items')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller('shipment-package-items')
+export class ShipmentPackageItemsController {
+  constructor(private readonly shipmentsService: ShipmentsService) {}
+
+  @Post()
+  async create(@Body() dto: CreatePackageItemDto) {
+    return this.shipmentsService.createPackageItem(dto);
+  }
+
+  @Patch(':itemId')
+  async update(
+    @Param('itemId') itemId: string,
+    @Body() dto: UpdatePackageItemDto,
+  ) {
+    return this.shipmentsService.updatePackageItem(itemId, dto);
+  }
+
+  @Delete(':itemId')
+  async remove(@Param('itemId') itemId: string) {
+    return this.shipmentsService.deletePackageItem(itemId);
   }
 }

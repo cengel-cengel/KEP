@@ -771,6 +771,90 @@ export class ShipmentsService {
     return { success: true, ids, ...result };
   }
 
+  /** Erstellt ein neues shipment_package_item. line_index auto-vergeben. */
+  async createPackageItem(dto: {
+    shipmentId: string;
+    packageType?: string;
+    quantity?: number;
+    lengthCm: number;
+    widthCm: number;
+    heightCm: number;
+    weightKg: number;
+    stackable?: boolean;
+  }) {
+    const shipment = await this.prisma.shipments.findUnique({
+      where: { id: dto.shipmentId },
+      select: { id: true },
+    });
+    if (!shipment) {
+      throw new NotFoundException(`Sendung ${dto.shipmentId} nicht gefunden`);
+    }
+    const last = await this.prisma.shipment_package_items.findFirst({
+      where: { shipment_id: dto.shipmentId },
+      orderBy: { line_index: 'desc' },
+      select: { line_index: true },
+    });
+    const nextIndex = (last?.line_index ?? 0) + 1;
+    return this.prisma.shipment_package_items.create({
+      data: {
+        shipment_id: dto.shipmentId,
+        line_index: nextIndex,
+        package_type: (dto.packageType ?? 'pallet_euro') as any,
+        quantity: dto.quantity ?? 1,
+        length_cm: dto.lengthCm,
+        width_cm: dto.widthCm,
+        height_cm: dto.heightCm,
+        weight_kg: dto.weightKg,
+        stackable: dto.stackable ?? true,
+      },
+    });
+  }
+
+  async updatePackageItem(
+    itemId: string,
+    dto: {
+      packageType?: string;
+      quantity?: number;
+      lengthCm?: number;
+      widthCm?: number;
+      heightCm?: number;
+      weightKg?: number;
+      stackable?: boolean;
+    },
+  ) {
+    const item = await this.prisma.shipment_package_items.findUnique({
+      where: { id: itemId },
+      select: { id: true },
+    });
+    if (!item) {
+      throw new NotFoundException(`Package-Item ${itemId} nicht gefunden`);
+    }
+    const data: Record<string, unknown> = {};
+    if (dto.packageType !== undefined) data.package_type = dto.packageType;
+    if (dto.quantity !== undefined) data.quantity = dto.quantity;
+    if (dto.lengthCm !== undefined) data.length_cm = dto.lengthCm;
+    if (dto.widthCm !== undefined) data.width_cm = dto.widthCm;
+    if (dto.heightCm !== undefined) data.height_cm = dto.heightCm;
+    if (dto.weightKg !== undefined) data.weight_kg = dto.weightKg;
+    if (dto.stackable !== undefined) data.stackable = dto.stackable;
+    return this.prisma.shipment_package_items.update({
+      where: { id: itemId },
+      data,
+    });
+  }
+
+  async deletePackageItem(itemId: string) {
+    const item = await this.prisma.shipment_package_items.findUnique({
+      where: { id: itemId },
+      select: { id: true },
+    });
+    if (!item) {
+      throw new NotFoundException(`Package-Item ${itemId} nicht gefunden`);
+    }
+    await this.prisma.shipment_package_items.delete({ where: { id: itemId } });
+    return { success: true };
+  }
+
   async setStackable(id: string, stackable: boolean) {
     const shipment = await this.prisma.shipments.findUnique({
       where: { id },

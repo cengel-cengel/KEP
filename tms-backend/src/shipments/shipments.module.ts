@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ShipmentsService } from './shipments.service';
-import { ShipmentsController } from './shipments.controller';
+import { ShipmentsController, ShipmentPackageItemsController } from './shipments.controller';
 import { ConditionsModule } from '../conditions/conditions.module';
 import { AuditModule } from '../audit/audit.module';
 import { HallModule } from '../hall/hall.module';
@@ -21,7 +21,7 @@ import { PricingHubModule } from '../pricing-hub/pricing-hub.module';
     CostsModule,
     PricingHubModule,
   ],
-  controllers: [ShipmentsController],
+  controllers: [ShipmentsController, ShipmentPackageItemsController],
   providers: [ShipmentsService],
   exports: [ShipmentsService],
 })

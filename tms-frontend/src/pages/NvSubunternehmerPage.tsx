@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, Pencil, Plus, Power, Trash2, X } from 'lucide-react';
 import { api } from '../lib/api';
+import ResponsiveTable from '../components/table/ResponsiveTable';
+import type { Column } from '../components/table/ResponsiveTable';
 
 type BusinessPartner = {
   id: string;
@@ -49,6 +51,152 @@ function emptyForm(): Partial<Subunternehmer> {
     fahrzeug_typ: '7_5T',
     aktiv: true,
   };
+}
+
+function tarifWertText(s: Subunternehmer): string {
+  if (s.tarif_typ === 'TAGESPAUSCHALE' && s.tarif_tagespauschale_eur != null)
+    return `${Number(s.tarif_tagespauschale_eur).toFixed(2)} €/Tag`;
+  if (s.tarif_typ === 'PRO_STOP' && s.tarif_pro_stop_eur != null)
+    return `${Number(s.tarif_pro_stop_eur).toFixed(2)} €/Stop`;
+  if (s.tarif_typ === 'KM_BASIERT' && s.tarif_pro_km_eur != null) {
+    const grund =
+      s.tarif_grundgebuehr_eur != null
+        ? ` + ${Number(s.tarif_grundgebuehr_eur).toFixed(2)} GB`
+        : '';
+    return `${Number(s.tarif_pro_km_eur).toFixed(2)} €/km${grund}`;
+  }
+  if (s.tarif_typ === 'STUNDEN_BASIERT' && s.tarif_pro_stunde_eur != null)
+    return `${Number(s.tarif_pro_stunde_eur).toFixed(2)} €/h`;
+  if (s.tarif_typ === 'SPOT') return 'Spot';
+  return '—';
+}
+
+function buildSubColumns(args: {
+  selected: Set<string>;
+  onToggleSelect: (id: string) => void;
+  onToggleAktiv: (s: Subunternehmer) => void;
+  onEdit: (id: string) => void;
+  onDelete: (s: Subunternehmer) => void;
+}): Column<Subunternehmer>[] {
+  const { selected, onToggleSelect, onToggleAktiv, onEdit, onDelete } = args;
+  return [
+    {
+      key: 'select',
+      header: '',
+      width: 32,
+      minWidth: 32,
+      resizable: false,
+      render: (s) => (
+        <input
+          type="checkbox"
+          checked={selected.has(s.id)}
+          onChange={() => onToggleSelect(s.id)}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
+    },
+    {
+      key: 'name',
+      header: 'Name',
+      minWidth: 180,
+      render: (s) => (
+        <span className="truncate" title={s.business_partner?.name ?? s.name}>
+          {s.business_partner?.name ?? s.name}
+          {s.business_partner?.partner_number && (
+            <span className="text-xs text-gray-500 ml-2 font-mono">
+              {s.business_partner.partner_number}
+            </span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'gebiet',
+      header: 'Tour-Gebiet',
+      width: 140,
+      render: (s) => (
+        <span className="font-mono text-xs text-gray-600">
+          {s.nv_tour_gebiet?.code ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'tarif_typ',
+      header: 'Tarif-Typ',
+      width: 140,
+      render: (s) => (
+        <span className="text-xs text-gray-700">{s.tarif_typ}</span>
+      ),
+    },
+    {
+      key: 'tarif_wert',
+      header: 'Tarif',
+      width: 160,
+      render: (s) => (
+        <span className="text-xs text-gray-600">{tarifWertText(s)}</span>
+      ),
+    },
+    {
+      key: 'fahrzeug',
+      header: 'Fahrzeug',
+      width: 100,
+      render: (s) => (
+        <span className="text-xs text-gray-600">{s.fahrzeug_typ ?? '—'}</span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      width: 80,
+      align: 'center',
+      render: (s) => (
+        <span
+          className={`text-xs px-2 py-0.5 rounded ${
+            s.aktiv
+              ? 'bg-green-100 text-green-700'
+              : 'bg-gray-200 text-gray-600'
+          }`}
+        >
+          {s.aktiv ? 'aktiv' : 'inaktiv'}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      width: 110,
+      resizable: false,
+      align: 'right',
+      render: (s) => (
+        <span
+          className="inline-flex gap-1.5 whitespace-nowrap"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => onToggleAktiv(s)}
+            className="text-gray-500 hover:text-gray-700"
+            title={s.aktiv ? 'Deaktivieren' : 'Aktivieren'}
+          >
+            <Power size={16} />
+          </button>
+          <button
+            onClick={() => onEdit(s.id)}
+            className="text-blue-600 hover:text-blue-800"
+            title="Bearbeiten"
+          >
+            <Pencil size={16} />
+          </button>
+          <button
+            onClick={() => onDelete(s)}
+            className="text-red-600 hover:text-red-800"
+            title="Löschen"
+          >
+            <Trash2 size={16} />
+          </button>
+        </span>
+      ),
+    },
+  ];
 }
 
 export default function NvSubunternehmerPage() {
@@ -130,12 +278,30 @@ export default function NvSubunternehmerPage() {
     setSelected(next);
   };
 
+  const columns = useMemo(
+    () =>
+      buildSubColumns({
+        selected,
+        onToggleSelect: toggleSelect,
+        onToggleAktiv: toggleAktiv,
+        onEdit: (id) => setEditingId(id),
+        onDelete: (s) => {
+          if (
+            confirm(`Subunternehmer "${s.business_partner?.name ?? s.name}" löschen?`)
+          )
+            deleteMut.mutate(s.id);
+        },
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selected],
+  );
+
   return (
-    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
-      <div className="flex items-end justify-between mb-4 gap-4 flex-wrap">
+    <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-gray-50">
+      <div className="bg-white border-b px-4 sm:px-6 py-3 sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">NV-Subunternehmer</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-gray-500 mt-0.5">
             {subQ.data?.length ?? 0} Subunternehmer
           </p>
         </div>
@@ -170,7 +336,7 @@ export default function NvSubunternehmerPage() {
       </div>
 
       {selected.size > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded p-2 mb-3 flex items-center gap-2 text-sm">
+        <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center gap-2 text-sm">
           <span>{selected.size} ausgewählt:</span>
           <button
             onClick={() =>
@@ -197,128 +363,15 @@ export default function NvSubunternehmerPage() {
         </div>
       )}
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="px-3 py-2 w-8"></th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Name
-              </th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Tour-Gebiet
-              </th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Tarif
-              </th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Fahrzeug
-              </th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Status
-              </th>
-              <th className="px-3 py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {subQ.isLoading && (
-              <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
-                  Lade...
-                </td>
-              </tr>
-            )}
-            {!subQ.isLoading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
-                  Keine Subunternehmer.
-                </td>
-              </tr>
-            )}
-            {filtered.map((s) => (
-              <tr key={s.id} className="border-b border-gray-100">
-                <td className="px-3 py-2">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(s.id)}
-                    onChange={() => toggleSelect(s.id)}
-                  />
-                </td>
-                <td className="px-3 py-2 font-medium">
-                  {s.business_partner?.name ?? s.name}
-                  {s.business_partner?.partner_number && (
-                    <span className="text-xs text-gray-500 ml-2 font-mono">
-                      {s.business_partner.partner_number}
-                    </span>
-                  )}
-                </td>
-                <td className="px-3 py-2 font-mono text-xs">
-                  {s.nv_tour_gebiet?.code ?? '—'}
-                </td>
-                <td className="px-3 py-2 text-xs text-gray-600">
-                  {s.tarif_typ === 'TAGESPAUSCHALE' &&
-                    s.tarif_tagespauschale_eur != null &&
-                    `${Number(s.tarif_tagespauschale_eur).toFixed(2)} €/Tag`}
-                  {s.tarif_typ === 'PRO_STOP' &&
-                    s.tarif_pro_stop_eur != null &&
-                    `${Number(s.tarif_pro_stop_eur).toFixed(2)} €/Stop`}
-                  {s.tarif_typ === 'KM_BASIERT' && (
-                    <>
-                      {s.tarif_pro_km_eur != null &&
-                        `${Number(s.tarif_pro_km_eur).toFixed(2)} €/km`}
-                      {s.tarif_grundgebuehr_eur != null &&
-                        ` + ${Number(s.tarif_grundgebuehr_eur).toFixed(2)} GB`}
-                    </>
-                  )}
-                  {s.tarif_typ === 'STUNDEN_BASIERT' &&
-                    s.tarif_pro_stunde_eur != null &&
-                    `${Number(s.tarif_pro_stunde_eur).toFixed(2)} €/h`}
-                  {s.tarif_typ === 'SPOT' && 'Spot'}
-                </td>
-                <td className="px-3 py-2 text-xs text-gray-600">
-                  {s.fahrzeug_typ ?? '—'}
-                </td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded ${
-                      s.aktiv
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-gray-200 text-gray-600'
-                    }`}
-                  >
-                    {s.aktiv ? 'aktiv' : 'inaktiv'}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-right whitespace-nowrap">
-                  <button
-                    onClick={() => toggleAktiv(s)}
-                    className="text-gray-500 hover:text-gray-700 mr-2"
-                    title={s.aktiv ? 'Deaktivieren' : 'Aktivieren'}
-                  >
-                    <Power size={16} />
-                  </button>
-                  <button
-                    onClick={() => setEditingId(s.id)}
-                    className="text-blue-600 hover:text-blue-800 mr-2"
-                    title="Bearbeiten"
-                  >
-                    <Pencil size={16} />
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (confirm(`Subunternehmer "${s.name}" löschen?`))
-                        deleteMut.mutate(s.id);
-                    }}
-                    className="text-red-600 hover:text-red-800"
-                    title="Löschen"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
+        <ResponsiveTable<Subunternehmer>
+          storageKey="nv-subunternehmer-list"
+          columns={columns}
+          data={filtered}
+          rowKey={(s) => s.id}
+          loading={subQ.isLoading}
+          empty="Keine Subunternehmer."
+        />
       </div>
 
       {(editing || creating) && (

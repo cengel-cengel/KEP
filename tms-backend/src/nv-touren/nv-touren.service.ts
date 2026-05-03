@@ -378,7 +378,8 @@ export class NvTourenService {
     const stammKundenIds = new Set(stammKunden.map((s) => s.customer_id));
 
     const where: any = {
-      delivery_date: datum,
+      status: 'new',
+      loading_date: { lte: datum },
       deleted_at: null,
       id: { notIn: [...stoppedShipmentIds] },
     };
@@ -395,7 +396,7 @@ export class NvTourenService {
 
     const shipments = await this.prisma.shipments.findMany({
       where,
-      orderBy: [{ delivery_date: 'asc' }, { created_at: 'asc' }],
+      orderBy: [{ loading_date: 'asc' }, { created_at: 'asc' }],
       include: {
         customers: {
           select: { id: true, customer_number: true, name: true },
@@ -555,7 +556,8 @@ export class NvTourenService {
       const shipments = await this.prisma.shipments.findMany({
         where: {
           customer_id: sk.customer_id,
-          delivery_date: tour.datum,
+          status: 'new',
+          loading_date: { lte: tour.datum },
           deleted_at: null,
         },
         select: { id: true },

@@ -25,6 +25,7 @@ type EligibleShipment = {
   id: string;
   shipment_number: string;
   customer_id: string | null;
+  loading_date: string;
   delivery_date: string;
   package_count: number;
   total_weight_kg?: string | number | null;
@@ -35,6 +36,26 @@ type EligibleShipment = {
   matched_tour_gebiet_code: string | null;
   is_stamm_kunde: boolean;
 };
+
+function pickupBadge(loadingDateIso: string) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const ld = new Date(loadingDateIso);
+  ld.setHours(0, 0, 0, 0);
+  const diffDays = Math.round(
+    (ld.getTime() - today.getTime()) / (24 * 60 * 60 * 1000),
+  );
+  if (diffDays < 0) {
+    return {
+      label: `Überfällig ${Math.abs(diffDays)} Tag${Math.abs(diffDays) === 1 ? '' : 'e'}`,
+      cls: 'bg-red-100 text-red-700',
+    };
+  }
+  if (diffDays === 0) {
+    return { label: 'Heute', cls: 'bg-yellow-100 text-yellow-800' };
+  }
+  return null;
+}
 type Stop = {
   id: string;
   position: number;
@@ -256,13 +277,14 @@ export default function NvDispositionPage() {
       <div className="bg-white border-b px-4 py-3 flex flex-wrap items-center gap-3">
         <div>
           <label className="block text-[10px] uppercase text-gray-500 mb-0.5">
-            Datum
+            Pickup-Datum bis
           </label>
           <input
             type="date"
             value={datum}
             onChange={(e) => setDatum(e.target.value)}
             className="border rounded px-2 py-1 text-sm"
+            title="Zeigt alle offenen Abholungen bis zu diesem Datum"
           />
         </div>
         <div>
@@ -365,13 +387,18 @@ export default function NvDispositionPage() {
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-3 p-3 overflow-hidden">
         <div className="bg-white rounded-lg border overflow-y-auto">
-          <div className="px-3 py-2 border-b bg-gray-50 sticky top-0 flex items-center justify-between">
-            <h2 className="font-semibold text-sm">
-              Eingehende Sendungen ({eligQ.data?.length ?? 0})
-            </h2>
-            {eligQ.isLoading && (
-              <span className="text-xs text-gray-500">lade…</span>
-            )}
+          <div className="px-3 py-2 border-b bg-gray-50 sticky top-0">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-sm">
+                Eingehende Sendungen ({eligQ.data?.length ?? 0})
+              </h2>
+              {eligQ.isLoading && (
+                <span className="text-xs text-gray-500">lade…</span>
+              )}
+            </div>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              Offene Abholungen (status=new) bis Pickup-Datum.
+            </p>
           </div>
           {!eligQ.isLoading && (eligQ.data?.length ?? 0) === 0 && (
             <div className="p-4 text-sm text-gray-500">
@@ -406,7 +433,7 @@ export default function NvDispositionPage() {
                     className="mt-1"
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono text-xs">
                         {s.shipment_number}
                       </span>
@@ -418,6 +445,17 @@ export default function NvDispositionPage() {
                           Stamm
                         </span>
                       )}
+                      {(() => {
+                        const b = pickupBadge(s.loading_date);
+                        return b ? (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded ${b.cls}`}
+                            title={`Pickup ${s.loading_date.slice(0, 10)}`}
+                          >
+                            {b.label}
+                          </span>
+                        ) : null;
+                      })()}
                     </div>
                     <div className="font-medium truncate">
                       {s.customer?.name ?? '—'}

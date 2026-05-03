@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pencil, Power, X } from 'lucide-react';
 import { api } from '../lib/api';
+import ResponsiveTable from '../components/table/ResponsiveTable';
+import type { Column } from '../components/table/ResponsiveTable';
 
 type Relation = { id: string; code: string; name: string };
 type NvTourGebiet = {
@@ -25,6 +27,117 @@ type NvGebiet = {
   aktiv: boolean;
   _count?: { tour_gebiete: number };
 };
+
+function buildGebietColumns(args: {
+  onToggleAktiv: (t: NvTourGebiet) => void;
+  onEdit: (id: string) => void;
+}): Column<NvTourGebiet>[] {
+  const { onToggleAktiv, onEdit } = args;
+  return [
+    {
+      key: 'farbe',
+      header: '',
+      width: 50,
+      resizable: false,
+      render: (t) => (
+        <span
+          className="inline-block w-5 h-5 rounded border border-gray-300"
+          style={{ background: t.farbe ?? '#ccc' }}
+        />
+      ),
+    },
+    {
+      key: 'code',
+      header: 'Code',
+      width: 130,
+      render: (t) => <span className="font-mono text-xs">{t.code}</span>,
+    },
+    {
+      key: 'name',
+      header: 'Name',
+      minWidth: 160,
+      render: (t) => (
+        <span className="truncate" title={t.name}>
+          {t.name}
+        </span>
+      ),
+    },
+    {
+      key: 'plz',
+      header: 'PLZ',
+      width: 220,
+      render: (t) => {
+        const plz = t.plz_pattern ?? [];
+        return (
+          <span className="text-xs text-gray-600 truncate">
+            {plz.length} PLZ
+            {plz.length > 0 && (
+              <span className="text-gray-400 ml-1">
+                ({plz.slice(0, 3).join(', ')}
+                {plz.length > 3 ? '...' : ''})
+              </span>
+            )}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'relation',
+      header: 'Relation',
+      width: 110,
+      render: (t) => (
+        <span className="font-mono text-xs text-gray-600">
+          {t.relation?.code ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      width: 80,
+      align: 'center',
+      render: (t) => (
+        <span
+          className={`text-xs px-2 py-0.5 rounded ${
+            t.aktiv
+              ? 'bg-green-100 text-green-700'
+              : 'bg-gray-200 text-gray-600'
+          }`}
+        >
+          {t.aktiv ? 'aktiv' : 'inaktiv'}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      width: 90,
+      resizable: false,
+      align: 'right',
+      render: (t) => (
+        <span
+          className="inline-flex gap-1.5 whitespace-nowrap"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => onToggleAktiv(t)}
+            className="text-gray-500 hover:text-gray-700"
+            title={t.aktiv ? 'Deaktivieren' : 'Aktivieren'}
+          >
+            <Power size={16} />
+          </button>
+          <button
+            onClick={() => onEdit(t.id)}
+            className="text-blue-600 hover:text-blue-800"
+            title="Bearbeiten"
+          >
+            <Pencil size={16} />
+          </button>
+        </span>
+      ),
+    },
+  ];
+}
 
 export default function NvGebietePage() {
   const qc = useQueryClient();
@@ -76,12 +189,22 @@ export default function NvGebietePage() {
   const toggleAktiv = (t: NvTourGebiet) =>
     updateMut.mutate({ id: t.id, patch: { aktiv: !t.aktiv } });
 
+  const columns = useMemo(
+    () =>
+      buildGebietColumns({
+        onToggleAktiv: toggleAktiv,
+        onEdit: (id) => setEditingId(id),
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   return (
-    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
-      <div className="flex items-end justify-between mb-4 gap-4 flex-wrap">
+    <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-gray-50">
+      <div className="bg-white border-b px-4 sm:px-6 py-3 sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">NV-Gebiete</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-gray-500 mt-0.5">
             {gebieteQ.data?.length ?? 0} NV-Gebiet
             {(gebieteQ.data?.length ?? 0) === 1 ? '' : 'e'} ·{' '}
             {tourQ.data?.length ?? 0} Tour-Gebiete
@@ -96,125 +219,41 @@ export default function NvGebietePage() {
         />
       </div>
 
-      {gebieteQ.data && gebieteQ.data.length > 0 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
-          {gebieteQ.data.map((g) => (
-            <div key={g.id} className="flex items-center gap-4 text-sm">
-              <span className="font-semibold text-gray-800">{g.name}</span>
-              <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800">
-                {g.gebiet_typ}
-              </span>
-              <span className="text-gray-500">
-                {g._count?.tour_gebiete ?? 0} Tour-Gebiete ·{' '}
-                {g.plz_ranges?.length ?? 0} PLZ
-              </span>
-              <span
-                className={`text-xs px-2 py-0.5 rounded ${
-                  g.aktiv
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-gray-200 text-gray-600'
-                }`}
-              >
-                {g.aktiv ? 'aktiv' : 'inaktiv'}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Farbe
-              </th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Code
-              </th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Name
-              </th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                PLZ
-              </th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Relation
-              </th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Status
-              </th>
-              <th className="px-3 py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {tourQ.isLoading && (
-              <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
-                  Lade...
-                </td>
-              </tr>
-            )}
-            {!tourQ.isLoading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
-                  Keine Tour-Gebiete gefunden.
-                </td>
-              </tr>
-            )}
-            {filtered.map((t) => (
-              <tr key={t.id} className="border-b border-gray-100">
-                <td className="px-3 py-2">
-                  <span
-                    className="inline-block w-5 h-5 rounded border border-gray-300"
-                    style={{ background: t.farbe ?? '#ccc' }}
-                  />
-                </td>
-                <td className="px-3 py-2 font-mono text-xs">{t.code}</td>
-                <td className="px-3 py-2">{t.name}</td>
-                <td className="px-3 py-2 text-xs text-gray-600">
-                  {(t.plz_pattern ?? []).length} PLZ
-                  {(t.plz_pattern ?? []).length > 0 && (
-                    <span className="text-gray-400 ml-1">
-                      ({(t.plz_pattern ?? []).slice(0, 3).join(', ')}
-                      {(t.plz_pattern ?? []).length > 3 ? '...' : ''})
-                    </span>
-                  )}
-                </td>
-                <td className="px-3 py-2 text-xs text-gray-600">
-                  {t.relation?.code ?? '—'}
-                </td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded ${
-                      t.aktiv
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-gray-200 text-gray-600'
-                    }`}
-                  >
-                    {t.aktiv ? 'aktiv' : 'inaktiv'}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-right">
-                  <button
-                    onClick={() => toggleAktiv(t)}
-                    className="text-gray-500 hover:text-gray-700 mr-2"
-                    title={t.aktiv ? 'Deaktivieren' : 'Aktivieren'}
-                  >
-                    <Power size={16} />
-                  </button>
-                  <button
-                    onClick={() => setEditingId(t.id)}
-                    className="text-blue-600 hover:text-blue-800"
-                    title="Bearbeiten"
-                  >
-                    <Pencil size={16} />
-                  </button>
-                </td>
-              </tr>
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+        {gebieteQ.data && gebieteQ.data.length > 0 && (
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            {gebieteQ.data.map((g) => (
+              <div key={g.id} className="flex items-center gap-4 text-sm">
+                <span className="font-semibold text-gray-800">{g.name}</span>
+                <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800">
+                  {g.gebiet_typ}
+                </span>
+                <span className="text-gray-500">
+                  {g._count?.tour_gebiete ?? 0} Tour-Gebiete ·{' '}
+                  {g.plz_ranges?.length ?? 0} PLZ
+                </span>
+                <span
+                  className={`text-xs px-2 py-0.5 rounded ${
+                    g.aktiv
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-gray-200 text-gray-600'
+                  }`}
+                >
+                  {g.aktiv ? 'aktiv' : 'inaktiv'}
+                </span>
+              </div>
             ))}
-          </tbody>
-        </table>
+          </div>
+        )}
+
+        <ResponsiveTable<NvTourGebiet>
+          storageKey="nv-gebiete-list"
+          columns={columns}
+          data={filtered}
+          rowKey={(t) => t.id}
+          loading={tourQ.isLoading}
+          empty="Keine Tour-Gebiete gefunden."
+        />
       </div>
 
       {editing && (

@@ -24,3 +24,10 @@ body,
 .leaflet-tile-pane {
   opacity: 1 !important;
 }
+
+.nv-dispo-pin[data-dragging="true"] {
+  opacity: 0.5;
+}
+.nv-dispo-pin {
+  cursor: grab;
+}

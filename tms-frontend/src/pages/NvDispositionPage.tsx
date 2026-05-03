@@ -398,8 +398,24 @@ export default function NvDispositionPage() {
     },
   });
 
-  const dropOnTour = (tourId: string, shipmentId: string) =>
-    addStopMut.mutate({ tourId, shipmentId });
+  const dropOnTour = (
+    tourId: string,
+    shipmentId: string,
+    source?: 'map' | 'list',
+  ) =>
+    addStopMut.mutate(
+      { tourId, shipmentId },
+      {
+        onSuccess: () => {
+          if (source === 'map') {
+            setClickedSequence((seq) =>
+              seq.includes(shipmentId) ? seq : [...seq, shipmentId],
+            );
+          }
+          invalidate();
+        },
+      },
+    );
 
   const onPinClick = (shipmentId: string) => {
     if (!selectedTourId) {
@@ -664,7 +680,9 @@ export default function NvDispositionPage() {
               <TourCard
                 key={tour.id}
                 tour={tour}
-                onDrop={(shipmentId) => dropOnTour(tour.id, shipmentId)}
+                onDrop={(shipmentId, source) =>
+                  dropOnTour(tour.id, shipmentId, source)
+                }
                 onMoveStop={(idx, dir) => moveStop(tour, idx, dir)}
                 onDeleteStop={(stopId) =>
                   deleteStopMut.mutate({ tourId: tour.id, stopId })
@@ -764,7 +782,7 @@ function TourCard({
   onOpenKosten,
 }: {
   tour: NvTour;
-  onDrop: (shipmentId: string) => void;
+  onDrop: (shipmentId: string, source?: 'map' | 'list') => void;
   onMoveStop: (idx: number, dir: -1 | 1) => void;
   onDeleteStop: (stopId: string) => void;
   onDeleteTour: () => void;
@@ -778,8 +796,11 @@ function TourCard({
     const json = e.dataTransfer.getData('application/json');
     if (!json) return;
     try {
-      const { shipmentId } = JSON.parse(json) as { shipmentId?: string };
-      if (shipmentId) onDrop(shipmentId);
+      const { shipmentId, source } = JSON.parse(json) as {
+        shipmentId?: string;
+        source?: 'map' | 'list';
+      };
+      if (shipmentId) onDrop(shipmentId, source);
     } catch {
       /* ignore */
     }

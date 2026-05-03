@@ -123,13 +123,40 @@ export default function NvDispoMap({
       if (existing) {
         existing.setIcon(icon);
         existing.setLatLng(ll);
+        attachDragHandlers(existing, s.id);
       } else {
         const marker = L.marker(ll, { icon }).addTo(map);
         marker.on('click', () => onPinClick(s.id));
         const tip = `${s.shipment_number} · ${s.customer?.name ?? ''}<br>${s.loading_address?.zip ?? ''} ${s.loading_address?.city ?? ''}`;
         marker.bindTooltip(tip, { direction: 'top', offset: [0, -34] });
         markersRef.current.set(s.id, marker);
+        // Attach AFTER addTo: getElement() exists only when in DOM
+        attachDragHandlers(marker, s.id);
       }
+    }
+
+    function attachDragHandlers(marker: L.Marker, shipmentId: string) {
+      const el = marker.getElement() as HTMLElement | null;
+      if (!el) return;
+      el.setAttribute('draggable', 'true');
+      el.setAttribute('data-shipment-id', shipmentId);
+      // Avoid stacking multiple listeners
+      if (el.dataset.dndBound === '1') return;
+      el.dataset.dndBound = '1';
+      el.addEventListener('dragstart', (e: DragEvent) => {
+        if (!e.dataTransfer) return;
+        e.dataTransfer.setData(
+          'application/json',
+          JSON.stringify({ shipmentId, source: 'map' }),
+        );
+        e.dataTransfer.effectAllowed = 'move';
+        el.dataset.dragging = 'true';
+        mapRef.current?.dragging.disable();
+      });
+      el.addEventListener('dragend', () => {
+        delete el.dataset.dragging;
+        mapRef.current?.dragging.enable();
+      });
     }
 
     // Remove obsolete markers

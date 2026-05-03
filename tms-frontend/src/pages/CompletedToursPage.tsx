@@ -196,13 +196,15 @@ export default function CompletedToursPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white">
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-2xl font-semibold text-gray-900 mb-2">Touren (abgeschlossen)</h1>
-        <p className="text-sm text-gray-600 mb-4">
-          Übersicht aller Touren mit Status <span className="font-medium">closed</span> oder{' '}
-          <span className="font-medium">completed</span> inkl. zugeordneter Sendungen.
-        </p>
+    <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-gray-50">
+      <main className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="sticky top-0 z-30 bg-gray-50 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 pt-2 pb-3 border-b border-gray-200">
+          <h1 className="text-2xl font-semibold text-gray-900 mb-1">Touren (abgeschlossen)</h1>
+          <p className="text-sm text-gray-600">
+            Übersicht aller Touren mit Status <span className="font-medium">closed</span> oder{' '}
+            <span className="font-medium">completed</span> inkl. zugeordneter Sendungen.
+          </p>
+        </div>
 
         {!isLoading && !isError && (data?.length ?? 0) > 0 && (
           <div className="mb-6 flex flex-col lg:flex-row lg:flex-wrap gap-3 lg:items-end rounded-xl border border-gray-200 bg-gray-50 p-4">

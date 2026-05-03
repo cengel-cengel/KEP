@@ -260,16 +260,13 @@ export default function NvDispositionPage() {
   });
   const autoSuggestMut = useMutation({
     mutationFn: async () => {
-      console.log('[NV-Auto] mutationFn start, datum=', datum);
       const res = await api.post<{
         touren_created: number;
         stops_added: number;
       }>(`/nv-touren/auto-suggest`, undefined, { params: { datum } });
-      console.log('[NV-Auto] response', res.status, res.data);
       return res.data;
     },
     onSuccess: (res) => {
-      console.log('[NV-Auto] onSuccess', res);
       invalidate();
       setBanner({
         kind: 'ok',
@@ -277,7 +274,6 @@ export default function NvDispositionPage() {
       });
     },
     onError: (err: any) => {
-      console.error('[NV-Auto] onError', err?.response?.status, err?.response?.data, err);
       setBanner({
         kind: 'err',
         msg: `Auto-Vorschlag fehlgeschlagen: ${err?.response?.status ?? '?'} ${err?.message ?? ''}`,
@@ -366,16 +362,12 @@ export default function NvDispositionPage() {
         </div>
         <button
           onClick={() => {
-            console.log('[NV-Auto] click, datum=', datum);
             if (
               confirm(
                 `Stamm-Kunden für ${datum} automatisch zu Touren zuordnen?`,
               )
             ) {
-              console.log('[NV-Auto] confirmed');
               autoSuggestMut.mutate();
-            } else {
-              console.log('[NV-Auto] cancelled');
             }
           }}
           disabled={autoSuggestMut.isPending}

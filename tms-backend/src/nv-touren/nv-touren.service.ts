@@ -458,10 +458,13 @@ export class NvTourenService {
   }
 
   async autoSuggest(datum: string) {
-    console.log('[autoSuggest] start, datum=', datum);
     if (!datum) {
-      console.warn('[autoSuggest] datum missing!');
-      return { touren_created: 0, stops_added: 0, details: [], error: 'datum-missing' };
+      return {
+        touren_created: 0,
+        stops_added: 0,
+        details: [],
+        error: 'datum-missing',
+      };
     }
     const tag = new Date(datum);
     const stammTouren = await this.prisma.nv_stamm_touren.findMany({
@@ -473,7 +476,6 @@ export class NvTourenService {
         default_subunternehmer_id: true,
       },
     });
-    console.log('[autoSuggest] stammTouren aktiv=', stammTouren.length);
 
     let touren_created = 0;
     let stops_added_total = 0;
@@ -507,7 +509,6 @@ export class NvTourenService {
         created = true;
       }
       const result = await this.copyStammKunden(tour.id);
-      console.log('[autoSuggest]', st.code, 'created=', created, 'added=', result.added, 'skipped=', result.skipped);
       stops_added_total += result.added ?? 0;
       details.push({
         tour_id: tour.id,
@@ -518,7 +519,6 @@ export class NvTourenService {
       });
     }
 
-    console.log('[autoSuggest] done. touren_created=', touren_created, 'stops_added=', stops_added_total);
     return {
       touren_created,
       stops_added: stops_added_total,
@@ -547,12 +547,6 @@ export class NvTourenService {
       },
       orderBy: { standard_position: 'asc' },
     });
-    console.log(
-      '[copyStammKunden] tour=', tourId,
-      'stamm_tour_id=', tour.nv_stamm_tour_id,
-      'datum=', tour.datum,
-      'stammKunden aktiv=', stammKunden.length,
-    );
 
     const existingShipmentIds = new Set(
       (
@@ -583,12 +577,6 @@ export class NvTourenService {
         },
         select: { id: true },
       });
-      console.log(
-        '[copyStammKunden]   customer=',
-        sk.customer_id,
-        'matched ship=',
-        shipments.length,
-      );
       if (shipments.length === 0) {
         skipped++;
         continue;

@@ -1198,10 +1198,9 @@ export default function ShipmentsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white">
-
-      <main className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+    <div className="h-[calc(100vh-3.5rem)] bg-white flex flex-col">
+      <main className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sticky top-0 z-30 bg-white border-b border-gray-200 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-3">
           <div>
             <h1 className="text-2xl font-semibold text-gray-900">Sendungen</h1>
             <div className="mt-2 inline-flex rounded-lg border border-gray-300 overflow-hidden text-xs">

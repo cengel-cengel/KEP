@@ -4,7 +4,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
 
 export interface Column<T> {
   key: string;
@@ -24,6 +24,7 @@ export interface ResponsiveTableProps<T> {
   data: T[];
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
+  rowProps?: (row: T) => HTMLAttributes<HTMLDivElement>;
   loading?: boolean;
   empty?: ReactNode;
   className?: string;
@@ -72,6 +73,7 @@ export default function ResponsiveTable<T>({
   data,
   rowKey,
   onRowClick,
+  rowProps,
   loading,
   empty,
   className,
@@ -233,15 +235,24 @@ export default function ResponsiveTable<T>({
           {!showSkeleton &&
             rows.map((row) => {
               const k = rowKey(row);
+              const extra = rowProps ? rowProps(row) : undefined;
+              const extraClass = (extra?.className as string | undefined) ?? '';
+              const extraStyle = extra?.style as CSSProperties | undefined;
+              const { className: _ignoredCls, style: _ignoredStyle, onClick: extraOnClick, ...restExtra } = extra ?? {};
+              const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+                extraOnClick?.(e);
+                if (!e.defaultPrevented && onRowClick) onRowClick(row);
+              };
               return (
                 <div
                   key={k}
                   role="row"
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  {...restExtra}
+                  onClick={onRowClick || extraOnClick ? handleClick : undefined}
                   className={`grid border-b border-gray-100 ${
                     onRowClick ? 'cursor-pointer hover:bg-blue-50' : ''
-                  }`}
-                  style={wrapperStyle}
+                  } ${extraClass}`}
+                  style={{ ...wrapperStyle, ...extraStyle }}
                 >
                   {columns.map((c) => (
                     <div

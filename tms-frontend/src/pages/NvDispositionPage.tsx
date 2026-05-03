@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Plus, Sparkles, Trash2, X } from 'lucide-react';
 import Navigation from '../components/Navigation';
+import NvTourKostenModal from '../components/NvTourKostenModal';
 import { api } from '../lib/api';
 
 type TourGebiet = { id: string; code: string; name: string };
@@ -74,7 +75,14 @@ type NvTour = {
   datum: string;
   status: string;
   fahrzeug_typ: string | null;
+  fahrer_kosten_eur: string | number | null;
+  fahrzeug_kosten_eur: string | number | null;
+  kraftstoff_kosten_eur: string | number | null;
+  dispo_kosten_eur: string | number | null;
+  sonstige_kosten_eur: string | number | null;
   total_kosten_eur: string | number | null;
+  notizen: string | null;
+  subunternehmer_id: string | null;
   nv_stamm_tour_id: string | null;
   nv_stamm_tour?: {
     id: string;
@@ -104,6 +112,7 @@ export default function NvDispositionPage() {
   const [showCreateTour, setShowCreateTour] = useState(false);
   const [bulkPickerOpen, setBulkPickerOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [kostenTourId, setKostenTourId] = useState<string | null>(null);
   const [banner, setBanner] = useState<{
     msg: string;
     kind: 'ok' | 'err';
@@ -503,6 +512,7 @@ export default function NvDispositionPage() {
                 onDeleteTour={() => {
                   if (confirm(`Tour löschen?`)) deleteTourMut.mutate(tour.id);
                 }}
+                onOpenKosten={() => setKostenTourId(tour.id)}
               />
             ))}
           </div>
@@ -531,6 +541,18 @@ export default function NvDispositionPage() {
           }}
         />
       )}
+
+      {kostenTourId &&
+        (() => {
+          const t = tourenQ.data?.find((x) => x.id === kostenTourId);
+          if (!t) return null;
+          return (
+            <NvTourKostenModal
+              tour={t}
+              onClose={() => setKostenTourId(null)}
+            />
+          );
+        })()}
     </div>
   );
 }
@@ -541,12 +563,14 @@ function TourCard({
   onMoveStop,
   onDeleteStop,
   onDeleteTour,
+  onOpenKosten,
 }: {
   tour: NvTour;
   onDrop: (shipmentId: string) => void;
   onMoveStop: (idx: number, dir: -1 | 1) => void;
   onDeleteStop: (stopId: string) => void;
   onDeleteTour: () => void;
+  onOpenKosten: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -578,12 +602,27 @@ function TourCard({
         hovered ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'
       }`}
     >
-      <div className="px-3 py-2 border-b bg-gray-50 flex items-center justify-between">
+      <div
+        className="px-3 py-2 border-b bg-gray-50 flex items-center justify-between cursor-pointer hover:bg-gray-100"
+        onClick={onOpenKosten}
+        title="Klick für Kosten-Eingabe"
+      >
         <div>
-          <div className="font-semibold text-sm">
-            {tour.nv_stamm_tour?.code ?? '—'}
-            <span className="text-xs text-gray-500 ml-2">
+          <div className="font-semibold text-sm flex items-center gap-2">
+            <span>{tour.nv_stamm_tour?.code ?? '—'}</span>
+            <span className="text-xs text-gray-500">
               {tour.nv_stamm_tour?.nv_tour_gebiet?.name ?? ''}
+            </span>
+            <span
+              className={`text-xs font-mono ${
+                tour.total_kosten_eur && Number(tour.total_kosten_eur) > 0
+                  ? 'text-emerald-700 font-semibold'
+                  : 'text-gray-400'
+              }`}
+            >
+              {tour.total_kosten_eur && Number(tour.total_kosten_eur) > 0
+                ? `€ ${Number(tour.total_kosten_eur).toFixed(0)}`
+                : '€ —'}
             </span>
           </div>
           <div className="text-xs text-gray-500">
@@ -611,7 +650,10 @@ function TourCard({
           </div>
         </div>
         <button
-          onClick={onDeleteTour}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteTour();
+          }}
           className="text-red-500 hover:text-red-700"
           title="Tour löschen"
         >

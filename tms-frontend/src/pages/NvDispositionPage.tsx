@@ -249,6 +249,33 @@ export default function NvDispositionPage() {
   const [bulkPickerOpen, setBulkPickerOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [kostenTourId, setKostenTourId] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const raw = localStorage.getItem('tms.nv-dispo.collapsed-groups');
+      const arr = raw ? (JSON.parse(raw) as unknown) : null;
+      if (Array.isArray(arr)) return new Set(arr.filter((x) => typeof x === 'string'));
+    } catch {
+      /* ignore */
+    }
+    return new Set();
+  });
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      try {
+        localStorage.setItem(
+          'tms.nv-dispo.collapsed-groups',
+          JSON.stringify([...next]),
+        );
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
   const [drillDown, setDrillDown] = useState<{
     shipmentId: string;
     shipmentNumber: string;
@@ -323,6 +350,13 @@ export default function NvDispositionPage() {
       ).data,
     enabled: !!datum,
   });
+  const filteredTouren = useMemo(() => {
+    const list = tourenQ.data ?? [];
+    if (!filterTour) return list;
+    return list.filter(
+      (t) => t.nv_stamm_tour?.nv_tour_gebiet?.id === filterTour,
+    );
+  }, [tourenQ.data, filterTour]);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['nv-touren'] });
@@ -350,6 +384,24 @@ export default function NvDispositionPage() {
         })
       ).data,
     onSuccess: invalidate,
+    onError: (err: any) => {
+      const status = err?.response?.status;
+      const data = err?.response?.data;
+      if (status === 409 && data?.code === 'CAPACITY_EXCEEDED') {
+        const axes = (data?.would_exceed ?? [])
+          .map((w: any) => `${w.axis} (${w.total}/${w.max})`)
+          .join(', ');
+        setBanner({
+          kind: 'err',
+          msg: `Kapazität überschritten: ${axes || 'unbekannt'}`,
+        });
+      } else {
+        setBanner({
+          kind: 'err',
+          msg: `Hinzufügen fehlgeschlagen (${status ?? '?'}).`,
+        });
+      }
+    },
   });
   const deleteStopMut = useMutation({
     mutationFn: async (input: { tourId: string; stopId: string }) =>
@@ -423,14 +475,22 @@ export default function NvDispositionPage() {
       const res = await api.post<{
         touren_created: number;
         stops_added: number;
+        details?: { stops_skipped_capacity?: number }[];
       }>(`/nv-touren/auto-suggest`, undefined, { params: { datum } });
       return res.data;
     },
     onSuccess: (res) => {
       invalidate();
+      const skippedCap = (res.details ?? []).reduce(
+        (s, d) => s + (d.stops_skipped_capacity ?? 0),
+        0,
+      );
       setBanner({
-        kind: 'ok',
-        msg: `${res.touren_created} Tour(en) erstellt, ${res.stops_added} Stop(s) hinzugefügt.`,
+        kind: skippedCap > 0 ? 'err' : 'ok',
+        msg:
+          `${res.touren_created} Tour(en) erstellt, ` +
+          `${res.stops_added} Stop(s) hinzugefügt` +
+          (skippedCap > 0 ? `, ${skippedCap} blockiert (Kapazität).` : '.'),
       });
     },
     onError: (err: any) => {
@@ -527,13 +587,29 @@ export default function NvDispositionPage() {
 
 
   const dropBulkOnTour = async (tourId: string, ids: string[]) => {
-    await Promise.all(
+    const results = await Promise.allSettled(
       ids.map((shipmentId) =>
         api.post(`/nv-touren/${tourId}/stops`, { shipment_id: shipmentId }),
       ),
     );
+    const ok = results.filter((r) => r.status === 'fulfilled').length;
+    const failed = results.filter(
+      (r): r is PromiseRejectedResult => r.status === 'rejected',
+    );
     setSelected(new Set());
     invalidate();
+    if (failed.length === 0) {
+      setBanner({ kind: 'ok', msg: `${ok} Sendung(en) hinzugefügt.` });
+    } else {
+      const first = failed[0]?.reason;
+      const status = first?.response?.status;
+      const code = first?.response?.data?.code;
+      const msg =
+        status === 409 && code === 'CAPACITY_EXCEEDED'
+          ? `${ok} hinzugefügt, ${failed.length} blockiert (Kapazität überschritten).`
+          : `${ok} hinzugefügt, ${failed.length} fehlgeschlagen.`;
+      setBanner({ kind: 'err', msg });
+    }
   };
 
   return (
@@ -703,11 +779,21 @@ export default function NvDispositionPage() {
               Keine offenen Sendungen für {datum}.
             </div>
           )}
-          {groupedElig.map(([groupKey, items]) => (
+          {groupedElig.map(([groupKey, items]) => {
+            const collapsed = collapsedGroups.has(groupKey);
+            return (
             <div key={groupKey} className="border-b border-gray-200">
-              <div className="px-3 py-1 bg-gray-100 border-b text-xs font-mono text-gray-700">
-                {groupKey} ({items.length})
-              </div>
+              <button
+                type="button"
+                onClick={() => toggleGroup(groupKey)}
+                className="w-full px-3 py-1 bg-gray-100 border-b text-xs font-mono text-gray-700 flex items-center gap-2 hover:bg-gray-200"
+              >
+                <span className="inline-block w-3 text-center">
+                  {collapsed ? '▶' : '▼'}
+                </span>
+                <span>{groupKey} ({items.length})</span>
+              </button>
+              {!collapsed && (
               <ResponsiveTable<EligibleShipment>
                 storageKey={`nv-dispo-elig-${groupKey}`}
                 columns={eligColumns(
@@ -738,8 +824,10 @@ export default function NvDispositionPage() {
                   } ${draggingId === s.id ? 'opacity-40' : ''}`,
                 })}
               />
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
         )}
 
@@ -755,7 +843,7 @@ export default function NvDispositionPage() {
             </div>
           )}
           <div className="p-2 space-y-2">
-            {(tourenQ.data ?? []).map((tour) => (
+            {filteredTouren.map((tour) => (
               <TourCard
                 key={tour.id}
                 tour={tour}
@@ -792,7 +880,7 @@ export default function NvDispositionPage() {
                 className="ml-auto border rounded px-2 py-1 text-xs"
               >
                 <option value="">— Ziel-Tour wählen —</option>
-                {(tourenQ.data ?? []).map((t) => (
+                {filteredTouren.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.nv_stamm_tour?.code ?? '—'} ({t.stops.length})
                   </option>
@@ -835,11 +923,14 @@ export default function NvDispositionPage() {
 
       {bulkPickerOpen && (
         <BulkTourPicker
-          touren={tourenQ.data ?? []}
+          touren={filteredTouren}
           onClose={() => setBulkPickerOpen(false)}
           onPicked={async (tourId) => {
-            await dropBulkOnTour(tourId, [...selected]);
-            setBulkPickerOpen(false);
+            try {
+              await dropBulkOnTour(tourId, [...selected]);
+            } finally {
+              setBulkPickerOpen(false);
+            }
           }}
         />
       )}
@@ -900,6 +991,31 @@ function TourCard({
     queryFn: async () =>
       (await api.get<CostComponent[]>(`/nv-touren/${tour.id}/cost-components`))
         .data,
+    staleTime: 30_000,
+  });
+  const capQ = useQuery<{
+    limits: {
+      max_paletten: number | null;
+      max_gewicht_kg: number | null;
+      max_volumen_m3: number | null;
+      max_ldm: number | null;
+    };
+    current: {
+      paletten: number;
+      gewicht_kg: number;
+      volumen_m3: number;
+      ldm: number;
+    };
+    free: {
+      paletten: number | null;
+      gewicht_kg: number | null;
+      volumen_m3: number | null;
+      ldm: number | null;
+    };
+  }>({
+    queryKey: ['nv-tour-capacity', tour.id],
+    queryFn: async () =>
+      (await api.get(`/nv-touren/${tour.id}/capacity`)).data,
     staleTime: 30_000,
   });
   const costsByShipment = useMemo(() => {
@@ -1012,6 +1128,7 @@ function TourCard({
               </>
             )}
           </div>
+          <CapacityBars cap={capQ.data} />
         </div>
         <button
           onClick={(e) => {
@@ -1353,6 +1470,88 @@ function BulkTourPicker({
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function CapacityBars({
+  cap,
+}: {
+  cap?: {
+    limits: {
+      max_paletten: number | null;
+      max_gewicht_kg: number | null;
+      max_volumen_m3: number | null;
+      max_ldm: number | null;
+    };
+    current: {
+      paletten: number;
+      gewicht_kg: number;
+      volumen_m3: number;
+      ldm: number;
+    };
+  };
+}) {
+  if (!cap) return null;
+  const { limits, current } = cap;
+  const allSet =
+    limits.max_paletten != null &&
+    limits.max_gewicht_kg != null &&
+    limits.max_volumen_m3 != null &&
+    limits.max_ldm != null;
+  if (!allSet) {
+    return (
+      <div className="text-[10px] text-gray-400 mt-1">
+        Kapazität nicht konfiguriert
+      </div>
+    );
+  }
+  const items: { label: string; cur: number; max: number; unit: string }[] = [
+    { label: 'Pal', cur: current.paletten, max: limits.max_paletten as number, unit: '' },
+    {
+      label: 'kg',
+      cur: current.gewicht_kg,
+      max: limits.max_gewicht_kg as number,
+      unit: '',
+    },
+    {
+      label: 'm³',
+      cur: current.volumen_m3,
+      max: limits.max_volumen_m3 as number,
+      unit: '',
+    },
+    {
+      label: 'LDM',
+      cur: current.ldm,
+      max: limits.max_ldm as number,
+      unit: '',
+    },
+  ];
+  return (
+    <div className="flex gap-2 mt-1.5">
+      {items.map((it) => {
+        const pct = it.max > 0 ? (it.cur / it.max) * 100 : 0;
+        const over = pct > 100;
+        const clamped = Math.min(100, Math.max(0, pct));
+        return (
+          <div key={it.label} className="flex-1 min-w-0">
+            <div className="flex items-baseline justify-between text-[10px] leading-none mb-0.5">
+              <span className="text-gray-500">{it.label}</span>
+              <span
+                className={`font-mono ${over ? 'text-red-700 font-semibold' : 'text-gray-600'}`}
+              >
+                {Math.round(it.cur)}/{Math.round(it.max)}
+              </span>
+            </div>
+            <div className="h-1.5 bg-gray-200 rounded overflow-hidden">
+              <div
+                className={`h-full ${over ? 'bg-red-600' : 'bg-emerald-500'}`}
+                style={{ width: `${clamped}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

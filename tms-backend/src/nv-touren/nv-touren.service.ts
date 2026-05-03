@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateNvTourDto } from './dto/create-nv-tour.dto';
 import { UpdateNvTourDto } from './dto/update-nv-tour.dto';
@@ -339,6 +344,71 @@ export class NvTourenService {
     return { ok: true };
   }
 
+  /**
+   * Wirft ConflictException 409 wenn das Hinzufuegen der
+   * Sendung eine der 4 Kapazitaets-Achsen ueberschreitet.
+   * Achsen mit max=null werden uebersprungen.
+   */
+  private async assertCapacityOk(tourId: string, shipmentId: string) {
+    const cap = await this.getCapacity(tourId);
+    const shipment = await this.prisma.shipments.findUnique({
+      where: { id: shipmentId },
+      select: {
+        package_count: true,
+        weight_kg: true,
+        volume_m3: true,
+        ldm: true,
+      },
+    });
+    if (!shipment) return;
+    const add = {
+      paletten: Number(shipment.package_count ?? 0),
+      gewicht_kg: Number(shipment.weight_kg ?? 0),
+      volumen_m3: Number(shipment.volume_m3 ?? 0),
+      ldm: Number(shipment.ldm ?? 0),
+    };
+    const wouldExceed: {
+      axis: string;
+      max: number;
+      current: number;
+      adding: number;
+      total: number;
+    }[] = [];
+    const checks: {
+      axis: 'paletten' | 'gewicht_kg' | 'volumen_m3' | 'ldm';
+      maxKey: 'max_paletten' | 'max_gewicht_kg' | 'max_volumen_m3' | 'max_ldm';
+    }[] = [
+      { axis: 'paletten', maxKey: 'max_paletten' },
+      { axis: 'gewicht_kg', maxKey: 'max_gewicht_kg' },
+      { axis: 'volumen_m3', maxKey: 'max_volumen_m3' },
+      { axis: 'ldm', maxKey: 'max_ldm' },
+    ];
+    for (const c of checks) {
+      const max = cap.limits[c.maxKey];
+      if (max == null) continue;
+      const cur = (cap.current as any)[c.axis] as number;
+      const newTotal = cur + add[c.axis];
+      if (newTotal > Number(max)) {
+        wouldExceed.push({
+          axis: c.axis,
+          max: Number(max),
+          current: cur,
+          adding: add[c.axis],
+          total: newTotal,
+        });
+      }
+    }
+    if (wouldExceed.length > 0) {
+      throw new ConflictException({
+        code: 'CAPACITY_EXCEEDED',
+        limits: cap.limits,
+        current: cap.current,
+        free: cap.free,
+        would_exceed: wouldExceed,
+      });
+    }
+  }
+
   async createStop(tourId: string, dto: CreateNvTourStopDto) {
     const tour = await this.prisma.nv_touren.findUnique({
       where: { id: tourId },
@@ -385,6 +455,8 @@ export class NvTourenService {
         })
       )._max.position ?? -1) +
         1);
+
+    await this.assertCapacityOk(tourId, dto.shipment_id);
 
     const created = await this.prisma.nv_tour_stops.create({
       data: {
@@ -639,6 +711,7 @@ export class NvTourenService {
       created: boolean;
       stops_added: number;
       stops_skipped: number;
+      stops_skipped_capacity: number;
     }[] = [];
 
     for (const st of stammTouren) {
@@ -670,6 +743,7 @@ export class NvTourenService {
         created,
         stops_added: result.added ?? 0,
         stops_skipped: result.skipped ?? 0,
+        stops_skipped_capacity: result.skipped_capacity ?? 0,
       });
     }
 
@@ -721,6 +795,7 @@ export class NvTourenService {
 
     let added = 0;
     let skipped = 0;
+    let skipped_capacity = 0;
     for (const sk of stammKunden) {
       const shipments = await this.prisma.shipments.findMany({
         where: {
@@ -739,6 +814,15 @@ export class NvTourenService {
         if (existingShipmentIds.has(s.id)) {
           skipped++;
           continue;
+        }
+        try {
+          await this.assertCapacityOk(tourId, s.id);
+        } catch (err: any) {
+          if (err instanceof ConflictException) {
+            skipped_capacity++;
+            continue;
+          }
+          throw err;
         }
         nextPos++;
         try {
@@ -759,7 +843,7 @@ export class NvTourenService {
       }
     }
     await this.safeRecalc(tourId);
-    return { added, skipped };
+    return { added, skipped, skipped_capacity };
   }
 
   async getCostComponentsByTour(tourId: string) {

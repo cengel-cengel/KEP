@@ -628,10 +628,9 @@ export default function DispositionPage() {
   }
 
   return (
-    <div className="w-full min-h-screen bg-white flex flex-col">
-
-      <main className="w-full flex-1 flex flex-col">
-        <div className="py-4 px-4 sm:px-6 flex items-center justify-between gap-3 flex-wrap">
+    <div className="w-full h-[calc(100vh-3.5rem)] bg-white flex flex-col">
+      <main className="w-full flex-1 flex flex-col min-h-0 overflow-y-auto">
+        <div className="py-4 px-4 sm:px-6 flex items-center justify-between gap-3 flex-wrap sticky top-0 z-30 bg-white border-b border-gray-200">
           <h1 className="text-2xl font-semibold text-gray-900">Disposition</h1>
           <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-[#1e40af] text-white">

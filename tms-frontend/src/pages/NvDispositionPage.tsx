@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Plus, Sparkles, Trash2, X } from 'lucide-react';
 import Navigation from '../components/Navigation';
 import { api } from '../lib/api';
 
@@ -41,6 +41,7 @@ type Stop = {
   status: string;
   servicezeit_min: number | null;
   routing_klasse: string | null;
+  is_stamm_kunde?: boolean;
   shipment?: {
     id: string;
     shipment_number: string;
@@ -81,6 +82,17 @@ export default function NvDispositionPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showCreateTour, setShowCreateTour] = useState(false);
   const [bulkPickerOpen, setBulkPickerOpen] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [banner, setBanner] = useState<{
+    msg: string;
+    kind: 'ok' | 'err';
+  } | null>(null);
+
+  useEffect(() => {
+    if (!banner) return;
+    const t = setTimeout(() => setBanner(null), 3000);
+    return () => clearTimeout(t);
+  }, [banner]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search), 250);
@@ -183,6 +195,25 @@ export default function NvDispositionPage() {
       (await api.delete(`/nv-touren/${id}`)).data,
     onSuccess: invalidate,
   });
+  const autoSuggestMut = useMutation({
+    mutationFn: async () =>
+      (
+        await api.post<{
+          touren_created: number;
+          stops_added: number;
+        }>(`/nv-touren/auto-suggest`, undefined, { params: { datum } })
+      ).data,
+    onSuccess: (res) => {
+      invalidate();
+      setBanner({
+        kind: 'ok',
+        msg: `${res.touren_created} Tour(en) erstellt, ${res.stops_added} Stop(s) hinzugefügt.`,
+      });
+    },
+    onError: () => {
+      setBanner({ kind: 'err', msg: 'Auto-Vorschlag fehlgeschlagen.' });
+    },
+  });
 
   const dropOnTour = (tourId: string, shipmentId: string) =>
     addStopMut.mutate({ tourId, shipmentId });
@@ -264,13 +295,55 @@ export default function NvDispositionPage() {
           />
         </div>
         <button
+          onClick={() => {
+            if (
+              confirm(
+                `Stamm-Kunden für ${datum} automatisch zu Touren zuordnen?`,
+              )
+            )
+              autoSuggestMut.mutate();
+          }}
+          disabled={autoSuggestMut.isPending}
+          className="bg-emerald-600 text-white text-sm rounded px-3 py-2 flex items-center gap-1 hover:bg-emerald-700 disabled:opacity-50"
+        >
+          <Sparkles size={16} />
+          {autoSuggestMut.isPending ? 'Erstelle…' : 'Auto-Vorschlag'}
+        </button>
+        <button
           onClick={() => setShowCreateTour(true)}
           className="bg-blue-600 text-white text-sm rounded px-3 py-2 flex items-center gap-1 hover:bg-blue-700"
         >
           <Plus size={16} />
           Tour anlegen
         </button>
+        <div className="ml-auto text-xs text-gray-600">
+          <span className="font-semibold">{eligQ.data?.length ?? 0}</span>{' '}
+          eingehend ·{' '}
+          <span className="font-semibold">
+            {(tourenQ.data ?? []).reduce(
+              (sum, t) => sum + t.stops.length,
+              0,
+            )}
+          </span>{' '}
+          in Tour ·{' '}
+          <span className="font-semibold">{tourenQ.data?.length ?? 0}</span>{' '}
+          Tour(en)
+        </div>
       </div>
+
+      {banner && (
+        <div
+          onClick={() => setBanner(null)}
+          className={`px-4 py-2 text-sm cursor-pointer border-b ${
+            banner.kind === 'ok'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : 'bg-red-50 text-red-800 border-red-200'
+          }`}
+        >
+          {banner.msg}{' '}
+          <span className="text-xs text-gray-500 ml-2">(klick zum Schließen)</span>
+        </div>
+      )}
 
       {selected.size > 0 && (
         <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center gap-2 text-sm">
@@ -314,13 +387,17 @@ export default function NvDispositionPage() {
                 <div
                   key={s.id}
                   draggable
-                  onDragStart={(e) =>
+                  onDragStart={(e) => {
                     e.dataTransfer.setData(
                       'application/json',
                       JSON.stringify({ shipmentId: s.id }),
-                    )
-                  }
-                  className="px-3 py-2 border-b text-sm hover:bg-blue-50 cursor-grab flex items-start gap-2"
+                    );
+                    setDraggingId(s.id);
+                  }}
+                  onDragEnd={() => setDraggingId(null)}
+                  className={`px-3 py-2 border-b text-sm hover:bg-blue-50 cursor-grab flex items-start gap-2 ${
+                    draggingId === s.id ? 'opacity-40' : ''
+                  }`}
                 >
                   <input
                     type="checkbox"
@@ -334,7 +411,10 @@ export default function NvDispositionPage() {
                         {s.shipment_number}
                       </span>
                       {s.is_stamm_kunde && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700"
+                          title="Stammkunde"
+                        >
                           Stamm
                         </span>
                       )}
@@ -483,7 +563,13 @@ function TourCard({
               {tour.status}
             </span>
             {' · '}
-            {tour.stops.length} Stops
+            <span className="text-green-700">
+              S:{tour.stops.filter((s) => s.is_stamm_kunde).length}
+            </span>
+            {' · '}
+            <span className="text-orange-600">
+              Spot:{tour.stops.filter((s) => !s.is_stamm_kunde).length}
+            </span>
           </div>
         </div>
         <button
@@ -503,6 +589,14 @@ function TourCard({
             <span className="font-mono text-xs">
               {s.shipment?.shipment_number ?? '—'}
             </span>
+            {s.is_stamm_kunde && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700"
+                title="Stammkunde"
+              >
+                Stamm
+              </span>
+            )}
             <span className="text-xs text-gray-500 ml-auto">
               {s.servicezeit_min ? `${s.servicezeit_min} min` : ''}
             </span>

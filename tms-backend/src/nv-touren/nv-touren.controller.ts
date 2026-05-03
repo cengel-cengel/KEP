@@ -92,4 +92,9 @@ export class NvTourenController {
   copyStammKunden(@Param('id') tourId: string) {
     return this.svc.copyStammKunden(tourId);
   }
+
+  @Post('auto-suggest')
+  autoSuggest(@Query('datum') datum: string) {
+    return this.svc.autoSuggest(datum);
+  }
 }

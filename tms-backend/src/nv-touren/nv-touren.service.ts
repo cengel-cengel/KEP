@@ -52,15 +52,66 @@ const TOUR_INCLUDE = {
 export class NvTourenService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async augmentToursWithStammFlag<
+    T extends {
+      id: string;
+      nv_stamm_tour_id: string | null;
+      stops: { customer_id?: string | null; shipment?: { customer_id: string | null } | null }[];
+    },
+  >(tours: T[]): Promise<T[]> {
+    const stammTourIds = [
+      ...new Set(
+        tours
+          .map((t) => t.nv_stamm_tour_id)
+          .filter((x): x is string => !!x),
+      ),
+    ];
+    if (stammTourIds.length === 0) {
+      return tours.map((t) => ({
+        ...t,
+        stops: t.stops.map((s) => ({ ...s, is_stamm_kunde: false })),
+      })) as T[];
+    }
+    const stamm = await this.prisma.nv_stamm_kunden.findMany({
+      where: {
+        nv_stamm_tour_id: { in: stammTourIds },
+        aktiv: true,
+      },
+      select: { nv_stamm_tour_id: true, customer_id: true },
+    });
+    const byStamm = new Map<string, Set<string>>();
+    for (const s of stamm) {
+      const set = byStamm.get(s.nv_stamm_tour_id) ?? new Set<string>();
+      set.add(s.customer_id);
+      byStamm.set(s.nv_stamm_tour_id, set);
+    }
+    return tours.map((t) => {
+      const set = t.nv_stamm_tour_id
+        ? byStamm.get(t.nv_stamm_tour_id) ?? null
+        : null;
+      return {
+        ...t,
+        stops: t.stops.map((s: any) => ({
+          ...s,
+          is_stamm_kunde:
+            !!s.shipment?.customer_id &&
+            !!set &&
+            set.has(s.shipment.customer_id),
+        })),
+      } as T;
+    });
+  }
+
   async list(filter: { datum?: string; status?: string }) {
     const where: any = {};
     if (filter.datum) where.datum = new Date(filter.datum);
     if (filter.status) where.status = filter.status;
-    return this.prisma.nv_touren.findMany({
+    const rows = await this.prisma.nv_touren.findMany({
       where,
       orderBy: [{ datum: 'desc' }, { created_at: 'asc' }],
       include: TOUR_INCLUDE,
     });
+    return this.augmentToursWithStammFlag(rows as any);
   }
 
   async getOne(id: string) {
@@ -69,7 +120,8 @@ export class NvTourenService {
       include: TOUR_INCLUDE,
     });
     if (!t) throw new NotFoundException('NV-Tour nicht gefunden');
-    return t;
+    const [augmented] = await this.augmentToursWithStammFlag([t as any]);
+    return augmented;
   }
 
   async create(dto: CreateNvTourDto) {
@@ -395,6 +447,67 @@ export class NvTourenService {
           ? s.matched_tour_gebiet_id === filter.nv_tour_gebiet_id
           : allPlz.size === 0 || s.matched_tour_gebiet_id !== null,
       );
+  }
+
+  async autoSuggest(datum: string) {
+    const tag = new Date(datum);
+    const stammTouren = await this.prisma.nv_stamm_touren.findMany({
+      where: { aktiv: true },
+      select: {
+        id: true,
+        code: true,
+        fahrzeug_typ: true,
+        default_subunternehmer_id: true,
+      },
+    });
+
+    let touren_created = 0;
+    let stops_added_total = 0;
+    const details: {
+      tour_id: string;
+      code: string;
+      created: boolean;
+      stops_added: number;
+      stops_skipped: number;
+    }[] = [];
+
+    for (const st of stammTouren) {
+      let tour = await this.prisma.nv_touren.findFirst({
+        where: { nv_stamm_tour_id: st.id, datum: tag },
+        select: { id: true },
+      });
+      let created = false;
+      if (!tour) {
+        const t = await this.prisma.nv_touren.create({
+          data: {
+            nv_stamm_tour_id: st.id,
+            datum: tag,
+            status: 'PLANNING',
+            subunternehmer_id: st.default_subunternehmer_id ?? undefined,
+            fahrzeug_typ: st.fahrzeug_typ ?? undefined,
+          },
+          select: { id: true },
+        });
+        tour = t;
+        touren_created++;
+        created = true;
+      }
+      const result = await this.copyStammKunden(tour.id);
+      stops_added_total += result.added ?? 0;
+      details.push({
+        tour_id: tour.id,
+        code: st.code,
+        created,
+        stops_added: result.added ?? 0,
+        stops_skipped: result.skipped ?? 0,
+      });
+    }
+
+    return {
+      touren_created,
+      stops_added: stops_added_total,
+      details,
+    };
   }
 
   async copyStammKunden(tourId: string) {

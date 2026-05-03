@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, Pencil, Plus, Sparkles, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Package, Pencil, Plus, Sparkles, Trash2, Truck, X } from 'lucide-react';
 import NvTourKostenModal from '../components/NvTourKostenModal';
 import ShipmentDetailModal from '../components/ShipmentDetailModal';
 import type { Shipment } from '../types/shipment';
@@ -45,6 +45,8 @@ type EligibleShipment = {
   customer?: Customer | null;
   delivery_address?: AddressGeo | null;
   loading_address?: AddressGeo | null;
+  pin_address?: AddressGeo | null;
+  mode?: 'PICKUP' | 'DELIVERY';
   matched_tour_gebiet_id: string | null;
   matched_tour_gebiet_code: string | null;
   is_stamm_kunde: boolean;
@@ -73,6 +75,7 @@ type Stop = {
   id: string;
   position: number;
   status: string;
+  stop_type?: 'PICKUP' | 'DELIVERY';
   servicezeit_min: number | null;
   routing_klasse: string | null;
   is_stamm_kunde?: boolean;
@@ -244,6 +247,24 @@ function eligColumns(
 
 export default function NvDispositionPage() {
   const qc = useQueryClient();
+  const [mode, setModeState] = useState<'PICKUP' | 'DELIVERY'>(() => {
+    if (typeof window === 'undefined') return 'PICKUP';
+    try {
+      const v = localStorage.getItem('tms.nv-dispo.mode');
+      if (v === 'DELIVERY' || v === 'PICKUP') return v;
+    } catch {
+      /* ignore */
+    }
+    return 'PICKUP';
+  });
+  const setMode = (m: 'PICKUP' | 'DELIVERY') => {
+    setModeState(m);
+    try {
+      localStorage.setItem('tms.nv-dispo.mode', m);
+    } catch {
+      /* ignore */
+    }
+  };
   const [datum, setDatum] = useState<string>(todayISO());
   const [filterTour, setFilterTour] = useState<string>('');
   const [search, setSearch] = useState('');
@@ -324,9 +345,9 @@ export default function NvDispositionPage() {
       (await api.get<StammTour[]>('/nv-stamm-touren')).data,
   });
   const eligQ = useQuery<EligibleShipment[]>({
-    queryKey: ['nv-elig', datum, filterTour, debounced],
+    queryKey: ['nv-elig', datum, mode, filterTour, debounced],
     queryFn: async () => {
-      const params: Record<string, string> = { datum };
+      const params: Record<string, string> = { datum, mode };
       if (filterTour) params.nv_tour_gebiet_id = filterTour;
       if (debounced) params.search = debounced;
       return (
@@ -388,6 +409,7 @@ export default function NvDispositionPage() {
       (
         await api.post(`/nv-touren/${input.tourId}/stops`, {
           shipment_id: input.shipmentId,
+          stop_type: mode,
         })
       ).data,
     onSuccess: invalidate,
@@ -483,7 +505,7 @@ export default function NvDispositionPage() {
         touren_created: number;
         stops_added: number;
         details?: { stops_skipped_capacity?: number }[];
-      }>(`/nv-touren/auto-suggest`, undefined, { params: { datum } });
+      }>(`/nv-touren/auto-suggest`, undefined, { params: { datum, mode } });
       return res.data;
     },
     onSuccess: (res) => {
@@ -596,7 +618,10 @@ export default function NvDispositionPage() {
   const dropBulkOnTour = async (tourId: string, ids: string[]) => {
     const results = await Promise.allSettled(
       ids.map((shipmentId) =>
-        api.post(`/nv-touren/${tourId}/stops`, { shipment_id: shipmentId }),
+        api.post(`/nv-touren/${tourId}/stops`, {
+          shipment_id: shipmentId,
+          stop_type: mode,
+        }),
       ),
     );
     const ok = results.filter((r) => r.status === 'fulfilled').length;
@@ -622,9 +647,49 @@ export default function NvDispositionPage() {
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-gray-50">
       <div className="bg-white border-b px-4 py-3 flex flex-wrap items-center gap-3 sticky top-0 z-20">
+        <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => {
+              if (mode !== 'PICKUP') {
+                setMode('PICKUP');
+                setSelected(new Set());
+                setExpandedGroup(null);
+                setClickedSequence([]);
+              }
+            }}
+            className={`px-3 py-1.5 text-sm flex items-center gap-1 ${
+              mode === 'PICKUP'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <Package size={14} />
+            Abholung
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (mode !== 'DELIVERY') {
+                setMode('DELIVERY');
+                setSelected(new Set());
+                setExpandedGroup(null);
+                setClickedSequence([]);
+              }
+            }}
+            className={`px-3 py-1.5 text-sm flex items-center gap-1 border-l border-gray-300 ${
+              mode === 'DELIVERY'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <Truck size={14} />
+            Zustellung
+          </button>
+        </div>
         <div>
           <label className="block text-[10px] uppercase text-gray-500 mb-0.5">
-            Pickup-Datum bis
+            {mode === 'DELIVERY' ? 'Zustell-Datum bis' : 'Pickup-Datum bis'}
           </label>
           <input
             type="date"
@@ -908,7 +973,8 @@ export default function NvDispositionPage() {
                     id: s.id,
                     shipment_number: s.shipment_number,
                     customer: s.customer ?? null,
-                    loading_address: s.loading_address ?? null,
+                    loading_address:
+                      s.pin_address ?? s.loading_address ?? null,
                     color:
                       (s.matched_tour_gebiet_code &&
                         farbenMap.get(s.matched_tour_gebiet_code)) ||
@@ -1163,6 +1229,11 @@ function TourCard({
             <span className="text-xs font-mono text-gray-500 w-6 text-right">
               {s.position}
             </span>
+            {s.stop_type === 'DELIVERY' ? (
+              <Truck size={14} className="text-purple-700" />
+            ) : (
+              <Package size={14} className="text-blue-700" />
+            )}
             <span className="font-mono text-xs">
               {s.shipment?.shipment_number ?? '—'}
             </span>

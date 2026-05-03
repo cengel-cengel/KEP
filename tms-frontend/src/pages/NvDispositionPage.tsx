@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Plus, Sparkles, Trash2, X } from 'lucide-react';
 import NvTourKostenModal from '../components/NvTourKostenModal';
@@ -117,7 +117,7 @@ function todayISO() {
 
 function eligColumns(
   selected: Set<string>,
-  toggleSelect: (id: string) => void,
+  handleSelect: (id: string, shiftKey: boolean) => void,
 ): Column<EligibleShipment>[] {
   return [
     {
@@ -130,8 +130,18 @@ function eligColumns(
         <input
           type="checkbox"
           checked={selected.has(s.id)}
-          onChange={() => toggleSelect(s.id)}
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            // checkbox toggles via onChange; do shift-aware select here
+            const shift = e.shiftKey;
+            // defer to next tick to let onChange run? Use direct handler
+            // since onChange will not have shiftKey available.
+            e.preventDefault();
+            handleSelect(s.id, shift);
+          }}
+          onChange={() => {
+            /* no-op: handled in onClick to capture shiftKey */
+          }}
         />
       ),
     },
@@ -459,12 +469,39 @@ export default function NvDispositionPage() {
     });
   };
 
-  const toggleSelect = (id: string) => {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelected(next);
+  const flatVisibleIds = useMemo(
+    () => groupedElig.flatMap(([, items]) => items.map((s) => s.id)),
+    [groupedElig],
+  );
+  const lastClickedRef = useRef<string | null>(null);
+
+  const handleSelect = (id: string, shiftKey: boolean) => {
+    if (shiftKey && lastClickedRef.current) {
+      const startIdx = flatVisibleIds.indexOf(lastClickedRef.current);
+      const endIdx = flatVisibleIds.indexOf(id);
+      if (startIdx >= 0 && endIdx >= 0) {
+        const [from, to] = [
+          Math.min(startIdx, endIdx),
+          Math.max(startIdx, endIdx),
+        ];
+        const range = flatVisibleIds.slice(from, to + 1);
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (const r of range) next.add(r);
+          return next;
+        });
+        return;
+      }
+    }
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    lastClickedRef.current = id;
   };
+
 
   const dropBulkOnTour = async (tourId: string, ids: string[]) => {
     await Promise.all(
@@ -650,7 +687,7 @@ export default function NvDispositionPage() {
               </div>
               <ResponsiveTable<EligibleShipment>
                 storageKey={`nv-dispo-elig-${groupKey}`}
-                columns={eligColumns(selected, toggleSelect)}
+                columns={eligColumns(selected, handleSelect)}
                 data={items}
                 rowKey={(s) => s.id}
                 density="compact"

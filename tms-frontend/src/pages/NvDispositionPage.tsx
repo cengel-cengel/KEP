@@ -80,6 +80,10 @@ type Stop = {
     id: string;
     shipment_number: string;
     customer_id: string | null;
+    package_count?: number | null;
+    weight_kg?: string | number | null;
+    volume_m3?: string | number | null;
+    ldm?: string | number | null;
   };
 };
 type NvTour = {
@@ -362,6 +366,7 @@ export default function NvDispositionPage() {
     qc.invalidateQueries({ queryKey: ['nv-touren'] });
     qc.invalidateQueries({ queryKey: ['nv-elig'] });
     qc.invalidateQueries({ queryKey: ['nv-tour-cost-comp'] });
+    qc.invalidateQueries({ queryKey: ['nv-tour-capacity'] });
     qc.invalidateQueries({ queryKey: ['shipment-cost-comp'] });
   };
 
@@ -1016,7 +1021,7 @@ function TourCard({
     queryKey: ['nv-tour-capacity', tour.id],
     queryFn: async () =>
       (await api.get(`/nv-touren/${tour.id}/capacity`)).data,
-    staleTime: 30_000,
+    staleTime: 0,
   });
   const costsByShipment = useMemo(() => {
     const m = new Map<string, CostComponent>();
@@ -1158,8 +1163,26 @@ function TourCard({
                 Stamm
               </span>
             )}
-            <span className="text-xs text-gray-500 ml-auto">
-              {s.servicezeit_min ? `${s.servicezeit_min} min` : ''}
+            <span
+              className="text-xs font-mono text-gray-600 ml-auto"
+              title={
+                s.servicezeit_min ? `Servicezeit ${s.servicezeit_min} min` : ''
+              }
+            >
+              {(() => {
+                const sh = s.shipment;
+                const parts: string[] = [];
+                if (sh?.package_count != null) {
+                  parts.push(`${sh.package_count} Pal`);
+                }
+                if (sh?.weight_kg != null && Number(sh.weight_kg) > 0) {
+                  parts.push(`${Number(sh.weight_kg).toFixed(0)} kg`);
+                }
+                if (sh?.ldm != null && Number(sh.ldm) > 0) {
+                  parts.push(`${Number(sh.ldm).toFixed(2)} LDM`);
+                }
+                return parts.join(' · ');
+              })()}
             </span>
             {(() => {
               const cc = s.shipment?.id

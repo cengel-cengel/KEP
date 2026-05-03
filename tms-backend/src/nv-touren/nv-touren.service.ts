@@ -778,6 +778,87 @@ export class NvTourenService {
     });
   }
 
+  async getCapacity(tourId: string) {
+    const tour = await this.prisma.nv_touren.findUnique({
+      where: { id: tourId },
+      include: {
+        subunternehmer: {
+          select: {
+            id: true,
+            name: true,
+            max_paletten: true,
+            max_gewicht_kg: true,
+            max_volumen_m3: true,
+            max_ldm: true,
+          },
+        },
+        stops: {
+          include: {
+            shipment: {
+              select: {
+                package_count: true,
+                weight_kg: true,
+                volume_m3: true,
+                ldm: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!tour) throw new NotFoundException('NV-Tour nicht gefunden');
+
+    let cur_paletten = 0;
+    let cur_gewicht_kg = 0;
+    let cur_volumen_m3 = 0;
+    let cur_ldm = 0;
+    for (const s of tour.stops) {
+      cur_paletten += Number(s.shipment.package_count ?? 0);
+      cur_gewicht_kg += Number(s.shipment.weight_kg ?? 0);
+      cur_volumen_m3 += Number(s.shipment.volume_m3 ?? 0);
+      cur_ldm += Number(s.shipment.ldm ?? 0);
+    }
+
+    const sub = tour.subunternehmer;
+    const max_paletten = sub?.max_paletten ?? null;
+    const max_gewicht_kg = sub?.max_gewicht_kg ?? null;
+    const max_volumen_m3 =
+      sub?.max_volumen_m3 != null ? Number(sub.max_volumen_m3) : null;
+    const max_ldm = sub?.max_ldm != null ? Number(sub.max_ldm) : null;
+
+    return {
+      tour_id: tourId,
+      subunternehmer_id: sub?.id ?? null,
+      subunternehmer_name: sub?.name ?? null,
+      limits: {
+        max_paletten,
+        max_gewicht_kg,
+        max_volumen_m3,
+        max_ldm,
+      },
+      current: {
+        paletten: cur_paletten,
+        gewicht_kg: cur_gewicht_kg,
+        volumen_m3: Math.round(cur_volumen_m3 * 1000) / 1000,
+        ldm: Math.round(cur_ldm * 100) / 100,
+      },
+      free: {
+        paletten:
+          max_paletten != null ? max_paletten - cur_paletten : null,
+        gewicht_kg:
+          max_gewicht_kg != null ? max_gewicht_kg - cur_gewicht_kg : null,
+        volumen_m3:
+          max_volumen_m3 != null
+            ? Math.round((max_volumen_m3 - cur_volumen_m3) * 1000) / 1000
+            : null,
+        ldm:
+          max_ldm != null
+            ? Math.round((max_ldm - cur_ldm) * 100) / 100
+            : null,
+      },
+    };
+  }
+
   async getCostComponentsByShipment(shipmentId: string) {
     return this.prisma.shipment_cost_components.findMany({
       where: { shipment_id: shipmentId },

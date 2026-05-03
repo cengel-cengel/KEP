@@ -70,6 +70,10 @@ export class NvSubunternehmerService {
         tarif_grundgebuehr_eur: dto.tarif_grundgebuehr_eur ?? undefined,
         tarif_pro_stunde_eur: dto.tarif_pro_stunde_eur ?? undefined,
         fahrzeug_typ: dto.fahrzeug_typ ?? undefined,
+        max_paletten: dto.max_paletten ?? undefined,
+        max_gewicht_kg: dto.max_gewicht_kg ?? undefined,
+        max_volumen_m3: dto.max_volumen_m3 ?? undefined,
+        max_ldm: dto.max_ldm ?? undefined,
         notiz: dto.notiz ?? undefined,
         aktiv: dto.aktiv ?? true,
       },
@@ -131,6 +135,13 @@ export class NvSubunternehmerService {
             : dto.tarif_pro_stunde_eur,
         fahrzeug_typ:
           dto.fahrzeug_typ === undefined ? undefined : dto.fahrzeug_typ,
+        max_paletten:
+          dto.max_paletten === undefined ? undefined : dto.max_paletten,
+        max_gewicht_kg:
+          dto.max_gewicht_kg === undefined ? undefined : dto.max_gewicht_kg,
+        max_volumen_m3:
+          dto.max_volumen_m3 === undefined ? undefined : dto.max_volumen_m3,
+        max_ldm: dto.max_ldm === undefined ? undefined : dto.max_ldm,
         notiz: dto.notiz === undefined ? undefined : dto.notiz,
         aktiv: dto.aktiv ?? undefined,
       },

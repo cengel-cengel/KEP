@@ -107,4 +107,9 @@ export class NvTourenController {
   costComponentsByTour(@Param('id') tourId: string) {
     return this.svc.getCostComponentsByTour(tourId);
   }
+
+  @Get(':id/capacity')
+  capacity(@Param('id') tourId: string) {
+    return this.svc.getCapacity(tourId);
+  }
 }

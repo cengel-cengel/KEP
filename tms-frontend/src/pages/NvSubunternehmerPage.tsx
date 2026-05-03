@@ -24,6 +24,10 @@ type Subunternehmer = {
   tarif_grundgebuehr_eur: string | number | null;
   tarif_pro_stunde_eur: string | number | null;
   fahrzeug_typ: string | null;
+  max_paletten: number | null;
+  max_gewicht_kg: number | null;
+  max_volumen_m3: string | number | null;
+  max_ldm: string | number | null;
   notiz: string | null;
   aktiv: boolean;
   nv_tour_gebiet?: TourGebiet | null;
@@ -42,6 +46,23 @@ const TARIF_TYPEN = [
   { value: 'SPOT', label: 'Spot' },
 ];
 const FAHRZEUG_TYPEN = ['TRANSPORTER', '7_5T', '12T', '18T', '40T'];
+
+const FAHRZEUG_KAPAZITAET: Record<
+  string,
+  {
+    max_paletten: number;
+    max_gewicht_kg: number;
+    max_volumen_m3: number;
+    max_ldm: number;
+  }
+> = {
+  '3_5T': { max_paletten: 12, max_gewicht_kg: 1500, max_volumen_m3: 15, max_ldm: 6 },
+  TRANSPORTER: { max_paletten: 12, max_gewicht_kg: 1500, max_volumen_m3: 15, max_ldm: 6 },
+  '7_5T': { max_paletten: 16, max_gewicht_kg: 3000, max_volumen_m3: 30, max_ldm: 8 },
+  '12T': { max_paletten: 24, max_gewicht_kg: 8000, max_volumen_m3: 40, max_ldm: 12 },
+  '18T': { max_paletten: 33, max_gewicht_kg: 11000, max_volumen_m3: 60, max_ldm: 13.6 },
+  '40T': { max_paletten: 33, max_gewicht_kg: 24000, max_volumen_m3: 90, max_ldm: 13.6 },
+};
 
 function emptyForm(): Partial<Subunternehmer> {
   return {
@@ -436,7 +457,36 @@ function SubModal({
       initial.tarif_pro_stunde_eur != null
         ? Number(initial.tarif_pro_stunde_eur)
         : null,
+    max_paletten:
+      initial.max_paletten != null ? Number(initial.max_paletten) : null,
+    max_gewicht_kg:
+      initial.max_gewicht_kg != null ? Number(initial.max_gewicht_kg) : null,
+    max_volumen_m3:
+      initial.max_volumen_m3 != null ? Number(initial.max_volumen_m3) : null,
+    max_ldm: initial.max_ldm != null ? Number(initial.max_ldm) : null,
   });
+
+  // Pre-Fill Kapazitaet bei first-open wenn alle 4 null +
+  // fahrzeug_typ in Map.
+  useEffect(() => {
+    const allNull =
+      initial.max_paletten == null &&
+      initial.max_gewicht_kg == null &&
+      initial.max_volumen_m3 == null &&
+      initial.max_ldm == null;
+    const ft = initial.fahrzeug_typ ?? '';
+    const def = FAHRZEUG_KAPAZITAET[ft];
+    if (allNull && def) {
+      setForm((f) => ({
+        ...f,
+        max_paletten: def.max_paletten,
+        max_gewicht_kg: def.max_gewicht_kg,
+        max_volumen_m3: def.max_volumen_m3,
+        max_ldm: def.max_ldm,
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const update = <K extends keyof Subunternehmer>(
     k: K,
@@ -485,10 +535,29 @@ function SubModal({
           ? Number(form.tarif_pro_stunde_eur)
           : null,
       fahrzeug_typ: form.fahrzeug_typ ?? null,
+      max_paletten: form.max_paletten ?? null,
+      max_gewicht_kg: form.max_gewicht_kg ?? null,
+      max_volumen_m3:
+        form.max_volumen_m3 != null ? Number(form.max_volumen_m3) : null,
+      max_ldm: form.max_ldm != null ? Number(form.max_ldm) : null,
       notiz: form.notiz ?? null,
       aktiv: form.aktiv ?? true,
     });
   };
+
+  const applyKapazitaetDefaults = () => {
+    const ft = form.fahrzeug_typ ?? '';
+    const def = FAHRZEUG_KAPAZITAET[ft];
+    if (!def) return;
+    setForm((f) => ({
+      ...f,
+      max_paletten: def.max_paletten,
+      max_gewicht_kg: def.max_gewicht_kg,
+      max_volumen_m3: def.max_volumen_m3,
+      max_ldm: def.max_ldm,
+    }));
+  };
+  const canApplyKapazitaet = !!FAHRZEUG_KAPAZITAET[form.fahrzeug_typ ?? ''];
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -679,6 +748,98 @@ function SubModal({
               ))}
             </select>
           </div>
+
+          <div className="border-t pt-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-gray-700 uppercase">
+                Fahrzeug-Kapazität
+              </span>
+              <button
+                type="button"
+                onClick={applyKapazitaetDefaults}
+                disabled={!canApplyKapazitaet}
+                className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40"
+                title="Setzt Kapazitäts-Felder auf Defaults aus Fahrzeug-Typ"
+              >
+                Standard übernehmen
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] text-gray-500">
+                  Max Paletten
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={form.max_paletten ?? ''}
+                  onChange={(e) =>
+                    update(
+                      'max_paletten',
+                      e.target.value === '' ? null : Number(e.target.value),
+                    )
+                  }
+                  className="w-full border rounded px-2 py-1 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500">
+                  Max Gewicht (kg)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={form.max_gewicht_kg ?? ''}
+                  onChange={(e) =>
+                    update(
+                      'max_gewicht_kg',
+                      e.target.value === '' ? null : Number(e.target.value),
+                    )
+                  }
+                  className="w-full border rounded px-2 py-1 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500">
+                  Max Volumen (m³)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.1"
+                  value={form.max_volumen_m3 ?? ''}
+                  onChange={(e) =>
+                    update(
+                      'max_volumen_m3',
+                      e.target.value === '' ? null : Number(e.target.value),
+                    )
+                  }
+                  className="w-full border rounded px-2 py-1 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500">
+                  Max LDM
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.1"
+                  value={form.max_ldm ?? ''}
+                  onChange={(e) =>
+                    update(
+                      'max_ldm',
+                      e.target.value === '' ? null : Number(e.target.value),
+                    )
+                  }
+                  className="w-full border rounded px-2 py-1 text-sm"
+                />
+              </div>
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
               Notiz

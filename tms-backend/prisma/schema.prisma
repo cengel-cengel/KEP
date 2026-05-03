@@ -1322,6 +1322,10 @@ model nv_subunternehmer {
   tarif_grundgebuehr_eur      Decimal?         @db.Decimal(10, 2)
   tarif_pro_stunde_eur        Decimal?         @db.Decimal(10, 2)
   fahrzeug_typ                String?          @db.VarChar(20)
+  max_paletten                Int?
+  max_gewicht_kg              Int?
+  max_volumen_m3              Decimal?         @db.Decimal(10, 2)
+  max_ldm                     Decimal?         @db.Decimal(10, 2)
   notiz                       String?
   aktiv                       Boolean          @default(true)
   created_at                  DateTime         @default(now()) @db.Timestamptz(6)

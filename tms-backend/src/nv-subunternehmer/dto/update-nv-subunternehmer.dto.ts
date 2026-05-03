@@ -2,11 +2,13 @@ import {
   IsArray,
   IsBoolean,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
+  Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TARIF_TYPEN } from './create-nv-subunternehmer.dto';
@@ -53,6 +55,30 @@ export class UpdateNvSubunternehmerDto {
   @IsString()
   @MaxLength(20)
   fahrzeug_typ?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  max_paletten?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  max_gewicht_kg?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  max_volumen_m3?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  max_ldm?: number | null;
 
   @IsOptional()
   @IsString()

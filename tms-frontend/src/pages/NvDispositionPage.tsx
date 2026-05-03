@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Plus, Sparkles, Trash2, X } from 'lucide-react';
 import NvTourKostenModal from '../components/NvTourKostenModal';
+import NvDispoMap from '../components/nv/NvDispoMap';
+import type { MapShipment } from '../components/nv/NvDispoMap';
 import ResponsiveTable from '../components/table/ResponsiveTable';
 import type { Column } from '../components/table/ResponsiveTable';
 import { api } from '../lib/api';
@@ -23,6 +25,10 @@ type Address = {
   city: string | null;
   country_code: string | null;
 };
+type AddressGeo = Address & {
+  lat?: string | number | null;
+  lng?: string | number | null;
+};
 type EligibleShipment = {
   id: string;
   shipment_number: string;
@@ -33,7 +39,8 @@ type EligibleShipment = {
   total_weight_kg?: string | number | null;
   total_ldm?: string | number | null;
   customer?: Customer | null;
-  delivery_address?: Address | null;
+  delivery_address?: AddressGeo | null;
+  loading_address?: AddressGeo | null;
   matched_tour_gebiet_id: string | null;
   matched_tour_gebiet_code: string | null;
   is_stamm_kunde: boolean;
@@ -208,6 +215,23 @@ export default function NvDispositionPage() {
   const [bulkPickerOpen, setBulkPickerOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [kostenTourId, setKostenTourId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'map' | 'split3'>('list');
+  const [selectedTourId, setSelectedTourId] = useState<string | null>(null);
+  const [clickedSequence, setClickedSequence] = useState<string[]>([]);
+
+  useEffect(() => {
+    const detect = () => {
+      const w = window.innerWidth;
+      setViewMode((prev) => {
+        if (w >= 1920) return 'split3';
+        if (prev === 'split3') return 'list';
+        return prev;
+      });
+    };
+    detect();
+    window.addEventListener('resize', detect);
+    return () => window.removeEventListener('resize', detect);
+  }, []);
   const [banner, setBanner] = useState<{
     msg: string;
     kind: 'ok' | 'err';
@@ -377,6 +401,24 @@ export default function NvDispositionPage() {
   const dropOnTour = (tourId: string, shipmentId: string) =>
     addStopMut.mutate({ tourId, shipmentId });
 
+  const onPinClick = (shipmentId: string) => {
+    if (!selectedTourId) {
+      setBanner({ kind: 'err', msg: 'Erst Ziel-Tour wählen.' });
+      return;
+    }
+    addStopMut.mutate(
+      { tourId: selectedTourId, shipmentId },
+      {
+        onSuccess: () => {
+          setClickedSequence((seq) =>
+            seq.includes(shipmentId) ? seq : [...seq, shipmentId],
+          );
+          invalidate();
+        },
+      },
+    );
+  };
+
   const moveStop = (tour: NvTour, idx: number, dir: -1 | 1) => {
     const target = idx + dir;
     if (target < 0 || target >= tour.stops.length) return;
@@ -475,6 +517,32 @@ export default function NvDispositionPage() {
           <Plus size={16} />
           Tour anlegen
         </button>
+        {viewMode !== 'split3' && (
+          <div className="inline-flex rounded border border-gray-300 overflow-hidden text-sm">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={`px-3 py-2 ${
+                viewMode === 'list'
+                  ? 'bg-[#1e40af] text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              Liste
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('map')}
+              className={`px-3 py-2 border-l border-gray-300 ${
+                viewMode === 'map'
+                  ? 'bg-[#1e40af] text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              Karte
+            </button>
+          </div>
+        )}
         <div className="ml-auto text-xs text-gray-600">
           <span className="font-semibold">{eligQ.data?.length ?? 0}</span>{' '}
           eingehend ·{' '}
@@ -522,7 +590,14 @@ export default function NvDispositionPage() {
         </div>
       )}
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-3 p-3 overflow-hidden">
+      <div
+        className={`flex-1 grid grid-cols-1 gap-3 p-3 overflow-hidden ${
+          viewMode === 'split3'
+            ? 'lg:grid-cols-[1fr_1.4fr_1.6fr]'
+            : 'lg:grid-cols-[2fr_3fr]'
+        }`}
+      >
+        {(viewMode === 'list' || viewMode === 'split3') && (
         <div className="bg-white rounded-lg border overflow-y-auto">
           <div className="px-3 py-2 border-b bg-gray-50 sticky top-0">
             <div className="flex items-center justify-between">
@@ -571,6 +646,7 @@ export default function NvDispositionPage() {
             </div>
           ))}
         </div>
+        )}
 
         <div className="bg-white rounded-lg border overflow-y-auto">
           <div className="px-3 py-2 border-b bg-gray-50 sticky top-0">
@@ -601,6 +677,43 @@ export default function NvDispositionPage() {
             ))}
           </div>
         </div>
+
+        {(viewMode === 'map' || viewMode === 'split3') && (
+          <div className="bg-white rounded-lg border overflow-hidden flex flex-col">
+            <div className="px-3 py-2 border-b bg-gray-50 flex items-center gap-2">
+              <h2 className="font-semibold text-sm">Karte</h2>
+              <select
+                value={selectedTourId ?? ''}
+                onChange={(e) => setSelectedTourId(e.target.value || null)}
+                className="ml-auto border rounded px-2 py-1 text-xs"
+              >
+                <option value="">— Ziel-Tour wählen —</option>
+                {(tourenQ.data ?? []).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.nv_stamm_tour?.code ?? '—'} ({t.stops.length})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1 min-h-0 relative">
+              <NvDispoMap
+                shipments={
+                  ((eligQ.data ?? []) as EligibleShipment[]).map(
+                    (s): MapShipment => ({
+                      id: s.id,
+                      shipment_number: s.shipment_number,
+                      customer: s.customer ?? null,
+                      loading_address: s.loading_address ?? null,
+                    }),
+                  )
+                }
+                clickedSequence={clickedSequence}
+                onPinClick={onPinClick}
+                onReset={() => setClickedSequence([])}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {showCreateTour && (

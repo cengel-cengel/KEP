@@ -415,6 +415,19 @@ export class NvTourenService {
             zip: true,
             city: true,
             country_code: true,
+            lat: true,
+            lng: true,
+          },
+        },
+        addresses_shipments_loading_address_idToaddresses: {
+          select: {
+            id: true,
+            street: true,
+            zip: true,
+            city: true,
+            country_code: true,
+            lat: true,
+            lng: true,
           },
         },
       },
@@ -425,6 +438,8 @@ export class NvTourenService {
       .map((s) => {
         const delivery_address =
           s.addresses_shipments_delivery_address_idToaddresses;
+        const loading_address =
+          s.addresses_shipments_loading_address_idToaddresses;
         const zip = delivery_address?.zip ?? '';
         let matched_tour_gebiet_id: string | null = null;
         let matched_tour_gebiet_code: string | null = null;
@@ -437,6 +452,7 @@ export class NvTourenService {
         }
         const {
           addresses_shipments_delivery_address_idToaddresses: _a,
+          addresses_shipments_loading_address_idToaddresses: _b,
           customers,
           ...rest
         } = s;
@@ -444,6 +460,7 @@ export class NvTourenService {
           ...rest,
           customer: customers,
           delivery_address,
+          loading_address,
           matched_tour_gebiet_id,
           matched_tour_gebiet_code,
           is_stamm_kunde:

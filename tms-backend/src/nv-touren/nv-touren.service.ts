@@ -189,6 +189,7 @@ export class NvTourenService {
           dto.sonstige_kosten_eur === undefined
             ? undefined
             : dto.sonstige_kosten_eur,
+        kosten_modus: dto.kosten_modus ?? undefined,
       },
       include: TOUR_INCLUDE,
     });

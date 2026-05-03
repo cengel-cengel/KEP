@@ -71,4 +71,8 @@ export class UpdateNvTourDto {
   @Type(() => Number)
   @IsNumber()
   sonstige_kosten_eur?: number | null;
+
+  @IsOptional()
+  @IsIn(['TARIF', 'SPOT'])
+  kosten_modus?: string;
 }

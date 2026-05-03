@@ -1387,6 +1387,7 @@ model nv_touren {
   dispo_kosten_eur         Decimal?            @db.Decimal(10, 2)
   sonstige_kosten_eur      Decimal?            @db.Decimal(10, 2)
   total_kosten_eur         Decimal?            @default(dbgenerated()) @db.Decimal(10, 2)
+  kosten_modus             String              @default("TARIF") @db.VarChar(20)
   created_at               DateTime            @default(now()) @db.Timestamptz(6)
   updated_at               DateTime            @default(now()) @db.Timestamptz(6)
   nv_stamm_tour            nv_stamm_touren?    @relation("nv_touren_stamm_tour", fields: [nv_stamm_tour_id], references: [id], onDelete: SetNull, onUpdate: NoAction)

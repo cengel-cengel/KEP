@@ -20,6 +20,7 @@ type Tour = {
   dispo_kosten_eur: string | number | null;
   sonstige_kosten_eur: string | number | null;
   total_kosten_eur: string | number | null;
+  kosten_modus?: string | null;
   notizen: string | null;
   subunternehmer_id: string | null;
   nv_stamm_tour?: { code: string } | null;
@@ -79,6 +80,9 @@ export default function NvTourKostenModal({
   );
   const [notizen, setNotizen] = useState(tour.notizen ?? '');
   const [tarifAutoApplied, setTarifAutoApplied] = useState(false);
+  const [spotMode, setSpotMode] = useState<boolean>(
+    tour.kosten_modus === 'SPOT',
+  );
 
   const subQ = useQuery<Subunternehmer | null>({
     queryKey: ['nv-subunternehmer', tour.subunternehmer_id],
@@ -113,6 +117,7 @@ export default function NvTourKostenModal({
           dispo_kosten_eur: dispo,
           sonstige_kosten_eur: sonstige,
           notizen,
+          kosten_modus: spotMode ? 'SPOT' : 'TARIF',
         })
       ).data,
     onSuccess: async () => {
@@ -125,6 +130,7 @@ export default function NvTourKostenModal({
   const canApplyTarif =
     !!sub &&
     (sub.tarif_typ === 'TAGESPAUSCHALE' || sub.tarif_typ === 'PRO_STOP');
+  const showInputs = spotMode || !canApplyTarif;
 
   const applyTarif = () => {
     if (!sub) return;
@@ -197,49 +203,102 @@ export default function NvTourKostenModal({
                   ` · ${Number(sub.tarif_pro_stop_eur).toFixed(2)} €/Stop`}
               </div>
             )}
-            <button
-              type="button"
-              onClick={applyTarif}
-              disabled={!canApplyTarif}
-              className="mt-2 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40"
-              title="Setzt Fahrer-Kosten aus Tarif (TAGESPAUSCHALE / PRO_STOP × Stops) zurück"
-            >
-              Tarif zurücksetzen
-            </button>
           </div>
 
-          <KostenInput
-            label="Fahrerkosten"
-            value={fahrer}
-            onChange={setFahrer}
-          />
-          <KostenInput
-            label="Fahrzeugkosten"
-            value={fahrzeug}
-            onChange={setFahrzeug}
-          />
-          <KostenInput
-            label="Kraftstoff/Energie"
-            value={kraftstoff}
-            onChange={setKraftstoff}
-          />
-          <KostenInput
-            label="Disposition"
-            value={dispo}
-            onChange={setDispo}
-          />
-          <KostenInput
-            label="Sonstige"
-            value={sonstige}
-            onChange={setSonstige}
-          />
+          {!showInputs && canApplyTarif && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded p-2 text-sm">
+              <div className="text-xs text-emerald-700 uppercase">
+                Berechnet aus Tarif
+              </div>
+              <div className="font-mono text-xs text-gray-700 mt-1">
+                {(fahrer ?? 0).toFixed(0)} Fahrer +{' '}
+                {(fahrzeug ?? 0).toFixed(0)} +{' '}
+                {(kraftstoff ?? 0).toFixed(0)} + {(dispo ?? 0).toFixed(0)} +{' '}
+                {(sonstige ?? 0).toFixed(0)}
+              </div>
+              <div className="border-t border-emerald-200 mt-2 pt-2 flex items-center justify-between">
+                <span className="font-medium">Gesamt</span>
+                <span className="font-mono font-semibold text-emerald-800">
+                  {total.toFixed(2)} €
+                </span>
+              </div>
+            </div>
+          )}
 
-          <div className="border-t pt-2 flex items-center justify-between text-sm">
-            <span className="font-medium">Gesamt</span>
-            <span className="font-mono font-semibold">
-              {total.toFixed(2)} €
-            </span>
-          </div>
+          {canApplyTarif && (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={spotMode}
+                onChange={(e) => {
+                  setSpotMode(e.target.checked);
+                  if (e.target.checked) {
+                    if (fahrer === null && sub) {
+                      if (sub.tarif_typ === 'TAGESPAUSCHALE') {
+                        const v = toNum(sub.tarif_tagespauschale_eur);
+                        if (v !== null) setFahrer(v);
+                      } else if (sub.tarif_typ === 'PRO_STOP') {
+                        const proStop = toNum(sub.tarif_pro_stop_eur);
+                        if (proStop !== null)
+                          setFahrer(proStop * Math.max(1, stopCount));
+                      }
+                    }
+                    if (fahrzeug === null) setFahrzeug(DEFAULTS.fahrzeug);
+                    if (kraftstoff === null)
+                      setKraftstoff(DEFAULTS.kraftstoff);
+                    if (dispo === null) setDispo(DEFAULTS.dispo);
+                    if (sonstige === null) setSonstige(DEFAULTS.sonstige);
+                  }
+                }}
+              />
+              <span>Spot-Preise manuell eingeben</span>
+            </label>
+          )}
+
+          {showInputs && (
+            <>
+              <button
+                type="button"
+                onClick={applyTarif}
+                disabled={!canApplyTarif}
+                className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40"
+                title="Setzt Fahrer-Kosten aus Tarif zurück"
+              >
+                Tarif zurücksetzen
+              </button>
+              <KostenInput
+                label="Fahrerkosten"
+                value={fahrer}
+                onChange={setFahrer}
+              />
+              <KostenInput
+                label="Fahrzeugkosten"
+                value={fahrzeug}
+                onChange={setFahrzeug}
+              />
+              <KostenInput
+                label="Kraftstoff/Energie"
+                value={kraftstoff}
+                onChange={setKraftstoff}
+              />
+              <KostenInput
+                label="Disposition"
+                value={dispo}
+                onChange={setDispo}
+              />
+              <KostenInput
+                label="Sonstige"
+                value={sonstige}
+                onChange={setSonstige}
+              />
+              <div className="border-t pt-2 flex items-center justify-between text-sm">
+                <span className="font-medium">Gesamt</span>
+                <span className="font-mono font-semibold">
+                  {total.toFixed(2)} €
+                </span>
+              </div>
+            </>
+          )}
 
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">

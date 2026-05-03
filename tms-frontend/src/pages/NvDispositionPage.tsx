@@ -81,6 +81,7 @@ type NvTour = {
   dispo_kosten_eur: string | number | null;
   sonstige_kosten_eur: string | number | null;
   total_kosten_eur: string | number | null;
+  kosten_modus?: string | null;
   notizen: string | null;
   subunternehmer_id: string | null;
   nv_stamm_tour_id: string | null;
@@ -624,6 +625,14 @@ function TourCard({
                 ? `€ ${Number(tour.total_kosten_eur).toFixed(0)}`
                 : '€ —'}
             </span>
+            {tour.kosten_modus === 'SPOT' && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-700"
+                title="Spot-Preis (manuell eingegeben)"
+              >
+                SPOT
+              </span>
+            )}
           </div>
           <div className="text-xs text-gray-500">
             {tour.subunternehmer?.name ?? '— kein Sub —'}

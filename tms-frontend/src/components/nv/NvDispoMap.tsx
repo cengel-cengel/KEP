@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -61,15 +61,26 @@ export default function NvDispoMap({
   clickedSequence,
   onPinClick,
   onReset,
+  onRouteError,
 }: {
   shipments: MapShipment[];
   clickedSequence: string[];
   onPinClick: (shipmentId: string) => void;
   onReset?: () => void;
+  onRouteError?: (msg: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
+  const polylineRef = useRef<L.Polyline | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const debounceRef = useRef<number | null>(null);
+  const cacheRef = useRef<
+    Map<string, { coords: [number, number][]; distance: number; duration: number }>
+  >(new Map());
+  const [routeInfo, setRouteInfo] = useState<
+    { distance: number; duration: number; fallback: boolean } | null
+  >(null);
 
   // Init Leaflet map once
   useEffect(() => {
@@ -137,9 +148,163 @@ export default function NvDispoMap({
     }
   }, [shipments, clickedIndex, onPinClick]);
 
+  // OSRM-Route bei Aenderung der clickedSequence
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const removePolyline = () => {
+      if (polylineRef.current) {
+        map.removeLayer(polylineRef.current);
+        polylineRef.current = null;
+      }
+    };
+
+    const seqShipments = clickedSequence
+      .map((id) => shipments.find((s) => s.id === id))
+      .filter((s): s is MapShipment => !!s);
+    const coordsLngLat: [number, number][] = [];
+    const coordsLatLng: [number, number][] = [];
+    for (const s of seqShipments) {
+      const a = s.loading_address;
+      if (!a || a.lat == null || a.lng == null) continue;
+      const lat = Number(a.lat);
+      const lng = Number(a.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      coordsLngLat.push([lng, lat]);
+      coordsLatLng.push([lat, lng]);
+    }
+
+    if (coordsLngLat.length < 2) {
+      removePolyline();
+      setRouteInfo(null);
+      return;
+    }
+
+    const key = JSON.stringify(coordsLngLat);
+    const cached = cacheRef.current.get(key);
+    const drawSolid = (
+      latlngs: [number, number][],
+      distance: number,
+      duration: number,
+    ) => {
+      removePolyline();
+      polylineRef.current = L.polyline(latlngs, {
+        color: '#7c3aed',
+        weight: 4,
+        opacity: 0.7,
+      }).addTo(map);
+      setRouteInfo({ distance, duration, fallback: false });
+    };
+    const drawFallback = () => {
+      removePolyline();
+      polylineRef.current = L.polyline(coordsLatLng, {
+        color: '#ef4444',
+        weight: 3,
+        opacity: 0.5,
+        dashArray: '5,10',
+      }).addTo(map);
+      // Luftlinie summieren
+      let dist = 0;
+      for (let i = 1; i < coordsLatLng.length; i++) {
+        const a = coordsLatLng[i - 1];
+        const b = coordsLatLng[i];
+        const aL = L.latLng(a[0], a[1]);
+        const bL = L.latLng(b[0], b[1]);
+        dist += aL.distanceTo(bL);
+      }
+      setRouteInfo({ distance: dist, duration: 0, fallback: true });
+    };
+
+    if (cached) {
+      drawSolid(
+        cached.coords,
+        cached.distance,
+        cached.duration,
+      );
+      return;
+    }
+
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(() => {
+      abortRef.current?.abort();
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+      const timeoutId = window.setTimeout(() => ctrl.abort(), 5000);
+      const url = `https://router.project-osrm.org/route/v1/driving/${coordsLngLat
+        .map(([lng, lat]) => `${lng},${lat}`)
+        .join(';')}?overview=full&geometries=geojson`;
+      fetch(url, { signal: ctrl.signal })
+        .then((r) => {
+          if (!r.ok) throw new Error(`OSRM ${r.status}`);
+          return r.json();
+        })
+        .then((j: any) => {
+          const route = j?.routes?.[0];
+          const geom = route?.geometry?.coordinates as
+            | [number, number][]
+            | undefined;
+          if (!geom || geom.length < 2) {
+            drawFallback();
+            onRouteError?.('OSRM-Route leer');
+            return;
+          }
+          const latlngs: [number, number][] = geom.map(([lng, lat]) => [
+            lat,
+            lng,
+          ]);
+          const distance = Number(route.distance) || 0;
+          const duration = Number(route.duration) || 0;
+          cacheRef.current.set(key, {
+            coords: latlngs,
+            distance,
+            duration,
+          });
+          drawSolid(latlngs, distance, duration);
+        })
+        .catch((err) => {
+          if (err?.name === 'AbortError') return;
+          drawFallback();
+          onRouteError?.('Routing-Service nicht erreichbar');
+        })
+        .finally(() => {
+          window.clearTimeout(timeoutId);
+        });
+    }, 500);
+
+    return () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    };
+  }, [clickedSequence, shipments, onRouteError]);
+
+  // Cleanup polyline + abort on unmount
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+      if (polylineRef.current && mapRef.current) {
+        mapRef.current.removeLayer(polylineRef.current);
+      }
+    };
+  }, []);
+
   return (
     <div className="relative w-full h-full">
       <div ref={containerRef} className="absolute inset-0" />
+      {routeInfo && (
+        <div
+          className={`absolute top-2 left-2 z-[400] rounded px-3 py-1.5 text-xs shadow border ${
+            routeInfo.fallback
+              ? 'bg-red-50 border-red-300 text-red-800'
+              : 'bg-white border-gray-300 text-gray-800'
+          }`}
+        >
+          Route: {(routeInfo.distance / 1000).toFixed(1)} km
+          {!routeInfo.fallback && routeInfo.duration > 0 && (
+            <> · {Math.round(routeInfo.duration / 60)} min</>
+          )}
+          {routeInfo.fallback && <> (Luftlinie · OSRM nicht erreichbar)</>}
+        </div>
+      )}
       {onReset && clickedSequence.length > 0 && (
         <button
           onClick={onReset}

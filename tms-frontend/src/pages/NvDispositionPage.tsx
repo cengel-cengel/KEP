@@ -710,6 +710,7 @@ export default function NvDispositionPage() {
                 clickedSequence={clickedSequence}
                 onPinClick={onPinClick}
                 onReset={() => setClickedSequence([])}
+                onRouteError={(msg) => setBanner({ kind: 'err', msg })}
               />
             </div>
           </div>

@@ -13,6 +13,7 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ShipmentsService } from './shipments.service';
+import { NvTourenService } from '../nv-touren/nv-touren.service';
 import { CreateShipmentDto } from './dto/create-shipment.dto';
 import { UpdateShipmentDto } from './dto/update-shipment.dto';
 import { DispatchShipmentDto } from './dto/dispatch-shipment.dto';
@@ -26,7 +27,15 @@ import { ShipmentPricePreviewDto } from './dto/price-preview.dto';
 @UseGuards(JwtAuthGuard)
 @Controller('shipments')
 export class ShipmentsController {
-  constructor(private readonly shipmentsService: ShipmentsService) {}
+  constructor(
+    private readonly shipmentsService: ShipmentsService,
+    private readonly nvTourenService: NvTourenService,
+  ) {}
+
+  @Get(':id/cost-components')
+  costComponents(@Param('id') id: string) {
+    return this.nvTourenService.getCostComponentsByShipment(id);
+  }
 
   @Get()
   async findAll(@Query() query: ListShipmentsQueryDto) {

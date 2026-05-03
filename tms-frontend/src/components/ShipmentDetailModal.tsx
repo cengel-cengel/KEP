@@ -1,8 +1,12 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import { useQuery } from '@tanstack/react-query';
 import { X, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Shipment } from '../types/shipment';
 import { transportTypeLabel } from '../constants/transportTypes';
+import { api } from '../lib/api';
+import CostDrillDownModal from './nv/CostDrillDownModal';
+import type { CostComponent } from './nv/CostDrillDownModal';
 
 interface Props {
   shipmentId: string | null;
@@ -204,6 +208,7 @@ export default function ShipmentDetailModal({
                 </div>
               )}
             </Section>
+            <VorlaufCostsSection shipmentId={shipment.id} />
           </div>
 
           <div className="flex items-center justify-between gap-2 px-5 py-3 border-t bg-gray-50 rounded-b-xl">
@@ -267,5 +272,68 @@ function KV({ label, value }: { label: string; value: string }) {
       <div className="text-[10px] uppercase text-gray-500">{label}</div>
       <div className="text-gray-800">{value || '–'}</div>
     </div>
+  );
+}
+
+function VorlaufCostsSection({ shipmentId }: { shipmentId: string }) {
+  const [openCC, setOpenCC] = useState<CostComponent | null>(null);
+  const q = useQuery<CostComponent[]>({
+    queryKey: ['shipment-cost-comp', shipmentId],
+    queryFn: async () =>
+      (await api.get<CostComponent[]>(`/shipments/${shipmentId}/cost-components`))
+        .data,
+    enabled: !!shipmentId,
+    staleTime: 30_000,
+  });
+  const vorlauf = (q.data ?? []).filter((c) => c.phase === 'VORLAUF');
+
+  return (
+    <section className="rounded-xl border border-gray-200 p-4">
+      <h3 className="text-sm font-semibold text-gray-700 mb-2">
+        Vorlauf-Kosten
+      </h3>
+      {q.isLoading && <div className="text-sm text-gray-500">Lade...</div>}
+      {!q.isLoading && vorlauf.length === 0 && (
+        <p className="text-sm text-gray-500">
+          Noch keiner NV-Tour zugeordnet.
+        </p>
+      )}
+      <ul className="divide-y divide-gray-100">
+        {vorlauf.map((c) => {
+          const tour = (c as unknown as {
+            nv_tour?: {
+              id: string;
+              datum: string;
+              nv_stamm_tour?: { code: string };
+            };
+          }).nv_tour;
+          return (
+            <li
+              key={c.id}
+              className="py-2 flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 -mx-2 px-2 rounded"
+              onClick={() => setOpenCC(c)}
+            >
+              <span className="font-mono text-xs">
+                {tour?.nv_stamm_tour?.code ?? '—'}
+              </span>
+              <span className="text-xs text-gray-500">
+                {tour?.datum?.slice(0, 10) ?? ''}
+              </span>
+              <span className="ml-auto font-mono text-emerald-700">
+                € {Number(c.total_eur ?? 0).toFixed(2)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {openCC && (
+        <CostDrillDownModal
+          shipmentId={shipmentId}
+          component={openCC}
+          tourId={openCC.nv_tour_id ?? undefined}
+          onClose={() => setOpenCC(null)}
+        />
+      )}
+    </section>
   );
 }

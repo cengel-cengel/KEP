@@ -761,4 +761,36 @@ export class NvTourenService {
     await this.safeRecalc(tourId);
     return { added, skipped };
   }
+
+  async getCostComponentsByTour(tourId: string) {
+    return this.prisma.shipment_cost_components.findMany({
+      where: { nv_tour_id: tourId, phase: 'VORLAUF' },
+      include: {
+        shipment: {
+          select: {
+            id: true,
+            shipment_number: true,
+            customers: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { computed_at: 'desc' },
+    });
+  }
+
+  async getCostComponentsByShipment(shipmentId: string) {
+    return this.prisma.shipment_cost_components.findMany({
+      where: { shipment_id: shipmentId },
+      include: {
+        nv_tour: {
+          select: {
+            id: true,
+            datum: true,
+            nv_stamm_tour: { select: { id: true, code: true } },
+          },
+        },
+      },
+      orderBy: { computed_at: 'desc' },
+    });
+  }
 }

@@ -102,4 +102,9 @@ export class NvTourenController {
   recalcCosts(@Param('id') tourId: string) {
     return this.svc.recalcVorlaufCosts(tourId);
   }
+
+  @Get(':id/cost-components')
+  costComponentsByTour(@Param('id') tourId: string) {
+    return this.svc.getCostComponentsByTour(tourId);
+  }
 }

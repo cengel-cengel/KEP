@@ -9,6 +9,7 @@ import { RoutingModule } from '../routing/routing.module';
 import { StatusModule } from '../status/status.module';
 import { CostsModule } from '../costs/costs.module';
 import { PricingHubModule } from '../pricing-hub/pricing-hub.module';
+import { NvTourenModule } from '../nv-touren/nv-touren.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { PricingHubModule } from '../pricing-hub/pricing-hub.module';
     StatusModule,
     CostsModule,
     PricingHubModule,
+    NvTourenModule,
   ],
   controllers: [ShipmentsController, ShipmentPackageItemsController],
   providers: [ShipmentsService],

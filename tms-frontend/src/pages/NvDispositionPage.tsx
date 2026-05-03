@@ -4,6 +4,8 @@ import { ArrowDown, ArrowUp, Plus, Sparkles, Trash2, X } from 'lucide-react';
 import NvTourKostenModal from '../components/NvTourKostenModal';
 import NvDispoMap from '../components/nv/NvDispoMap';
 import type { MapShipment } from '../components/nv/NvDispoMap';
+import CostDrillDownModal from '../components/nv/CostDrillDownModal';
+import type { CostComponent } from '../components/nv/CostDrillDownModal';
 import ResponsiveTable from '../components/table/ResponsiveTable';
 import type { Column } from '../components/table/ResponsiveTable';
 import { api } from '../lib/api';
@@ -215,6 +217,12 @@ export default function NvDispositionPage() {
   const [bulkPickerOpen, setBulkPickerOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [kostenTourId, setKostenTourId] = useState<string | null>(null);
+  const [drillDown, setDrillDown] = useState<{
+    shipmentId: string;
+    shipmentNumber: string;
+    customerName?: string;
+    tourId: string;
+  } | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'map' | 'split3'>('list');
   const [selectedTourId, setSelectedTourId] = useState<string | null>(null);
   const [clickedSequence, setClickedSequence] = useState<string[]>([]);
@@ -286,6 +294,8 @@ export default function NvDispositionPage() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['nv-touren'] });
     qc.invalidateQueries({ queryKey: ['nv-elig'] });
+    qc.invalidateQueries({ queryKey: ['nv-tour-cost-comp'] });
+    qc.invalidateQueries({ queryKey: ['shipment-cost-comp'] });
   };
 
   const groupedElig = useMemo(() => {
@@ -691,6 +701,13 @@ export default function NvDispositionPage() {
                   if (confirm(`Tour löschen?`)) deleteTourMut.mutate(tour.id);
                 }}
                 onOpenKosten={() => setKostenTourId(tour.id)}
+                onOpenDrillDown={(shipmentId, shipmentNumber) => {
+                  setDrillDown({
+                    shipmentId,
+                    shipmentNumber,
+                    tourId: tour.id,
+                  });
+                }}
               />
             ))}
           </div>
@@ -769,6 +786,16 @@ export default function NvDispositionPage() {
             />
           );
         })()}
+
+      {drillDown && (
+        <CostDrillDownModal
+          shipmentId={drillDown.shipmentId}
+          shipmentNumber={drillDown.shipmentNumber}
+          customerName={drillDown.customerName}
+          tourId={drillDown.tourId}
+          onClose={() => setDrillDown(null)}
+        />
+      )}
     </div>
   );
 }
@@ -780,6 +807,7 @@ function TourCard({
   onDeleteStop,
   onDeleteTour,
   onOpenKosten,
+  onOpenDrillDown,
 }: {
   tour: NvTour;
   onDrop: (shipmentId: string, source?: 'map' | 'list') => void;
@@ -787,7 +815,30 @@ function TourCard({
   onDeleteStop: (stopId: string) => void;
   onDeleteTour: () => void;
   onOpenKosten: () => void;
+  onOpenDrillDown: (shipmentId: string, shipmentNumber: string) => void;
 }) {
+  const costsQ = useQuery<CostComponent[]>({
+    queryKey: ['nv-tour-cost-comp', tour.id],
+    queryFn: async () =>
+      (await api.get<CostComponent[]>(`/nv-touren/${tour.id}/cost-components`))
+        .data,
+    staleTime: 30_000,
+  });
+  const costsByShipment = useMemo(() => {
+    const m = new Map<string, CostComponent>();
+    for (const c of costsQ.data ?? []) {
+      if (c.shipment_id) m.set(c.shipment_id, c);
+    }
+    return m;
+  }, [costsQ.data]);
+  const sumVorlauf = useMemo(
+    () =>
+      (costsQ.data ?? []).reduce(
+        (s, c) => s + (c.total_eur ? Number(c.total_eur) : 0),
+        0,
+      ),
+    [costsQ.data],
+  );
   const [hovered, setHovered] = useState(false);
 
   const handleDrop = (e: React.DragEvent) => {
@@ -874,6 +925,14 @@ function TourCard({
             <span className="text-orange-600">
               Spot:{tour.stops.filter((s) => !s.is_stamm_kunde).length}
             </span>
+            {sumVorlauf > 0 && (
+              <>
+                {' · '}
+                <span className="font-mono text-emerald-700">
+                  Σ € {sumVorlauf.toFixed(0)}
+                </span>
+              </>
+            )}
           </div>
         </div>
         <button
@@ -907,6 +966,24 @@ function TourCard({
             <span className="text-xs text-gray-500 ml-auto">
               {s.servicezeit_min ? `${s.servicezeit_min} min` : ''}
             </span>
+            {(() => {
+              const cc = s.shipment?.id
+                ? costsByShipment.get(s.shipment.id)
+                : null;
+              if (!cc || !cc.total_eur) return null;
+              return (
+                <button
+                  onClick={() =>
+                    s.shipment &&
+                    onOpenDrillDown(s.shipment.id, s.shipment.shipment_number)
+                  }
+                  className="text-xs font-mono text-emerald-700 hover:underline"
+                  title="Cost-Breakdown"
+                >
+                  € {Number(cc.total_eur).toFixed(2)}
+                </button>
+              );
+            })()}
             <button
               onClick={() => onMoveStop(idx, -1)}
               disabled={idx === 0}

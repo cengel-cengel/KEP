@@ -11,6 +11,8 @@ import {
   X,
 } from 'lucide-react';
 import { api } from '../lib/api';
+import ResponsiveTable from '../components/table/ResponsiveTable';
+import type { Column } from '../components/table/ResponsiveTable';
 
 const ROUTING_KLASSEN = [
   'STAMMROUTE',
@@ -62,6 +64,133 @@ function emptyForm(): Partial<StammTour> {
     fahrzeug_typ: '7_5T',
     aktiv: true,
   };
+}
+
+function buildStammColumns(args: {
+  onOpenDetail: (id: string) => void;
+  onToggleAktiv: (t: StammTour) => void;
+  onEdit: (id: string) => void;
+  onDelete: (t: StammTour) => void;
+}): Column<StammTour>[] {
+  const { onOpenDetail, onToggleAktiv, onEdit, onDelete } = args;
+  return [
+    {
+      key: 'code',
+      header: 'Code',
+      width: 120,
+      render: (t) => <span className="font-mono text-xs">{t.code}</span>,
+    },
+    {
+      key: 'name',
+      header: 'Name',
+      minWidth: 160,
+      render: (t) => (
+        <span className="truncate" title={t.name}>
+          {t.name}
+        </span>
+      ),
+    },
+    {
+      key: 'gebiet',
+      header: 'Tour-Gebiet',
+      width: 130,
+      render: (t) => (
+        <span className="font-mono text-xs">
+          {t.nv_tour_gebiet?.code ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'wochentage',
+      header: 'Wochentage',
+      width: 170,
+      render: (t) => (
+        <span className="text-xs text-gray-600 truncate">
+          {t.wochentage.join(', ')}
+        </span>
+      ),
+    },
+    {
+      key: 'start',
+      header: 'Start',
+      width: 80,
+      render: (t) => (
+        <span className="text-xs text-gray-600">{t.start_zeit ?? '—'}</span>
+      ),
+    },
+    {
+      key: 'sub',
+      header: 'Subunternehmer',
+      width: 150,
+      render: (t) => (
+        <span
+          className="text-xs text-gray-600 truncate"
+          title={t.default_subunternehmer?.name ?? ''}
+        >
+          {t.default_subunternehmer?.name ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      width: 90,
+      align: 'center',
+      render: (t) => (
+        <span
+          className={`text-xs px-2 py-0.5 rounded ${
+            t.aktiv
+              ? 'bg-green-100 text-green-700'
+              : 'bg-gray-200 text-gray-600'
+          }`}
+        >
+          {t.aktiv ? 'aktiv' : 'inaktiv'}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      width: 130,
+      resizable: false,
+      align: 'right',
+      render: (t) => (
+        <span
+          className="inline-flex gap-1.5 whitespace-nowrap"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => onOpenDetail(t.id)}
+            className="text-gray-500 hover:text-gray-700"
+            title="Stamm-Kunden"
+          >
+            <Users size={16} />
+          </button>
+          <button
+            onClick={() => onToggleAktiv(t)}
+            className="text-gray-500 hover:text-gray-700"
+            title={t.aktiv ? 'Deaktivieren' : 'Aktivieren'}
+          >
+            <Power size={16} />
+          </button>
+          <button
+            onClick={() => onEdit(t.id)}
+            className="text-blue-600 hover:text-blue-800"
+            title="Bearbeiten"
+          >
+            <Pencil size={16} />
+          </button>
+          <button
+            onClick={() => onDelete(t)}
+            className="text-red-600 hover:text-red-800"
+            title="Löschen"
+          >
+            <Trash2 size={16} />
+          </button>
+        </span>
+      ),
+    },
+  ];
 }
 
 export default function NvStammTourenPage() {
@@ -128,12 +257,27 @@ export default function NvStammTourenPage() {
   const toggleAktiv = (s: StammTour) =>
     updateMut.mutate({ id: s.id, patch: { aktiv: !s.aktiv } });
 
+  const columns = useMemo(
+    () =>
+      buildStammColumns({
+        onOpenDetail: (id) => setDetailId(id),
+        onToggleAktiv: toggleAktiv,
+        onEdit: (id) => setEditingId(id),
+        onDelete: (t) => {
+          if (confirm(`Stamm-Tour "${t.code}" löschen?`))
+            deleteMut.mutate(t.id);
+        },
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   return (
-    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
-      <div className="flex items-end justify-between mb-4 gap-4 flex-wrap">
+    <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-gray-50">
+      <div className="bg-white border-b px-4 sm:px-6 py-3 sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">NV-Stamm-Touren</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-gray-500 mt-0.5">
             {stammQ.data?.length ?? 0} Stamm-Touren
           </p>
         </div>
@@ -167,122 +311,19 @@ export default function NvStammTourenPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Code
-              </th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Name
-              </th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Tour-Gebiet
-              </th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Wochentage
-              </th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Start
-              </th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Subunternehmer
-              </th>
-              <th className="px-3 py-2 text-left font-medium text-gray-600">
-                Status
-              </th>
-              <th className="px-3 py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {stammQ.isLoading && (
-              <tr>
-                <td colSpan={8} className="px-3 py-6 text-center text-gray-500">
-                  Lade...
-                </td>
-              </tr>
-            )}
-            {!stammQ.isLoading && filtered.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-3 py-6 text-center text-gray-500">
-                  Keine Stamm-Touren.
-                </td>
-              </tr>
-            )}
-            {filtered.map((t) => (
-              <tr
-                key={t.id}
-                className={`border-b border-gray-100 cursor-pointer ${
-                  detailId === t.id ? 'bg-blue-50' : 'hover:bg-gray-50'
-                }`}
-                onClick={() => setDetailId(t.id)}
-              >
-                <td className="px-3 py-2 font-mono text-xs">{t.code}</td>
-                <td className="px-3 py-2">{t.name}</td>
-                <td className="px-3 py-2 font-mono text-xs">
-                  {t.nv_tour_gebiet?.code ?? '—'}
-                </td>
-                <td className="px-3 py-2 text-xs text-gray-600">
-                  {t.wochentage.join(', ')}
-                </td>
-                <td className="px-3 py-2 text-xs text-gray-600">
-                  {t.start_zeit ?? '—'}
-                </td>
-                <td className="px-3 py-2 text-xs text-gray-600">
-                  {t.default_subunternehmer?.name ?? '—'}
-                </td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded ${
-                      t.aktiv
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-gray-200 text-gray-600'
-                    }`}
-                  >
-                    {t.aktiv ? 'aktiv' : 'inaktiv'}
-                  </span>
-                </td>
-                <td
-                  className="px-3 py-2 text-right whitespace-nowrap"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    onClick={() => setDetailId(t.id)}
-                    className="text-gray-500 hover:text-gray-700 mr-2"
-                    title="Stamm-Kunden"
-                  >
-                    <Users size={16} />
-                  </button>
-                  <button
-                    onClick={() => toggleAktiv(t)}
-                    className="text-gray-500 hover:text-gray-700 mr-2"
-                    title={t.aktiv ? 'Deaktivieren' : 'Aktivieren'}
-                  >
-                    <Power size={16} />
-                  </button>
-                  <button
-                    onClick={() => setEditingId(t.id)}
-                    className="text-blue-600 hover:text-blue-800 mr-2"
-                    title="Bearbeiten"
-                  >
-                    <Pencil size={16} />
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (confirm(`Stamm-Tour "${t.code}" löschen?`))
-                        deleteMut.mutate(t.id);
-                    }}
-                    className="text-red-600 hover:text-red-800"
-                    title="Löschen"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
+        <ResponsiveTable<StammTour>
+          storageKey="nv-stamm-touren-list"
+          columns={columns}
+          data={filtered}
+          rowKey={(t) => t.id}
+          loading={stammQ.isLoading}
+          empty="Keine Stamm-Touren."
+          onRowClick={(t) => setDetailId(t.id)}
+          rowProps={(t) => ({
+            className: detailId === t.id ? 'bg-blue-50' : '',
+          })}
+        />
       </div>
 
       {(editing || creating) && (
@@ -582,7 +623,7 @@ function StammKundenDrawer({
         className="absolute inset-0 bg-black/30"
         onClick={onClose}
       />
-      <aside className="absolute right-0 top-0 h-full w-full sm:w-[520px] bg-white shadow-xl flex flex-col">
+      <aside className="absolute right-0 top-0 h-full w-full sm:w-[520px] lg:w-[600px] bg-white shadow-xl flex flex-col">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div>
             <h2 className="font-semibold text-gray-800">{tour.name}</h2>

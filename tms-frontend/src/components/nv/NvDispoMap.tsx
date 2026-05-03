@@ -12,6 +12,8 @@ export type MapShipment = {
     zip?: string | null;
     city?: string | null;
   } | null;
+  color?: string;
+  tour_gebiet_code?: string | null;
 };
 
 function toLatLng(
@@ -28,8 +30,8 @@ function toLatLng(
   return [lat, lng];
 }
 
-function makeIcon(active: boolean, label?: string | number) {
-  const bg = active ? '#16a34a' : '#1e40af';
+function makeIcon(active: boolean, label?: string | number, color?: string) {
+  const bg = active ? '#16a34a' : color ?? '#1e40af';
   const text = label != null ? String(label) : '';
   const html = `
     <div style="
@@ -118,7 +120,7 @@ export default function NvDispoMap({
       if (!ll) continue;
       bounds.push(ll);
       const seqNumber = clickedIndex.get(s.id);
-      const icon = makeIcon(seqNumber != null, seqNumber);
+      const icon = makeIcon(seqNumber != null, seqNumber, s.color);
       const existing = markersRef.current.get(s.id);
       if (existing) {
         existing.setIcon(icon);

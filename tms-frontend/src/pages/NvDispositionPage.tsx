@@ -12,7 +12,7 @@ import ResponsiveTable from '../components/table/ResponsiveTable';
 import type { Column } from '../components/table/ResponsiveTable';
 import { api } from '../lib/api';
 
-type TourGebiet = { id: string; code: string; name: string };
+type TourGebiet = { id: string; code: string; name: string; farbe?: string | null };
 type StammTour = {
   id: string;
   code: string;
@@ -253,27 +253,21 @@ export default function NvDispositionPage() {
   const [bulkPickerOpen, setBulkPickerOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [kostenTourId, setKostenTourId] = useState<string | null>(null);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
-    if (typeof window === 'undefined') return new Set();
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
     try {
-      const raw = localStorage.getItem('tms.nv-dispo.collapsed-groups');
-      const arr = raw ? (JSON.parse(raw) as unknown) : null;
-      if (Array.isArray(arr)) return new Set(arr.filter((x) => typeof x === 'string'));
+      const raw = localStorage.getItem('tms.nv-dispo.expanded-group');
+      if (typeof raw === 'string' && raw.length > 0) return raw;
     } catch {
       /* ignore */
     }
-    return new Set();
+    return null;
   });
   const toggleGroup = (key: string) => {
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+    setExpandedGroup((prev) => {
+      const next = prev === key ? null : key;
       try {
-        localStorage.setItem(
-          'tms.nv-dispo.collapsed-groups',
-          JSON.stringify([...next]),
-        );
+        localStorage.setItem('tms.nv-dispo.expanded-group', next ?? '');
       } catch {
         /* ignore */
       }
@@ -369,6 +363,14 @@ export default function NvDispositionPage() {
     qc.invalidateQueries({ queryKey: ['nv-tour-capacity'] });
     qc.invalidateQueries({ queryKey: ['shipment-cost-comp'] });
   };
+
+  const farbenMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const g of tourGebieteQ.data ?? []) {
+      if (g.farbe) m.set(g.code, g.farbe);
+    }
+    return m;
+  }, [tourGebieteQ.data]);
 
   const groupedElig = useMemo(() => {
     const list = eligQ.data ?? [];
@@ -785,13 +787,15 @@ export default function NvDispositionPage() {
             </div>
           )}
           {groupedElig.map(([groupKey, items]) => {
-            const collapsed = collapsedGroups.has(groupKey);
+            const collapsed = expandedGroup !== groupKey;
+            const farbe = farbenMap.get(groupKey) ?? '#9ca3af';
             return (
             <div key={groupKey} className="border-b border-gray-200">
               <button
                 type="button"
                 onClick={() => toggleGroup(groupKey)}
-                className="w-full px-3 py-1 bg-gray-100 border-b text-xs font-mono text-gray-700 flex items-center gap-2 hover:bg-gray-200"
+                className="w-full px-3 py-1 bg-gray-100 border-b text-xs font-mono text-gray-700 flex items-center gap-2 hover:bg-gray-200 border-l-4"
+                style={{ borderLeftColor: farbe }}
               >
                 <span className="inline-block w-3 text-center">
                   {collapsed ? '▶' : '▼'}
@@ -894,16 +898,23 @@ export default function NvDispositionPage() {
             </div>
             <div className="flex-1 min-h-0 relative">
               <NvDispoMap
-                shipments={
-                  ((eligQ.data ?? []) as EligibleShipment[]).map(
-                    (s): MapShipment => ({
-                      id: s.id,
-                      shipment_number: s.shipment_number,
-                      customer: s.customer ?? null,
-                      loading_address: s.loading_address ?? null,
-                    }),
+                shipments={((eligQ.data ?? []) as EligibleShipment[])
+                  .filter((s) =>
+                    expandedGroup
+                      ? s.matched_tour_gebiet_code === expandedGroup
+                      : true,
                   )
-                }
+                  .map((s): MapShipment => ({
+                    id: s.id,
+                    shipment_number: s.shipment_number,
+                    customer: s.customer ?? null,
+                    loading_address: s.loading_address ?? null,
+                    color:
+                      (s.matched_tour_gebiet_code &&
+                        farbenMap.get(s.matched_tour_gebiet_code)) ||
+                      undefined,
+                    tour_gebiet_code: s.matched_tour_gebiet_code,
+                  }))}
                 clickedSequence={clickedSequence}
                 onPinClick={onPinClick}
                 onReset={() => setClickedSequence([])}

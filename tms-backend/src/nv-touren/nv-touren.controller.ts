@@ -37,8 +37,15 @@ export class NvTourenController {
     @Query('datum') datum: string,
     @Query('nv_tour_gebiet_id') nv_tour_gebiet_id?: string,
     @Query('search') search?: string,
+    @Query('mode') mode?: string,
   ) {
-    return this.svc.eligibleShipments({ datum, nv_tour_gebiet_id, search });
+    const m = mode === 'DELIVERY' ? 'DELIVERY' : 'PICKUP';
+    return this.svc.eligibleShipments({
+      datum,
+      nv_tour_gebiet_id,
+      search,
+      mode: m,
+    });
   }
 
   @Get(':id')
@@ -89,13 +96,21 @@ export class NvTourenController {
   }
 
   @Post(':id/copy-stamm-kunden')
-  copyStammKunden(@Param('id') tourId: string) {
-    return this.svc.copyStammKunden(tourId);
+  copyStammKunden(
+    @Param('id') tourId: string,
+    @Query('mode') mode?: string,
+  ) {
+    const m = mode === 'DELIVERY' ? 'DELIVERY' : 'PICKUP';
+    return this.svc.copyStammKunden(tourId, m);
   }
 
   @Post('auto-suggest')
-  autoSuggest(@Query('datum') datum: string) {
-    return this.svc.autoSuggest(datum);
+  autoSuggest(
+    @Query('datum') datum: string,
+    @Query('mode') mode?: string,
+  ) {
+    const m = mode === 'DELIVERY' ? 'DELIVERY' : 'PICKUP';
+    return this.svc.autoSuggest(datum, m);
   }
 
   @Post(':id/recalc-costs')

@@ -1257,6 +1257,7 @@ enum shipment_status {
   invoiced
   cancelled
   returned
+  in_warehouse
 }
 
 enum tour_status {
@@ -1439,6 +1440,7 @@ model nv_tour_stops {
   nv_tour_id             String      @db.Uuid
   shipment_id            String      @db.Uuid
   position               Int
+  stop_type              String      @default("PICKUP") @db.VarChar(20)
   servicezeit_min        Int?
   routing_klasse         String?     @db.VarChar(30)
   service_zuschlaege     Json?

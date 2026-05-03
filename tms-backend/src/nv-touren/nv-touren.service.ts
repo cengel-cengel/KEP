@@ -467,6 +467,7 @@ export class NvTourenService {
         nv_tour_id: tourId,
         shipment_id: dto.shipment_id,
         position,
+        stop_type: dto.stop_type ?? 'PICKUP',
         servicezeit_min: servicezeit ?? undefined,
         routing_klasse: routing ?? undefined,
         service_zuschlaege:
@@ -498,6 +499,7 @@ export class NvTourenService {
       where: { id: stopId },
       data: {
         position: dto.position ?? undefined,
+        stop_type: dto.stop_type ?? undefined,
         status: dto.status ?? undefined,
         servicezeit_min:
           dto.servicezeit_min === undefined
@@ -555,8 +557,10 @@ export class NvTourenService {
     datum: string;
     nv_tour_gebiet_id?: string;
     search?: string;
+    mode?: 'PICKUP' | 'DELIVERY';
   }) {
     const datum = new Date(filter.datum);
+    const mode = filter.mode === 'DELIVERY' ? 'DELIVERY' : 'PICKUP';
 
     const tourGebiete = await this.prisma.nv_tour_gebiete.findMany({
       where: filter.nv_tour_gebiet_id
@@ -597,12 +601,20 @@ export class NvTourenService {
     });
     const stammKundenIds = new Set(stammKunden.map((s) => s.customer_id));
 
-    const where: any = {
-      status: 'new',
-      loading_date: { lte: datum },
-      deleted_at: null,
-      id: { notIn: [...stoppedShipmentIds] },
-    };
+    const where: any =
+      mode === 'DELIVERY'
+        ? {
+            status: 'in_warehouse',
+            delivery_date: { lte: datum },
+            deleted_at: null,
+            id: { notIn: [...stoppedShipmentIds] },
+          }
+        : {
+            status: 'new',
+            loading_date: { lte: datum },
+            deleted_at: null,
+            id: { notIn: [...stoppedShipmentIds] },
+          };
     if (filter.search) {
       where.OR = [
         { shipment_number: { contains: filter.search, mode: 'insensitive' } },
@@ -616,7 +628,10 @@ export class NvTourenService {
 
     const shipments = await this.prisma.shipments.findMany({
       where,
-      orderBy: [{ loading_date: 'asc' }, { created_at: 'asc' }],
+      orderBy:
+        mode === 'DELIVERY'
+          ? [{ delivery_date: 'asc' }, { created_at: 'asc' }]
+          : [{ loading_date: 'asc' }, { created_at: 'asc' }],
       include: {
         customers: {
           select: { id: true, customer_number: true, name: true },
@@ -653,7 +668,9 @@ export class NvTourenService {
           s.addresses_shipments_delivery_address_idToaddresses;
         const loading_address =
           s.addresses_shipments_loading_address_idToaddresses;
-        const zip = delivery_address?.zip ?? '';
+        const pin_address =
+          mode === 'DELIVERY' ? delivery_address : loading_address;
+        const zip = pin_address?.zip ?? '';
         let matched_tour_gebiet_id: string | null = null;
         let matched_tour_gebiet_code: string | null = null;
         for (const g of gebiete) {
@@ -674,6 +691,8 @@ export class NvTourenService {
           customer: customers,
           delivery_address,
           loading_address,
+          pin_address,
+          mode,
           matched_tour_gebiet_id,
           matched_tour_gebiet_code,
           is_stamm_kunde:
@@ -687,7 +706,7 @@ export class NvTourenService {
       );
   }
 
-  async autoSuggest(datum: string) {
+  async autoSuggest(datum: string, mode: 'PICKUP' | 'DELIVERY' = 'PICKUP') {
     if (!datum) {
       return {
         touren_created: 0,
@@ -739,7 +758,7 @@ export class NvTourenService {
         touren_created++;
         created = true;
       }
-      const result = await this.copyStammKunden(tour.id);
+      const result = await this.copyStammKunden(tour.id, mode);
       stops_added_total += result.added ?? 0;
       details.push({
         tour_id: tour.id,
@@ -758,7 +777,10 @@ export class NvTourenService {
     };
   }
 
-  async copyStammKunden(tourId: string) {
+  async copyStammKunden(
+    tourId: string,
+    mode: 'PICKUP' | 'DELIVERY' = 'PICKUP',
+  ) {
     const tour = await this.prisma.nv_touren.findUnique({
       where: { id: tourId },
       select: {
@@ -769,7 +791,12 @@ export class NvTourenService {
     });
     if (!tour) throw new NotFoundException('NV-Tour nicht gefunden');
     if (!tour.nv_stamm_tour_id) {
-      return { added: 0, skipped: 0, reason: 'Tour ohne Stamm-Tour' };
+      return {
+        added: 0,
+        skipped: 0,
+        skipped_capacity: 0,
+        reason: 'Tour ohne Stamm-Tour',
+      };
     }
 
     const stammKunden = await this.prisma.nv_stamm_kunden.findMany({
@@ -802,12 +829,20 @@ export class NvTourenService {
     let skipped_capacity = 0;
     for (const sk of stammKunden) {
       const shipments = await this.prisma.shipments.findMany({
-        where: {
-          customer_id: sk.customer_id,
-          status: 'new',
-          loading_date: { lte: tour.datum },
-          deleted_at: null,
-        },
+        where:
+          mode === 'DELIVERY'
+            ? {
+                customer_id: sk.customer_id,
+                status: 'in_warehouse',
+                delivery_date: { lte: tour.datum },
+                deleted_at: null,
+              }
+            : {
+                customer_id: sk.customer_id,
+                status: 'new',
+                loading_date: { lte: tour.datum },
+                deleted_at: null,
+              },
         select: { id: true },
       });
       if (shipments.length === 0) {
@@ -835,6 +870,7 @@ export class NvTourenService {
               nv_tour_id: tourId,
               shipment_id: s.id,
               position: nextPos,
+              stop_type: mode,
               servicezeit_min: sk.standard_servicezeit_min ?? undefined,
               routing_klasse: sk.routing_klasse ?? undefined,
             },

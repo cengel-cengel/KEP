@@ -19,6 +19,7 @@ export const STOP_STATUS = [
   'FAILED',
   'SKIPPED',
 ] as const;
+export const STOP_TYPES = ['PICKUP', 'DELIVERY'] as const;
 export const ROUTING_KLASSEN = [
   'STAMMROUTE',
   'KLEINER_SCHLENKER',
@@ -29,6 +30,10 @@ export const ROUTING_KLASSEN = [
 export class CreateNvTourStopDto {
   @IsUUID()
   shipment_id!: string;
+
+  @IsOptional()
+  @IsIn(STOP_TYPES as readonly string[])
+  stop_type?: 'PICKUP' | 'DELIVERY';
 
   @IsOptional()
   @Type(() => Number)
@@ -59,6 +64,10 @@ export class UpdateNvTourStopDto {
   @IsInt()
   @Min(0)
   position?: number;
+
+  @IsOptional()
+  @IsIn(STOP_TYPES as readonly string[])
+  stop_type?: 'PICKUP' | 'DELIVERY';
 
   @IsOptional()
   @IsIn(STOP_STATUS as readonly string[])

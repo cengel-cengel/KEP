@@ -190,6 +190,12 @@ export class NvTourenService {
             ? undefined
             : dto.sonstige_kosten_eur,
         kosten_modus: dto.kosten_modus ?? undefined,
+        angefahrene_km:
+          dto.angefahrene_km === undefined ? undefined : dto.angefahrene_km,
+        stunden_geleistet:
+          dto.stunden_geleistet === undefined
+            ? undefined
+            : dto.stunden_geleistet,
       },
       include: TOUR_INCLUDE,
     });

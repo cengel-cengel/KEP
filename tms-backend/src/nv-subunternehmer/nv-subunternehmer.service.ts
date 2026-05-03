@@ -66,6 +66,9 @@ export class NvSubunternehmerService {
         tarif_typ: dto.tarif_typ ?? 'TAGESPAUSCHALE',
         tarif_pro_stop_eur: dto.tarif_pro_stop_eur ?? undefined,
         tarif_tagespauschale_eur: dto.tarif_tagespauschale_eur ?? undefined,
+        tarif_pro_km_eur: dto.tarif_pro_km_eur ?? undefined,
+        tarif_grundgebuehr_eur: dto.tarif_grundgebuehr_eur ?? undefined,
+        tarif_pro_stunde_eur: dto.tarif_pro_stunde_eur ?? undefined,
         fahrzeug_typ: dto.fahrzeug_typ ?? undefined,
         notiz: dto.notiz ?? undefined,
         aktiv: dto.aktiv ?? true,
@@ -114,6 +117,18 @@ export class NvSubunternehmerService {
           dto.tarif_tagespauschale_eur === undefined
             ? undefined
             : dto.tarif_tagespauschale_eur,
+        tarif_pro_km_eur:
+          dto.tarif_pro_km_eur === undefined
+            ? undefined
+            : dto.tarif_pro_km_eur,
+        tarif_grundgebuehr_eur:
+          dto.tarif_grundgebuehr_eur === undefined
+            ? undefined
+            : dto.tarif_grundgebuehr_eur,
+        tarif_pro_stunde_eur:
+          dto.tarif_pro_stunde_eur === undefined
+            ? undefined
+            : dto.tarif_pro_stunde_eur,
         fahrzeug_typ:
           dto.fahrzeug_typ === undefined ? undefined : dto.fahrzeug_typ,
         notiz: dto.notiz === undefined ? undefined : dto.notiz,

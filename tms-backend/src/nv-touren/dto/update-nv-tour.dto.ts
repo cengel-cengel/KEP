@@ -75,4 +75,14 @@ export class UpdateNvTourDto {
   @IsOptional()
   @IsIn(['TARIF', 'SPOT'])
   kosten_modus?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  angefahrene_km?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  stunden_geleistet?: number | null;
 }

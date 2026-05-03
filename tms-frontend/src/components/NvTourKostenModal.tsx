@@ -9,6 +9,9 @@ type Subunternehmer = {
   tarif_typ: string;
   tarif_pro_stop_eur: string | number | null;
   tarif_tagespauschale_eur: string | number | null;
+  tarif_pro_km_eur: string | number | null;
+  tarif_grundgebuehr_eur: string | number | null;
+  tarif_pro_stunde_eur: string | number | null;
 };
 type Tour = {
   id: string;
@@ -21,6 +24,8 @@ type Tour = {
   sonstige_kosten_eur: string | number | null;
   total_kosten_eur: string | number | null;
   kosten_modus?: string | null;
+  angefahrene_km: string | number | null;
+  stunden_geleistet: string | number | null;
   notizen: string | null;
   subunternehmer_id: string | null;
   nv_stamm_tour?: { code: string } | null;
@@ -83,6 +88,10 @@ export default function NvTourKostenModal({
   const [spotMode, setSpotMode] = useState<boolean>(
     tour.kosten_modus === 'SPOT',
   );
+  const [km, setKm] = useState<number | null>(toNum(tour.angefahrene_km));
+  const [stunden, setStunden] = useState<number | null>(
+    toNum(tour.stunden_geleistet),
+  );
 
   const subQ = useQuery<Subunternehmer | null>({
     queryKey: ['nv-subunternehmer', tour.subunternehmer_id],
@@ -118,6 +127,8 @@ export default function NvTourKostenModal({
           sonstige_kosten_eur: sonstige,
           notizen,
           kosten_modus: spotMode ? 'SPOT' : 'TARIF',
+          angefahrene_km: km,
+          stunden_geleistet: stunden,
         })
       ).data,
     onSuccess: async () => {
@@ -129,7 +140,10 @@ export default function NvTourKostenModal({
   const sub = subQ.data;
   const canApplyTarif =
     !!sub &&
-    (sub.tarif_typ === 'TAGESPAUSCHALE' || sub.tarif_typ === 'PRO_STOP');
+    (sub.tarif_typ === 'TAGESPAUSCHALE' ||
+      sub.tarif_typ === 'PRO_STOP' ||
+      (sub.tarif_typ === 'KM_BASIERT' && km != null) ||
+      (sub.tarif_typ === 'STUNDEN_BASIERT' && stunden != null));
   const showInputs = spotMode || !canApplyTarif;
 
   const applyTarif = () => {
@@ -140,6 +154,13 @@ export default function NvTourKostenModal({
     } else if (sub.tarif_typ === 'PRO_STOP') {
       const proStop = toNum(sub.tarif_pro_stop_eur);
       if (proStop !== null) setFahrer(proStop * Math.max(1, stopCount));
+    } else if (sub.tarif_typ === 'KM_BASIERT' && km != null) {
+      const proKm = toNum(sub.tarif_pro_km_eur) ?? 0;
+      const grund = toNum(sub.tarif_grundgebuehr_eur) ?? 0;
+      setFahrer(grund + proKm * km);
+    } else if (sub.tarif_typ === 'STUNDEN_BASIERT' && stunden != null) {
+      const pro = toNum(sub.tarif_pro_stunde_eur) ?? 0;
+      setFahrer(pro * stunden);
     }
     if (fahrzeug === null) setFahrzeug(DEFAULTS.fahrzeug);
     if (kraftstoff === null) setKraftstoff(DEFAULTS.kraftstoff);
@@ -201,9 +222,67 @@ export default function NvTourKostenModal({
                 {sub.tarif_typ === 'PRO_STOP' &&
                   sub.tarif_pro_stop_eur != null &&
                   ` · ${Number(sub.tarif_pro_stop_eur).toFixed(2)} €/Stop`}
+                {sub.tarif_typ === 'KM_BASIERT' && (
+                  <>
+                    {sub.tarif_pro_km_eur != null &&
+                      ` · ${Number(sub.tarif_pro_km_eur).toFixed(2)} €/km`}
+                    {sub.tarif_grundgebuehr_eur != null &&
+                      ` + ${Number(sub.tarif_grundgebuehr_eur).toFixed(2)} GB`}
+                  </>
+                )}
+                {sub.tarif_typ === 'STUNDEN_BASIERT' &&
+                  sub.tarif_pro_stunde_eur != null &&
+                  ` · ${Number(sub.tarif_pro_stunde_eur).toFixed(2)} €/h`}
               </div>
             )}
           </div>
+
+          {sub?.tarif_typ === 'KM_BASIERT' && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm flex-1">Angefahrene KM</label>
+              <input
+                type="number"
+                min={0}
+                step="0.1"
+                value={km ?? ''}
+                onChange={(e) =>
+                  setKm(e.target.value === '' ? null : Number(e.target.value))
+                }
+                className="w-32 border rounded px-2 py-1 text-sm text-right font-mono"
+              />
+              <span className="text-sm text-gray-500">km</span>
+            </div>
+          )}
+          {sub?.tarif_typ === 'STUNDEN_BASIERT' && (
+            <div className="flex items-center gap-2">
+              <label className="text-sm flex-1">Geleistete Stunden</label>
+              <input
+                type="number"
+                min={0}
+                step="0.25"
+                value={stunden ?? ''}
+                onChange={(e) =>
+                  setStunden(
+                    e.target.value === '' ? null : Number(e.target.value),
+                  )
+                }
+                className="w-32 border rounded px-2 py-1 text-sm text-right font-mono"
+              />
+              <span className="text-sm text-gray-500">h</span>
+            </div>
+          )}
+          {(sub?.tarif_typ === 'KM_BASIERT' ||
+            sub?.tarif_typ === 'STUNDEN_BASIERT') &&
+            !spotMode && (
+              <button
+                type="button"
+                onClick={applyTarif}
+                disabled={!canApplyTarif}
+                className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40"
+              >
+                Neu berechnen
+              </button>
+            )}
 
           {!showInputs && canApplyTarif && (
             <div className="bg-emerald-50 border border-emerald-200 rounded p-2 text-sm">

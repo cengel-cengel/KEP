@@ -18,6 +18,9 @@ type Subunternehmer = {
   tarif_typ: string;
   tarif_pro_stop_eur: string | number | null;
   tarif_tagespauschale_eur: string | number | null;
+  tarif_pro_km_eur: string | number | null;
+  tarif_grundgebuehr_eur: string | number | null;
+  tarif_pro_stunde_eur: string | number | null;
   fahrzeug_typ: string | null;
   notiz: string | null;
   aktiv: boolean;
@@ -32,6 +35,8 @@ type Subunternehmer = {
 const TARIF_TYPEN = [
   { value: 'TAGESPAUSCHALE', label: 'Tagespauschale' },
   { value: 'PRO_STOP', label: 'Pro Stop' },
+  { value: 'KM_BASIERT', label: 'KM-basiert' },
+  { value: 'STUNDEN_BASIERT', label: 'Stunden-basiert' },
   { value: 'SPOT', label: 'Spot' },
 ];
 const FAHRZEUG_TYPEN = ['TRANSPORTER', '7_5T', '12T', '18T', '40T'];
@@ -257,6 +262,17 @@ export default function NvSubunternehmerPage() {
                   {s.tarif_typ === 'PRO_STOP' &&
                     s.tarif_pro_stop_eur != null &&
                     `${Number(s.tarif_pro_stop_eur).toFixed(2)} €/Stop`}
+                  {s.tarif_typ === 'KM_BASIERT' && (
+                    <>
+                      {s.tarif_pro_km_eur != null &&
+                        `${Number(s.tarif_pro_km_eur).toFixed(2)} €/km`}
+                      {s.tarif_grundgebuehr_eur != null &&
+                        ` + ${Number(s.tarif_grundgebuehr_eur).toFixed(2)} GB`}
+                    </>
+                  )}
+                  {s.tarif_typ === 'STUNDEN_BASIERT' &&
+                    s.tarif_pro_stunde_eur != null &&
+                    `${Number(s.tarif_pro_stunde_eur).toFixed(2)} €/h`}
                   {s.tarif_typ === 'SPOT' && 'Spot'}
                 </td>
                 <td className="px-3 py-2 text-xs text-gray-600">
@@ -355,6 +371,18 @@ function SubModal({
       initial.tarif_tagespauschale_eur != null
         ? Number(initial.tarif_tagespauschale_eur)
         : null,
+    tarif_pro_km_eur:
+      initial.tarif_pro_km_eur != null
+        ? Number(initial.tarif_pro_km_eur)
+        : null,
+    tarif_grundgebuehr_eur:
+      initial.tarif_grundgebuehr_eur != null
+        ? Number(initial.tarif_grundgebuehr_eur)
+        : null,
+    tarif_pro_stunde_eur:
+      initial.tarif_pro_stunde_eur != null
+        ? Number(initial.tarif_pro_stunde_eur)
+        : null,
   });
 
   const update = <K extends keyof Subunternehmer>(
@@ -390,6 +418,18 @@ function SubModal({
       tarif_tagespauschale_eur:
         form.tarif_tagespauschale_eur != null
           ? Number(form.tarif_tagespauschale_eur)
+          : null,
+      tarif_pro_km_eur:
+        form.tarif_pro_km_eur != null
+          ? Number(form.tarif_pro_km_eur)
+          : null,
+      tarif_grundgebuehr_eur:
+        form.tarif_grundgebuehr_eur != null
+          ? Number(form.tarif_grundgebuehr_eur)
+          : null,
+      tarif_pro_stunde_eur:
+        form.tarif_pro_stunde_eur != null
+          ? Number(form.tarif_pro_stunde_eur)
           : null,
       fahrzeug_typ: form.fahrzeug_typ ?? null,
       notiz: form.notiz ?? null,
@@ -505,6 +545,63 @@ function SubModal({
                 onChange={(e) =>
                   update(
                     'tarif_pro_stop_eur',
+                    e.target.value === '' ? null : Number(e.target.value),
+                  )
+                }
+                className="w-full border rounded px-3 py-2 text-sm"
+              />
+            </div>
+          )}
+          {form.tarif_typ === 'KM_BASIERT' && (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Pro KM (€)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.tarif_pro_km_eur ?? ''}
+                  onChange={(e) =>
+                    update(
+                      'tarif_pro_km_eur',
+                      e.target.value === '' ? null : Number(e.target.value),
+                    )
+                  }
+                  className="w-full border rounded px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Grundgebühr (€)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.tarif_grundgebuehr_eur ?? ''}
+                  onChange={(e) =>
+                    update(
+                      'tarif_grundgebuehr_eur',
+                      e.target.value === '' ? null : Number(e.target.value),
+                    )
+                  }
+                  className="w-full border rounded px-3 py-2 text-sm"
+                />
+              </div>
+            </>
+          )}
+          {form.tarif_typ === 'STUNDEN_BASIERT' && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Pro Stunde (€)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={form.tarif_pro_stunde_eur ?? ''}
+                onChange={(e) =>
+                  update(
+                    'tarif_pro_stunde_eur',
                     e.target.value === '' ? null : Number(e.target.value),
                   )
                 }

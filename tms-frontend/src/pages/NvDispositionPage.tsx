@@ -82,6 +82,8 @@ type NvTour = {
   sonstige_kosten_eur: string | number | null;
   total_kosten_eur: string | number | null;
   kosten_modus?: string | null;
+  angefahrene_km: string | number | null;
+  stunden_geleistet: string | number | null;
   notizen: string | null;
   subunternehmer_id: string | null;
   nv_stamm_tour_id: string | null;
@@ -212,13 +214,44 @@ export default function NvDispositionPage() {
     onSuccess: invalidate,
   });
   const createTourMut = useMutation({
-    mutationFn: async (input: { stammTourId: string }) =>
-      (
+    mutationFn: async (input: {
+      stamm_tour_id: string;
+      subunternehmer_id: string | null;
+      angefahrene_km: number | null;
+      stunden_geleistet: number | null;
+      kosten?: {
+        fahrer: number | null;
+        fahrzeug: number;
+        kraftstoff: number;
+        dispo: number;
+        sonstige: number;
+      };
+    }) => {
+      const created = (
         await api.post('/nv-touren', {
-          nv_stamm_tour_id: input.stammTourId,
+          nv_stamm_tour_id: input.stamm_tour_id,
           datum,
+          subunternehmer_id: input.subunternehmer_id ?? undefined,
         })
-      ).data,
+      ).data as { id: string };
+      const patch: any = {};
+      if (input.angefahrene_km != null)
+        patch.angefahrene_km = input.angefahrene_km;
+      if (input.stunden_geleistet != null)
+        patch.stunden_geleistet = input.stunden_geleistet;
+      if (input.kosten && input.kosten.fahrer != null) {
+        patch.fahrer_kosten_eur = input.kosten.fahrer;
+        patch.fahrzeug_kosten_eur = input.kosten.fahrzeug;
+        patch.kraftstoff_kosten_eur = input.kosten.kraftstoff;
+        patch.dispo_kosten_eur = input.kosten.dispo;
+        patch.sonstige_kosten_eur = input.kosten.sonstige;
+        patch.kosten_modus = 'TARIF';
+      }
+      if (Object.keys(patch).length > 0) {
+        await api.patch(`/nv-touren/${created.id}`, patch);
+      }
+      return created;
+    },
     onSuccess: invalidate,
   });
   const deleteTourMut = useMutation({
@@ -524,8 +557,8 @@ export default function NvDispositionPage() {
         <CreateTourModal
           stammTouren={stammTourenQ.data ?? []}
           onClose={() => setShowCreateTour(false)}
-          onCreate={async (stammTourId) => {
-            await createTourMut.mutateAsync({ stammTourId });
+          onCreate={async (payload) => {
+            await createTourMut.mutateAsync(payload);
             setShowCreateTour(false);
           }}
           saving={createTourMut.isPending}
@@ -723,6 +756,64 @@ function TourCard({
   );
 }
 
+type SubFull = {
+  id: string;
+  name: string;
+  tarif_typ: string;
+  tarif_tagespauschale_eur: string | number | null;
+  tarif_pro_stop_eur: string | number | null;
+  tarif_pro_km_eur: string | number | null;
+  tarif_grundgebuehr_eur: string | number | null;
+  tarif_pro_stunde_eur: string | number | null;
+};
+
+const TOUR_KOSTEN_DEFAULTS = {
+  fahrzeug: 90,
+  kraftstoff: 70,
+  dispo: 30,
+  sonstige: 10,
+};
+
+function computeFahrer(
+  sub: SubFull | null | undefined,
+  stops: number,
+  km: number | null,
+  stunden: number | null,
+): number | null {
+  if (!sub) return null;
+  const num = (v: string | number | null) =>
+    v === null || v === undefined ? 0 : Number(v);
+  if (sub.tarif_typ === 'TAGESPAUSCHALE') {
+    return num(sub.tarif_tagespauschale_eur) || null;
+  }
+  if (sub.tarif_typ === 'PRO_STOP') {
+    return (num(sub.tarif_pro_stop_eur) || 0) * Math.max(1, stops);
+  }
+  if (sub.tarif_typ === 'KM_BASIERT') {
+    if (km == null) return null;
+    return num(sub.tarif_grundgebuehr_eur) + num(sub.tarif_pro_km_eur) * km;
+  }
+  if (sub.tarif_typ === 'STUNDEN_BASIERT') {
+    if (stunden == null) return null;
+    return num(sub.tarif_pro_stunde_eur) * stunden;
+  }
+  return null;
+}
+
+type CreatePayload = {
+  stamm_tour_id: string;
+  subunternehmer_id: string | null;
+  angefahrene_km: number | null;
+  stunden_geleistet: number | null;
+  kosten?: {
+    fahrer: number | null;
+    fahrzeug: number;
+    kraftstoff: number;
+    dispo: number;
+    sonstige: number;
+  };
+};
+
 function CreateTourModal({
   stammTouren,
   onClose,
@@ -731,13 +822,59 @@ function CreateTourModal({
 }: {
   stammTouren: StammTour[];
   onClose: () => void;
-  onCreate: (stammTourId: string) => void;
+  onCreate: (payload: CreatePayload) => void;
   saving: boolean;
 }) {
   const [stammTourId, setStammTourId] = useState('');
+  const [subId, setSubId] = useState<string>('');
+  const [km, setKm] = useState<number | null>(null);
+  const [stunden, setStunden] = useState<number | null>(null);
+
+  const subsQ = useQuery<SubFull[]>({
+    queryKey: ['nv-subunternehmer', 'all-active'],
+    queryFn: async () =>
+      (await api.get<SubFull[]>('/nv-subunternehmer')).data.filter(
+        (s: any) => s.aktiv !== false,
+      ),
+  });
+  const subs = subsQ.data ?? [];
+  const selectedSub = subs.find((s) => s.id === subId) ?? null;
+
+  const stamm = stammTouren.find((s) => s.id === stammTourId) ?? null;
+  useEffect(() => {
+    if (!subId && stamm?.default_subunternehmer_id) {
+      setSubId(stamm.default_subunternehmer_id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stammTourId, stamm?.default_subunternehmer_id]);
+
+  const handleCreate = () => {
+    if (!stammTourId) return;
+    const fahrer = computeFahrer(selectedSub, 0, km, stunden);
+    const hasTarif =
+      selectedSub &&
+      selectedSub.tarif_typ !== 'SPOT' &&
+      fahrer !== null;
+    onCreate({
+      stamm_tour_id: stammTourId,
+      subunternehmer_id: subId || null,
+      angefahrene_km: km,
+      stunden_geleistet: stunden,
+      kosten: hasTarif
+        ? {
+            fahrer,
+            fahrzeug: TOUR_KOSTEN_DEFAULTS.fahrzeug,
+            kraftstoff: TOUR_KOSTEN_DEFAULTS.kraftstoff,
+            dispo: TOUR_KOSTEN_DEFAULTS.dispo,
+            sonstige: TOUR_KOSTEN_DEFAULTS.sonstige,
+          }
+        : undefined,
+    });
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h2 className="font-semibold text-gray-800">Neue NV-Tour</h2>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
@@ -762,6 +899,59 @@ function CreateTourModal({
               ))}
             </select>
           </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Subunternehmer
+            </label>
+            <select
+              value={subId}
+              onChange={(e) => setSubId(e.target.value)}
+              className="w-full border rounded px-3 py-2 text-sm"
+            >
+              <option value="">— keiner —</option>
+              {subs.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.tarif_typ})
+                </option>
+              ))}
+            </select>
+          </div>
+          {selectedSub?.tarif_typ === 'KM_BASIERT' && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Angefahrene KM
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.1"
+                value={km ?? ''}
+                onChange={(e) =>
+                  setKm(e.target.value === '' ? null : Number(e.target.value))
+                }
+                className="w-full border rounded px-3 py-2 text-sm"
+              />
+            </div>
+          )}
+          {selectedSub?.tarif_typ === 'STUNDEN_BASIERT' && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Geleistete Stunden
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.25"
+                value={stunden ?? ''}
+                onChange={(e) =>
+                  setStunden(
+                    e.target.value === '' ? null : Number(e.target.value),
+                  )
+                }
+                className="w-full border rounded px-3 py-2 text-sm"
+              />
+            </div>
+          )}
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3">
           <button
@@ -771,7 +961,7 @@ function CreateTourModal({
             Abbrechen
           </button>
           <button
-            onClick={() => stammTourId && onCreate(stammTourId)}
+            onClick={handleCreate}
             disabled={!stammTourId || saving}
             className="px-3 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
           >

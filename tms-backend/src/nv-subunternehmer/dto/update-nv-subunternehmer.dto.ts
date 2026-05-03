@@ -9,6 +9,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { TARIF_TYPEN } from './create-nv-subunternehmer.dto';
 
 export class UpdateNvSubunternehmerDto {
   @IsOptional()
@@ -20,7 +21,7 @@ export class UpdateNvSubunternehmerDto {
   nv_tour_gebiet_id?: string | null;
 
   @IsOptional()
-  @IsIn(['PRO_STOP', 'TAGESPAUSCHALE', 'SPOT'])
+  @IsIn(TARIF_TYPEN as readonly string[])
   tarif_typ?: string;
 
   @IsOptional()
@@ -32,6 +33,21 @@ export class UpdateNvSubunternehmerDto {
   @Type(() => Number)
   @IsNumber()
   tarif_tagespauschale_eur?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  tarif_pro_km_eur?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  tarif_grundgebuehr_eur?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  tarif_pro_stunde_eur?: number | null;
 
   @IsOptional()
   @IsString()

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Plus, Sparkles, Trash2, X } from 'lucide-react';
 import NvTourKostenModal from '../components/NvTourKostenModal';
+import ResponsiveTable from '../components/table/ResponsiveTable';
+import type { Column } from '../components/table/ResponsiveTable';
 import { api } from '../lib/api';
 
 type TourGebiet = { id: string; code: string; name: string };
@@ -102,6 +104,97 @@ type NvTour = {
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function eligColumns(
+  selected: Set<string>,
+  toggleSelect: (id: string) => void,
+): Column<EligibleShipment>[] {
+  return [
+    {
+      key: 'select',
+      header: '',
+      width: 32,
+      minWidth: 32,
+      resizable: false,
+      render: (s) => (
+        <input
+          type="checkbox"
+          checked={selected.has(s.id)}
+          onChange={() => toggleSelect(s.id)}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
+    },
+    {
+      key: 'number',
+      header: 'Nr.',
+      width: 110,
+      render: (s) => <span className="font-mono text-xs">{s.shipment_number}</span>,
+    },
+    {
+      key: 'customer',
+      header: 'Kunde',
+      minWidth: 140,
+      render: (s) => (
+        <span className="truncate" title={s.customer?.name ?? ''}>
+          {s.customer?.name ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'ort',
+      header: 'Ort',
+      width: 140,
+      render: (s) => (
+        <span className="text-xs text-gray-600 truncate">
+          {s.delivery_address?.zip} {s.delivery_address?.city}
+        </span>
+      ),
+    },
+    {
+      key: 'info',
+      header: 'Info',
+      width: 130,
+      render: (s) => (
+        <span className="text-xs text-gray-600">
+          {s.package_count} Pak
+          {s.total_weight_kg
+            ? ` · ${Number(s.total_weight_kg).toFixed(0)} kg`
+            : ''}
+          {s.total_ldm ? ` · ${Number(s.total_ldm).toFixed(2)} LDM` : ''}
+        </span>
+      ),
+    },
+    {
+      key: 'badges',
+      header: 'Status',
+      width: 150,
+      render: (s) => {
+        const b = pickupBadge(s.loading_date);
+        return (
+          <span className="flex flex-wrap gap-1">
+            {s.is_stamm_kunde && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700"
+                title="Stammkunde"
+              >
+                Stamm
+              </span>
+            )}
+            {b && (
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded ${b.cls}`}
+                title={`Pickup ${s.loading_date.slice(0, 10)}`}
+              >
+                {b.label}
+              </span>
+            )}
+          </span>
+        );
+      },
+    },
+  ];
 }
 
 export default function NvDispositionPage() {
@@ -316,9 +409,8 @@ export default function NvDispositionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-
-      <div className="bg-white border-b px-4 py-3 flex flex-wrap items-center gap-3">
+    <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-gray-50">
+      <div className="bg-white border-b px-4 py-3 flex flex-wrap items-center gap-3 sticky top-0 z-20">
         <div>
           <label className="block text-[10px] uppercase text-gray-500 mb-0.5">
             Pickup-Datum bis
@@ -430,7 +522,7 @@ export default function NvDispositionPage() {
         </div>
       )}
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-3 p-3 overflow-hidden">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-3 p-3 overflow-hidden">
         <div className="bg-white rounded-lg border overflow-y-auto">
           <div className="px-3 py-2 border-b bg-gray-50 sticky top-0">
             <div className="flex items-center justify-between">
@@ -451,75 +543,31 @@ export default function NvDispositionPage() {
             </div>
           )}
           {groupedElig.map(([groupKey, items]) => (
-            <div key={groupKey}>
-              <div className="px-3 py-1 bg-gray-100 border-y text-xs font-mono text-gray-700">
+            <div key={groupKey} className="border-b border-gray-200">
+              <div className="px-3 py-1 bg-gray-100 border-b text-xs font-mono text-gray-700">
                 {groupKey} ({items.length})
               </div>
-              {items.map((s) => (
-                <div
-                  key={s.id}
-                  draggable
-                  onDragStart={(e) => {
+              <ResponsiveTable<EligibleShipment>
+                storageKey={`nv-dispo-elig-${groupKey}`}
+                columns={eligColumns(selected, toggleSelect)}
+                data={items}
+                rowKey={(s) => s.id}
+                density="compact"
+                stickyHeader={false}
+                className="rounded-none border-0"
+                rowProps={(s) => ({
+                  draggable: true,
+                  onDragStart: (e: React.DragEvent<HTMLDivElement>) => {
                     e.dataTransfer.setData(
                       'application/json',
                       JSON.stringify({ shipmentId: s.id }),
                     );
                     setDraggingId(s.id);
-                  }}
-                  onDragEnd={() => setDraggingId(null)}
-                  className={`px-3 py-2 border-b text-sm hover:bg-blue-50 cursor-grab flex items-start gap-2 ${
-                    draggingId === s.id ? 'opacity-40' : ''
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.has(s.id)}
-                    onChange={() => toggleSelect(s.id)}
-                    className="mt-1"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-xs">
-                        {s.shipment_number}
-                      </span>
-                      {s.is_stamm_kunde && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700"
-                          title="Stammkunde"
-                        >
-                          Stamm
-                        </span>
-                      )}
-                      {(() => {
-                        const b = pickupBadge(s.loading_date);
-                        return b ? (
-                          <span
-                            className={`text-[10px] px-1.5 py-0.5 rounded ${b.cls}`}
-                            title={`Pickup ${s.loading_date.slice(0, 10)}`}
-                          >
-                            {b.label}
-                          </span>
-                        ) : null;
-                      })()}
-                    </div>
-                    <div className="font-medium truncate">
-                      {s.customer?.name ?? '—'}
-                    </div>
-                    <div className="text-xs text-gray-500 truncate">
-                      {s.delivery_address?.zip} {s.delivery_address?.city}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {s.package_count} Pak
-                      {s.total_weight_kg
-                        ? ` · ${Number(s.total_weight_kg).toFixed(0)} kg`
-                        : ''}
-                      {s.total_ldm
-                        ? ` · ${Number(s.total_ldm).toFixed(2)} LDM`
-                        : ''}
-                    </div>
-                  </div>
-                </div>
-              ))}
+                  },
+                  onDragEnd: () => setDraggingId(null),
+                  className: `cursor-grab ${draggingId === s.id ? 'opacity-40' : ''}`,
+                })}
+              />
             </div>
           ))}
         </div>

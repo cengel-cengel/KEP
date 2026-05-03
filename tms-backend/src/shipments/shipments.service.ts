@@ -786,6 +786,7 @@ export class ShipmentsService {
         height_cm: true,
         weight_kg: true,
         quantity: true,
+        stackable: true,
       },
     });
     if (items.length === 0) return null;
@@ -808,7 +809,9 @@ export class ShipmentsService {
       totalKg += kg * qty;
       totalCount += qty;
       totalCm3 += L * W * H * qty;
-      totalLdm += (qty * L * W) / 24000; // 240 cm Innenbreite
+      // Stapelbare Paletten zaehlen mit halbem LDM-Wert
+      const stackFactor = it.stackable ? 0.5 : 1.0;
+      totalLdm += (stackFactor * qty * L * W) / 24000;
     }
     return this.prisma.shipments.update({
       where: { id: shipmentId },
@@ -818,7 +821,7 @@ export class ShipmentsService {
         height_cm: maxH || null,
         weight_kg: totalKg,
         package_count: totalCount,
-        volume_m3: Math.round(totalCm3 / 1000) / 1000, // 3 Nachkommastellen
+        volume_m3: Math.round(totalCm3 / 1000) / 1000,
         ldm: Math.round(totalLdm * 100) / 100,
       },
     });

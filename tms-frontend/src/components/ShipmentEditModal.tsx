@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { api } from '../lib/api';
 import type { Shipment } from '../types/shipment';
@@ -197,14 +197,21 @@ export default function ShipmentEditModal({ shipment, open, onOpenChange }: Prop
   const [pending, setPending] = useState(false);
   const queryClient = useQueryClient();
 
+  const detailQ = useQuery<Shipment>({
+    queryKey: ['shipments', 'detail', shipment.id],
+    queryFn: async () =>
+      (await api.get<Shipment>(`/shipments/${shipment.id}`)).data,
+    enabled: open && !!shipment.id,
+  });
+
   useEffect(() => {
-    if (open) {
-      const init = buildInitial(shipment);
-      setForm(init);
-      setInitial(init);
-      setError(null);
-    }
-  }, [open, shipment]);
+    if (!open) return;
+    const source = detailQ.data ?? shipment;
+    const init = buildInitial(source);
+    setForm(init);
+    setInitial(init);
+    setError(null);
+  }, [open, shipment, detailQ.data]);
 
   const mutation = useMutation({
     mutationFn: async () => {

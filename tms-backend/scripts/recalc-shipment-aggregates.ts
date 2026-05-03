@@ -6,7 +6,8 @@
  *   weight_kg = sum(weight x quantity)
  *   package_count = sum(quantity)
  *   volume_m3 = sum(L x W x H x qty) / 1e6
- *   ldm = sum(qty x L x W) / 24000  (240 cm Innenbreite)
+ *   ldm = sum(stackFactor x qty x L x W) / 24000
+ *         (240 cm Innenbreite, stackFactor 0.5 wenn stackable)
  *
  * Idempotent. Sicher mehrfach ausführbar.
  *
@@ -60,6 +61,7 @@ function computeAggregate(
     height_cm: number;
     weight_kg: number | string;
     quantity: number;
+    stackable?: boolean;
   }>,
 ): Aggregate | null {
   if (items.length === 0) return null;
@@ -82,7 +84,8 @@ function computeAggregate(
     totalKg += kg * qty;
     totalCount += qty;
     totalCm3 += L * W * H * qty;
-    totalLdm += (qty * L * W) / 24000;
+    const stackFactor = it.stackable ? 0.5 : 1.0;
+    totalLdm += (stackFactor * qty * L * W) / 24000;
   }
   return {
     length_cm: maxL || null,
@@ -129,6 +132,7 @@ async function main() {
           height_cm: true,
           weight_kg: true,
           quantity: true,
+          stackable: true,
         },
       },
     },

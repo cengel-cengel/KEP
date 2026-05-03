@@ -260,22 +260,29 @@ export default function NvDispositionPage() {
     onSuccess: invalidate,
   });
   const autoSuggestMut = useMutation({
-    mutationFn: async () =>
-      (
-        await api.post<{
-          touren_created: number;
-          stops_added: number;
-        }>(`/nv-touren/auto-suggest`, undefined, { params: { datum } })
-      ).data,
+    mutationFn: async () => {
+      console.log('[NV-Auto] mutationFn start, datum=', datum);
+      const res = await api.post<{
+        touren_created: number;
+        stops_added: number;
+      }>(`/nv-touren/auto-suggest`, undefined, { params: { datum } });
+      console.log('[NV-Auto] response', res.status, res.data);
+      return res.data;
+    },
     onSuccess: (res) => {
+      console.log('[NV-Auto] onSuccess', res);
       invalidate();
       setBanner({
         kind: 'ok',
         msg: `${res.touren_created} Tour(en) erstellt, ${res.stops_added} Stop(s) hinzugefügt.`,
       });
     },
-    onError: () => {
-      setBanner({ kind: 'err', msg: 'Auto-Vorschlag fehlgeschlagen.' });
+    onError: (err: any) => {
+      console.error('[NV-Auto] onError', err?.response?.status, err?.response?.data, err);
+      setBanner({
+        kind: 'err',
+        msg: `Auto-Vorschlag fehlgeschlagen: ${err?.response?.status ?? '?'} ${err?.message ?? ''}`,
+      });
     },
   });
 
@@ -361,12 +368,17 @@ export default function NvDispositionPage() {
         </div>
         <button
           onClick={() => {
+            console.log('[NV-Auto] click, datum=', datum);
             if (
               confirm(
                 `Stamm-Kunden für ${datum} automatisch zu Touren zuordnen?`,
               )
-            )
+            ) {
+              console.log('[NV-Auto] confirmed');
               autoSuggestMut.mutate();
+            } else {
+              console.log('[NV-Auto] cancelled');
+            }
           }}
           disabled={autoSuggestMut.isPending}
           className="bg-emerald-600 text-white text-sm rounded px-3 py-2 flex items-center gap-1 hover:bg-emerald-700 disabled:opacity-50"

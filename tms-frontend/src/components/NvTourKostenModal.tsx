@@ -50,22 +50,35 @@ export default function NvTourKostenModal({
   const qc = useQueryClient();
   const stopCount = tour.stops?.length ?? 0;
 
+  const isFirstFill = useMemo(
+    () =>
+      toNum(tour.fahrer_kosten_eur) === null &&
+      toNum(tour.fahrzeug_kosten_eur) === null &&
+      toNum(tour.kraftstoff_kosten_eur) === null &&
+      toNum(tour.dispo_kosten_eur) === null &&
+      toNum(tour.sonstige_kosten_eur) === null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tour.id],
+  );
+
   const [fahrer, setFahrer] = useState<number | null>(
     toNum(tour.fahrer_kosten_eur),
   );
   const [fahrzeug, setFahrzeug] = useState<number | null>(
-    toNum(tour.fahrzeug_kosten_eur) ?? DEFAULTS.fahrzeug,
+    toNum(tour.fahrzeug_kosten_eur) ?? (isFirstFill ? DEFAULTS.fahrzeug : null),
   );
   const [kraftstoff, setKraftstoff] = useState<number | null>(
-    toNum(tour.kraftstoff_kosten_eur) ?? DEFAULTS.kraftstoff,
+    toNum(tour.kraftstoff_kosten_eur) ??
+      (isFirstFill ? DEFAULTS.kraftstoff : null),
   );
   const [dispo, setDispo] = useState<number | null>(
-    toNum(tour.dispo_kosten_eur) ?? DEFAULTS.dispo,
+    toNum(tour.dispo_kosten_eur) ?? (isFirstFill ? DEFAULTS.dispo : null),
   );
   const [sonstige, setSonstige] = useState<number | null>(
-    toNum(tour.sonstige_kosten_eur) ?? DEFAULTS.sonstige,
+    toNum(tour.sonstige_kosten_eur) ?? (isFirstFill ? DEFAULTS.sonstige : null),
   );
   const [notizen, setNotizen] = useState(tour.notizen ?? '');
+  const [tarifAutoApplied, setTarifAutoApplied] = useState(false);
 
   const subQ = useQuery<Subunternehmer | null>({
     queryKey: ['nv-subunternehmer', tour.subunternehmer_id],
@@ -122,7 +135,24 @@ export default function NvTourKostenModal({
       const proStop = toNum(sub.tarif_pro_stop_eur);
       if (proStop !== null) setFahrer(proStop * Math.max(1, stopCount));
     }
+    if (fahrzeug === null) setFahrzeug(DEFAULTS.fahrzeug);
+    if (kraftstoff === null) setKraftstoff(DEFAULTS.kraftstoff);
+    if (dispo === null) setDispo(DEFAULTS.dispo);
+    if (sonstige === null) setSonstige(DEFAULTS.sonstige);
   };
+
+  useEffect(() => {
+    if (
+      !tarifAutoApplied &&
+      isFirstFill &&
+      sub &&
+      (sub.tarif_typ === 'TAGESPAUSCHALE' || sub.tarif_typ === 'PRO_STOP')
+    ) {
+      applyTarif();
+      setTarifAutoApplied(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sub, isFirstFill, tarifAutoApplied]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -172,8 +202,9 @@ export default function NvTourKostenModal({
               onClick={applyTarif}
               disabled={!canApplyTarif}
               className="mt-2 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40"
+              title="Setzt Fahrer-Kosten aus Tarif (TAGESPAUSCHALE / PRO_STOP × Stops) zurück"
             >
-              Tarif übernehmen
+              Tarif zurücksetzen
             </button>
           </div>
 

@@ -2,7 +2,6 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Pencil } from 'lucide-react';
-import Navigation from '../components/Navigation';
 import ShipmentCard from '../components/ShipmentCard';
 import ShipmentEditModal from '../components/ShipmentEditModal';
 import ShipmentDetailModal from '../components/ShipmentDetailModal';
@@ -630,7 +629,6 @@ export default function DispositionPage() {
 
   return (
     <div className="w-full min-h-screen bg-white flex flex-col">
-      <Navigation />
 
       <main className="w-full flex-1 flex flex-col">
         <div className="py-4 px-4 sm:px-6 flex items-center justify-between gap-3 flex-wrap">

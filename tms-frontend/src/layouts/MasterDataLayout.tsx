@@ -1,5 +1,4 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import Navigation from '../components/Navigation';
 
 function subNavClass({ isActive }: { isActive: boolean }) {
   return `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -9,8 +8,7 @@ function subNavClass({ isActive }: { isActive: boolean }) {
 
 export default function MasterDataLayout() {
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <Navigation />
+    <div className="flex flex-col">
       <div className="bg-gray-100 border-b border-gray-200 px-4 sm:px-6 py-2 flex flex-wrap gap-1 items-center">
         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide mr-1">Stammdaten</span>
         <NavLink to="/masterdata" end className={subNavClass}>

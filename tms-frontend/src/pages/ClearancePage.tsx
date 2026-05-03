@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MoreVertical } from 'lucide-react';
-import Navigation from '../components/Navigation';
 import { api } from '../lib/api';
 import ShipmentCard from '../components/ShipmentCard';
 import type { Shipment } from '../types/shipment';
@@ -249,7 +248,6 @@ export default function ClearancePage() {
 
   return (
     <div className="w-full min-h-screen bg-white flex flex-col">
-      <Navigation />
 
       <main className="w-full flex-1 flex flex-col min-h-0">
         <div className="py-4">

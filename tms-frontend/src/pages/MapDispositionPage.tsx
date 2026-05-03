@@ -7,7 +7,6 @@ import 'leaflet.markercluster';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import { ArrowLeft, List, Map as MapIcon, X, Power } from 'lucide-react';
-import Navigation from '../components/Navigation';
 import { api } from '../lib/api';
 import type { Shipment } from '../types/shipment';
 import type { Tour } from '../types/tour';
@@ -384,7 +383,6 @@ export default function MapDispositionPage() {
 
   return (
     <>
-      <Navigation />
       <main className="w-full flex-1 flex flex-col bg-gray-50 min-h-0">
         <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-gray-200 bg-white">
           <div className="flex items-center gap-2">

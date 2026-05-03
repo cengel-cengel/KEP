@@ -23,6 +23,7 @@ import CompletedToursPage from './pages/CompletedToursPage';
 import WorkstackPage from './pages/WorkstackPage';
 import PricingHubPage from './pages/PricingHubPage';
 import MasterDataLayout from './layouts/MasterDataLayout';
+import AppLayout from './components/layout/AppLayout';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -37,147 +38,49 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
-        path="/"
         element={
           <PrivateRoute>
-            <DashboardPage />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/workstack"
-        element={
-          <PrivateRoute>
-            <WorkstackPage />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/shipments"
-        element={
-          <PrivateRoute>
-            <ShipmentsPage />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/shipments/new"
-        element={
-          <PrivateRoute>
-            <NewShipmentPage />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/beladeplan"
-        element={
-          <PrivateRoute>
-            <BeladeplanPage />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/disposition"
-        element={
-          <PrivateRoute>
-            <DispositionPage />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/nv-disposition"
-        element={
-          <PrivateRoute>
-            <NvDispositionPage />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/disposition/map"
-        element={
-          <PrivateRoute>
-            <MapDispositionPage />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/disposition/map"
-        element={
-          <PrivateRoute>
-            <MapPage />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/tours"
-        element={
-          <PrivateRoute>
-            <CompletedToursPage />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/clearance"
-        element={
-          <PrivateRoute>
-            <ClearancePage />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/invoices"
-        element={
-          <PrivateRoute>
-            <InvoicesPage />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/pricing-hub"
-        element={
-          <PrivateRoute>
-            <PricingHubPage />
-          </PrivateRoute>
-        }
-      />
-      <Route path="/costs" element={<Navigate to="/masterdata/pricing?kosten=1" replace />} />
-      <Route path="/pricing" element={<Navigate to="/pricing-hub" replace />} />
-      <Route
-        path="/hall"
-        element={
-          <PrivateRoute>
-            <HallPage />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/routing"
-        element={<Navigate to="/masterdata/routing" replace />}
-      />
-      <Route
-        path="/masterdata"
-        element={
-          <PrivateRoute>
-            <MasterDataLayout />
+            <AppLayout />
           </PrivateRoute>
         }
       >
-        <Route index element={<MasterDataPage />} />
-        <Route path="admin" element={<AdminPage />} />
-        <Route path="routing" element={<RoutingPage />} />
-        <Route path="nv-gebiete" element={<NvGebietePage />} />
-        <Route path="nv-subunternehmer" element={<NvSubunternehmerPage />} />
-        <Route path="nv-stamm-touren" element={<NvStammTourenPage />} />
-        <Route path="pricing" element={<Navigate to="/pricing-hub" replace />} />
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/workstack" element={<WorkstackPage />} />
+        <Route path="/shipments" element={<ShipmentsPage />} />
+        <Route path="/shipments/new" element={<NewShipmentPage />} />
+        <Route path="/beladeplan" element={<BeladeplanPage />} />
+        <Route path="/disposition" element={<DispositionPage />} />
+        <Route path="/nv-disposition" element={<NvDispositionPage />} />
+        <Route path="/disposition/map" element={<MapDispositionPage />} />
+        <Route path="/disposition/map-old" element={<MapPage />} />
+        <Route path="/tours" element={<CompletedToursPage />} />
+        <Route path="/clearance" element={<ClearancePage />} />
+        <Route path="/invoices" element={<InvoicesPage />} />
+        <Route path="/pricing-hub" element={<PricingHubPage />} />
+        <Route
+          path="/costs"
+          element={<Navigate to="/masterdata/pricing?kosten=1" replace />}
+        />
+        <Route path="/pricing" element={<Navigate to="/pricing-hub" replace />} />
+        <Route path="/hall" element={<HallPage />} />
+        <Route
+          path="/routing"
+          element={<Navigate to="/masterdata/routing" replace />}
+        />
+        <Route path="/masterdata" element={<MasterDataLayout />}>
+          <Route index element={<MasterDataPage />} />
+          <Route path="admin" element={<AdminPage />} />
+          <Route path="routing" element={<RoutingPage />} />
+          <Route path="nv-gebiete" element={<NvGebietePage />} />
+          <Route path="nv-subunternehmer" element={<NvSubunternehmerPage />} />
+          <Route path="nv-stamm-touren" element={<NvStammTourenPage />} />
+          <Route
+            path="pricing"
+            element={<Navigate to="/pricing-hub" replace />}
+          />
+        </Route>
+        <Route path="/loading/:tourId" element={<LoadingPlanPage />} />
       </Route>
-      <Route
-        path="/loading/:tourId"
-        element={
-          <PrivateRoute>
-            <LoadingPlanPage />
-          </PrivateRoute>
-        }
-      />
     </Routes>
   );
 }

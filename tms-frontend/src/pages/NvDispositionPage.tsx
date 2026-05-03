@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Plus, Sparkles, Trash2, X } from 'lucide-react';
-import Navigation from '../components/Navigation';
 import NvTourKostenModal from '../components/NvTourKostenModal';
 import { api } from '../lib/api';
 
@@ -322,7 +321,6 @@ export default function NvDispositionPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <Navigation />
 
       <div className="bg-white border-b px-4 py-3 flex flex-wrap items-center gap-3">
         <div>

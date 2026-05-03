@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Navigation from '../components/Navigation';
 import ShipmentCard from '../components/ShipmentCard';
 import type { Tour } from '../types/tour';
 import type { Shipment } from '../types/shipment';
@@ -176,7 +175,6 @@ export default function BeladeplanPage() {
 
   return (
     <div className="w-full min-h-screen bg-white flex flex-col">
-      <Navigation />
 
       <main className="w-full flex-1">
         <div className="py-4 px-4 sm:px-6 lg:px-8">

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import Navigation from '../components/Navigation';
 import LoadingPlan3D from '../components/LoadingPlan3D';
 import AxleLoadPanel from '../components/AxleLoadPanel';
 import SecurementPanel from '../components/SecurementPanel';
@@ -764,7 +763,6 @@ export default function LoadingPlanPage() {
 
   return (
     <div className="w-full min-h-screen bg-white flex flex-col">
-      <Navigation />
       {toast && (
         <div
           className={

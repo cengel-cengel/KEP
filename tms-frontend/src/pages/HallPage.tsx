@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Navigation from '../components/Navigation';
 import { api } from '../lib/api';
 
 type HallLocation = {
@@ -245,7 +244,6 @@ export default function HallPage() {
 
   return (
     <div className="w-full min-h-screen bg-white flex flex-col">
-      <Navigation />
 
       <main className="w-full flex-1 px-4 sm:px-6 py-4">
         <h1 className="text-2xl font-semibold text-gray-900 mb-4">Hallenmanagement</h1>

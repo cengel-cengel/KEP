@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Navigation from '../components/Navigation';
 import { api } from '../lib/api';
 import { calculateChargeableWeight, calculateFreightCost } from '../costs/freight-weight.calculator';
 
@@ -991,7 +990,6 @@ export default function CostsPage({ embedded = false }: CostsPageProps) {
 
   return (
     <div className="w-full min-h-screen bg-white flex flex-col">
-      <Navigation />
       <main className="w-full flex-1">{body}</main>
     </div>
   );

@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, MapPin, Play } from 'lucide-react';
-import Navigation from '../components/Navigation';
 import { api } from '../lib/api';
 
 interface BackfillStatus {
@@ -85,7 +84,6 @@ export default function AdminPage() {
 
   return (
     <>
-      <Navigation />
       <main className="w-full flex-1 px-4 sm:px-6 py-4 bg-white">
         <div className="flex items-center gap-3 mb-4">
           <Link to="/masterdata" className="text-gray-500 hover:text-gray-800">

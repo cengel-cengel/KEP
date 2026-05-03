@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Navigation from '../components/Navigation';
 import { api } from '../lib/api';
 
 const LOCK_FILTER_TABS = [
@@ -357,7 +356,6 @@ export default function WorkstackPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <Navigation />
       <main className="flex-1 px-4 sm:px-6 py-6 max-w-7xl mx-auto w-full">
         <h1 className="text-2xl font-semibold text-gray-900 mb-4">Arbeitsstapel</h1>
 

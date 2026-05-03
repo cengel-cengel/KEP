@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import * as XLSX from 'xlsx';
-import Navigation from '../components/Navigation';
 import { AUTH_TOKEN_KEY, api } from '../lib/api';
 import type { Shipment } from '../types/shipment';
 
@@ -1200,7 +1199,6 @@ export default function ShipmentsPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <Navigation />
 
       <main className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">

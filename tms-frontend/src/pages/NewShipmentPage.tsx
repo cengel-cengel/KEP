@@ -1,7 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import Navigation from '../components/Navigation';
 import { api } from '../lib/api';
 import { COUNTRY_CODE_OPTIONS } from '../lib/countryCodes';
 import { TRANSPORT_TYPE_OPTIONS, TRANSPORT_TYPE_DEFAULT } from '../constants/transportTypes';
@@ -1371,7 +1370,6 @@ export default function NewShipmentPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <Navigation />
       <main className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-1.5">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
           <h1 className="text-xl font-semibold text-gray-900">Neue Sendung</h1>

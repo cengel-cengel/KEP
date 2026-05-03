@@ -97,4 +97,9 @@ export class NvTourenController {
   autoSuggest(@Query('datum') datum: string) {
     return this.svc.autoSuggest(datum);
   }
+
+  @Post(':id/recalc-costs')
+  recalcCosts(@Param('id') tourId: string) {
+    return this.svc.recalcVorlaufCosts(tourId);
+  }
 }

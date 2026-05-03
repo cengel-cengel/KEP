@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateNvTourDto } from './dto/create-nv-tour.dto';
 import { UpdateNvTourDto } from './dto/update-nv-tour.dto';
@@ -7,6 +7,13 @@ import {
   ReorderItemDto,
   UpdateNvTourStopDto,
 } from './dto/create-stop.dto';
+import {
+  computeVorlaufCosts,
+  routingMinuten,
+  sumZuschlaegeMin,
+  type ShipmentRoutingKlasse,
+  type VorlaufCostInput,
+} from '../lib/vorlauf-costs.lib';
 
 function timeToDate(hhmm?: string | null): Date | null | undefined {
   if (hhmm === undefined) return undefined;
@@ -50,7 +57,129 @@ const TOUR_INCLUDE = {
 
 @Injectable()
 export class NvTourenService {
+  private readonly logger = new Logger(NvTourenService.name);
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Wraps recalcVorlaufCosts ohne Mutation zu blockieren. */
+  private async safeRecalc(tourId: string) {
+    try {
+      await this.recalcVorlaufCosts(tourId);
+    } catch (err: any) {
+      this.logger.warn(
+        `recalcVorlaufCosts(${tourId}) failed: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  async recalcVorlaufCosts(tourId: string) {
+    const tour = await this.prisma.nv_touren.findUnique({
+      where: { id: tourId },
+      include: {
+        stops: {
+          include: {
+            shipment: {
+              select: {
+                id: true,
+                weight_kg: true,
+                volume_m3: true,
+                ldm: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!tour) throw new NotFoundException('NV-Tour nicht gefunden');
+
+    const tourTotalKostenEur = Number(tour.total_kosten_eur ?? 0);
+    const tourGesamtStops = tour.stops.length;
+    let tourGesamtMinuten = 0;
+    let tourGesamtGewichtKg = 0;
+    let tourGesamtVolumenM3 = 0;
+    let tourGesamtLdm = 0;
+    for (const s of tour.stops) {
+      tourGesamtMinuten +=
+        (s.servicezeit_min ?? 0) +
+        sumZuschlaegeMin(s.service_zuschlaege) +
+        routingMinuten(s.routing_klasse);
+      tourGesamtGewichtKg += Number(s.shipment.weight_kg ?? 0);
+      tourGesamtVolumenM3 += Number(s.shipment.volume_m3 ?? 0);
+      tourGesamtLdm += Number(s.shipment.ldm ?? 0);
+    }
+
+    let created = 0;
+    let updated = 0;
+    for (const s of tour.stops) {
+      const input: VorlaufCostInput = {
+        tourTotalKostenEur,
+        tourGesamtStops,
+        tourGesamtMinuten,
+        tourGesamtGewichtKg,
+        tourGesamtVolumenM3,
+        tourGesamtLdm,
+        shipmentStops: 1,
+        shipmentServicezeitMin: s.servicezeit_min ?? 0,
+        shipmentServiceZuschlaegeMin: sumZuschlaegeMin(s.service_zuschlaege),
+        shipmentRoutingZeitMin: routingMinuten(s.routing_klasse),
+        shipmentRoutingKlasse:
+          (s.routing_klasse as ShipmentRoutingKlasse) ?? 'STAMMROUTE',
+        shipmentGewichtKg: Number(s.shipment.weight_kg ?? 0),
+        shipmentVolumenM3: Number(s.shipment.volume_m3 ?? 0),
+        shipmentLdm: Number(s.shipment.ldm ?? 0),
+      };
+      const breakdown = computeVorlaufCosts(input);
+
+      const existing = await this.prisma.shipment_cost_components.findUnique({
+        where: {
+          shipment_id_phase_nv_tour_id: {
+            shipment_id: s.shipment_id,
+            phase: 'VORLAUF',
+            nv_tour_id: tourId,
+          },
+        },
+        select: { id: true },
+      });
+      if (existing) {
+        await this.prisma.shipment_cost_components.update({
+          where: { id: existing.id },
+          data: {
+            stop_anteil_eur: breakdown.stopAnteilEur,
+            zeit_anteil_eur: breakdown.zeitAnteilEur,
+            routing_anteil_eur: breakdown.routingAnteilEur,
+            kapazitaet_anteil_eur: breakdown.kapazitaetAnteilEur,
+            faktoren: breakdown.faktoren as any,
+            tour_total_kosten_eur: tourTotalKostenEur,
+            tour_gesamt_stops: tourGesamtStops,
+            tour_gesamt_minuten: tourGesamtMinuten,
+            computed_at: new Date(),
+          },
+        });
+        updated++;
+      } else {
+        await this.prisma.shipment_cost_components.create({
+          data: {
+            shipment_id: s.shipment_id,
+            nv_tour_id: tourId,
+            phase: 'VORLAUF',
+            stop_anteil_eur: breakdown.stopAnteilEur,
+            zeit_anteil_eur: breakdown.zeitAnteilEur,
+            routing_anteil_eur: breakdown.routingAnteilEur,
+            kapazitaet_anteil_eur: breakdown.kapazitaetAnteilEur,
+            faktoren: breakdown.faktoren as any,
+            tour_total_kosten_eur: tourTotalKostenEur,
+            tour_gesamt_stops: tourGesamtStops,
+            tour_gesamt_minuten: tourGesamtMinuten,
+          },
+        });
+        created++;
+      }
+    }
+    return {
+      shipments_processed: tourGesamtStops,
+      components_created: created,
+      components_updated: updated,
+    };
+  }
 
   private async augmentToursWithStammFlag<
     T extends {
@@ -149,7 +278,7 @@ export class NvTourenService {
     const existing = await this.prisma.nv_touren.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('NV-Tour nicht gefunden');
 
-    return this.prisma.nv_touren.update({
+    const result = await this.prisma.nv_touren.update({
       where: { id },
       data: {
         nv_stamm_tour_id:
@@ -199,6 +328,8 @@ export class NvTourenService {
       },
       include: TOUR_INCLUDE,
     });
+    await this.safeRecalc(id);
+    return result;
   }
 
   async remove(id: string) {
@@ -255,7 +386,7 @@ export class NvTourenService {
       )._max.position ?? -1) +
         1);
 
-    return this.prisma.nv_tour_stops.create({
+    const created = await this.prisma.nv_tour_stops.create({
       data: {
         nv_tour_id: tourId,
         shipment_id: dto.shipment_id,
@@ -277,6 +408,8 @@ export class NvTourenService {
         },
       },
     });
+    await this.safeRecalc(tourId);
+    return created;
   }
 
   async updateStop(stopId: string, dto: UpdateNvTourStopDto) {
@@ -285,7 +418,7 @@ export class NvTourenService {
     });
     if (!existing) throw new NotFoundException('Stop nicht gefunden');
 
-    return this.prisma.nv_tour_stops.update({
+    const result = await this.prisma.nv_tour_stops.update({
       where: { id: stopId },
       data: {
         position: dto.position ?? undefined,
@@ -315,6 +448,8 @@ export class NvTourenService {
         notizen: dto.notizen === undefined ? undefined : dto.notizen,
       },
     });
+    await this.safeRecalc(existing.nv_tour_id);
+    return result;
   }
 
   async removeStop(stopId: string) {
@@ -323,6 +458,7 @@ export class NvTourenService {
     });
     if (!existing) throw new NotFoundException('Stop nicht gefunden');
     await this.prisma.nv_tour_stops.delete({ where: { id: stopId } });
+    await this.safeRecalc(existing.nv_tour_id);
     return { ok: true };
   }
 
@@ -335,6 +471,7 @@ export class NvTourenService {
         }),
       ),
     );
+    await this.safeRecalc(tourId);
     return { count: items.length };
   }
 
@@ -621,6 +758,7 @@ export class NvTourenService {
         }
       }
     }
+    await this.safeRecalc(tourId);
     return { added, skipped };
   }
 }

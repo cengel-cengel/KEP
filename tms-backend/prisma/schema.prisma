@@ -295,6 +295,7 @@ model shipments {
   tours                                              tours?                     @relation(fields: [tour_id], references: [id], onUpdate: NoAction)
   surplus_items                                      surplus_items[]
   nv_tour_stops                                      nv_tour_stops[]            @relation("nv_tour_stops_shipment")
+  cost_components                                    shipment_cost_components[]
 
   @@index([customer_id], map: "idx_shipments_customer")
   @@index([customer_ref], map: "idx_shipments_customer_ref")
@@ -1398,10 +1399,35 @@ model nv_touren {
   nv_stamm_tour            nv_stamm_touren?    @relation("nv_touren_stamm_tour", fields: [nv_stamm_tour_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
   subunternehmer           nv_subunternehmer?  @relation("nv_touren_sub", fields: [subunternehmer_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
   stops                    nv_tour_stops[]     @relation("nv_tour_stops_tour")
+  cost_components          shipment_cost_components[]
 
   @@index([datum, status])
   @@index([nv_stamm_tour_id, datum])
   @@index([subunternehmer_id])
+}
+
+model shipment_cost_components {
+  id                          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipment_id                 String     @db.Uuid
+  nv_tour_id                  String?    @db.Uuid
+  phase                       String     @db.VarChar(20)
+  stop_anteil_eur             Decimal?   @db.Decimal(10, 2)
+  zeit_anteil_eur             Decimal?   @db.Decimal(10, 2)
+  routing_anteil_eur          Decimal?   @db.Decimal(10, 2)
+  kapazitaet_anteil_eur       Decimal?   @db.Decimal(10, 2)
+  total_eur                   Decimal?   @default(dbgenerated()) @db.Decimal(10, 2)
+  faktoren                    Json?
+  tour_total_kosten_eur       Decimal?   @db.Decimal(10, 2)
+  tour_gesamt_stops           Int?
+  tour_gesamt_minuten         Int?
+  computed_at                 DateTime   @default(now()) @db.Timestamptz(6)
+  shipment                    shipments  @relation(fields: [shipment_id], references: [id], onDelete: Cascade)
+  nv_tour                     nv_touren? @relation(fields: [nv_tour_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@unique([shipment_id, phase, nv_tour_id], map: "shipment_cost_components_unique")
+  @@index([shipment_id])
+  @@index([nv_tour_id])
+  @@index([phase])
 }
 
 model nv_tour_stops {

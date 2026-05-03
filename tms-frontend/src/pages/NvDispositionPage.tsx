@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, Plus, Sparkles, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Pencil, Plus, Sparkles, Trash2, X } from 'lucide-react';
 import NvTourKostenModal from '../components/NvTourKostenModal';
+import ShipmentDetailModal from '../components/ShipmentDetailModal';
+import type { Shipment } from '../types/shipment';
 import NvDispoMap from '../components/nv/NvDispoMap';
 import type { MapShipment } from '../components/nv/NvDispoMap';
 import CostDrillDownModal from '../components/nv/CostDrillDownModal';
@@ -118,6 +120,7 @@ function todayISO() {
 function eligColumns(
   selected: Set<string>,
   handleSelect: (id: string, shiftKey: boolean) => void,
+  onOpenDetail: (id: string) => void,
 ): Column<EligibleShipment>[] {
   return [
     {
@@ -213,6 +216,25 @@ function eligColumns(
         );
       },
     },
+    {
+      key: 'actions',
+      header: '',
+      width: 48,
+      resizable: false,
+      align: 'right',
+      render: (s) => (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenDetail(s.id);
+          }}
+          className="text-gray-500 hover:text-blue-700"
+          title="Detail"
+        >
+          <Pencil size={16} />
+        </button>
+      ),
+    },
   ];
 }
 
@@ -233,6 +255,7 @@ export default function NvDispositionPage() {
     customerName?: string;
     tourId: string;
   } | null>(null);
+  const [detailShipmentId, setDetailShipmentId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'map' | 'split3'>('list');
   const [selectedTourId, setSelectedTourId] = useState<string | null>(null);
   const [clickedSequence, setClickedSequence] = useState<string[]>([]);
@@ -687,7 +710,11 @@ export default function NvDispositionPage() {
               </div>
               <ResponsiveTable<EligibleShipment>
                 storageKey={`nv-dispo-elig-${groupKey}`}
-                columns={eligColumns(selected, handleSelect)}
+                columns={eligColumns(
+                  selected,
+                  handleSelect,
+                  (id) => setDetailShipmentId(id),
+                )}
                 data={items}
                 rowKey={(s) => s.id}
                 density="compact"
@@ -703,7 +730,12 @@ export default function NvDispositionPage() {
                     setDraggingId(s.id);
                   },
                   onDragEnd: () => setDraggingId(null),
-                  className: `cursor-grab ${draggingId === s.id ? 'opacity-40' : ''}`,
+                  onClick: (e: React.MouseEvent<HTMLDivElement>) => {
+                    handleSelect(s.id, e.shiftKey);
+                  },
+                  className: `cursor-pointer ${
+                    selected.has(s.id) ? 'bg-blue-50' : ''
+                  } ${draggingId === s.id ? 'opacity-40' : ''}`,
                 })}
               />
             </div>
@@ -833,6 +865,15 @@ export default function NvDispositionPage() {
           onClose={() => setDrillDown(null)}
         />
       )}
+
+      <ShipmentDetailModal
+        shipmentId={detailShipmentId}
+        shipments={(eligQ.data ?? []) as unknown as Shipment[]}
+        isOpen={!!detailShipmentId}
+        onClose={() => setDetailShipmentId(null)}
+        onEdit={() => setDetailShipmentId(null)}
+        onNavigate={() => {}}
+      />
     </div>
   );
 }

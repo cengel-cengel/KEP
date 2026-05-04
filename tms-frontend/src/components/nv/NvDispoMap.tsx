@@ -64,7 +64,35 @@ export type TourStopPin = {
   shipment_number?: string;
   lat: number;
   lng: number;
+  isWarehouse?: boolean;
+  label?: string;
 };
+
+function makeWarehouseIcon() {
+  const html = `
+    <div style="
+      width:32px;height:40px;position:relative;
+      filter: drop-shadow(0 2px 3px rgba(0,0,0,.5));
+    ">
+      <svg viewBox="0 0 32 40" width="32" height="40">
+        <path d="M16 0 C 25 0 32 7 32 16 C 32 25 16 40 16 40 C 16 40 0 25 0 16 C 0 7 7 0 16 0 Z"
+              fill="#1f2937" stroke="white" stroke-width="2"/>
+      </svg>
+      <div style="
+        position:absolute;top:6px;left:0;right:0;
+        text-align:center;color:white;
+        font-size:16px;line-height:18px;
+        font-family:'Noto Color Emoji',system-ui,sans-serif;
+      ">🏭</div>
+    </div>
+  `;
+  return L.divIcon({
+    html,
+    iconSize: [32, 40],
+    iconAnchor: [16, 38],
+    className: 'nv-dispo-pin nv-dispo-warehouse',
+  });
+}
 
 export default function NvDispoMap({
   shipments,
@@ -352,16 +380,20 @@ export default function NvDispoMap({
       }
       return;
     }
-    const sorted = [...tourStops].sort((a, b) => a.position - b.position);
+    // Reihenfolge im Input bleibt (Lager-Pins prepend/append
+    // bauen die korrekte Sequenz; Stops sind bereits sortiert).
+    const sorted = tourStops;
     for (const s of sorted) {
-      const icon = makeIcon(true, s.position, '#16a34a');
+      const icon = s.isWarehouse
+        ? makeWarehouseIcon()
+        : makeIcon(true, s.position, '#16a34a');
       const m = L.marker([s.lat, s.lng], { icon }).addTo(map);
-      m.bindTooltip(
-        `Stop ${s.position}${
-          s.shipment_number ? ' · ' + s.shipment_number : ''
-        }`,
-        { direction: 'top', offset: [0, -34] },
-      );
+      const tip = s.isWarehouse
+        ? s.label ?? 'Lager'
+        : `Stop ${s.position}${
+            s.shipment_number ? ' · ' + s.shipment_number : ''
+          }`;
+      m.bindTooltip(tip, { direction: 'top', offset: [0, -34] });
       tourMarkersRef.current.set(s.id, m);
     }
     // OSRM-Polyline (separat von clickedSequence)
@@ -395,9 +427,10 @@ export default function NvDispoMap({
           mapRef.current.removeLayer(tourPolylineRef.current);
         }
         tourPolylineRef.current = L.polyline(latlngs, {
-          color: '#16a34a',
-          weight: 4,
-          opacity: 0.6,
+          color: '#6b7280',
+          weight: 3,
+          opacity: 0.7,
+          dashArray: '8,8',
         }).addTo(map);
       })
       .catch((err) => {
@@ -408,10 +441,10 @@ export default function NvDispoMap({
           mapRef.current.removeLayer(tourPolylineRef.current);
         }
         tourPolylineRef.current = L.polyline(latlngs, {
-          color: '#16a34a',
+          color: '#6b7280',
           weight: 3,
-          opacity: 0.4,
-          dashArray: '5,10',
+          opacity: 0.5,
+          dashArray: '4,8',
         }).addTo(map);
       })
       .finally(() => window.clearTimeout(timeoutId));

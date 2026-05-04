@@ -379,6 +379,25 @@ export default function NvDispositionPage() {
     return () => clearTimeout(t);
   }, [search]);
 
+  const defaultWarehouseQ = useQuery<{
+    id: string;
+    name: string;
+    lat: string | number | null;
+    lng: string | number | null;
+  } | null>({
+    queryKey: ['warehouses', 'default'],
+    queryFn: async () =>
+      (
+        await api.get<{
+          id: string;
+          name: string;
+          lat: string | number | null;
+          lng: string | number | null;
+        } | null>('/warehouses/default')
+      ).data,
+    staleTime: 5 * 60_000,
+  });
+
   const tourGebieteQ = useQuery<TourGebiet[]>({
     queryKey: ['nv-tour-gebiete'],
     queryFn: async () => (await api.get<TourGebiet[]>('/nv-tour-gebiete')).data,
@@ -443,8 +462,10 @@ export default function NvDispositionPage() {
 
   const activeTourStopPins = useMemo<TourStopPin[]>(() => {
     if (!activeTour) return [];
-    const out: TourStopPin[] = [];
-    for (const s of activeTour.stops) {
+    const stops: TourStopPin[] = [];
+    for (const s of [...activeTour.stops].sort(
+      (a, b) => a.position - b.position,
+    )) {
       const sh: any = s.shipment;
       if (!sh) continue;
       const addr =
@@ -455,7 +476,7 @@ export default function NvDispositionPage() {
       const lat = Number(addr.lat);
       const lng = Number(addr.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-      out.push({
+      stops.push({
         id: s.id,
         position: s.position,
         shipment_number: sh.shipment_number,
@@ -463,8 +484,44 @@ export default function NvDispositionPage() {
         lng,
       });
     }
-    return out;
-  }, [activeTour]);
+    const wh = defaultWarehouseQ.data;
+    const whLat = wh?.lat != null ? Number(wh.lat) : null;
+    const whLng = wh?.lng != null ? Number(wh.lng) : null;
+    if (
+      wh &&
+      whLat != null &&
+      whLng != null &&
+      Number.isFinite(whLat) &&
+      Number.isFinite(whLng) &&
+      stops.length > 0
+    ) {
+      return [
+        {
+          id: `wh-start-${wh.id}`,
+          position: 0,
+          lat: whLat,
+          lng: whLng,
+          isWarehouse: true,
+          label: wh.name,
+        },
+        ...stops,
+        {
+          id: `wh-end-${wh.id}`,
+          position: 9999,
+          lat: whLat,
+          lng: whLng,
+          isWarehouse: true,
+          label: wh.name,
+        },
+      ];
+    }
+    if (stops.length > 0 && (!wh || whLat == null || whLng == null)) {
+      console.warn(
+        '[NV-Tour-View] Default-Lager hat keine Geocoding-Daten — Tour ohne Lager-Pins gerendert.',
+      );
+    }
+    return stops;
+  }, [activeTour, defaultWarehouseQ.data]);
 
   const activeTourPlzSet = useMemo(() => {
     if (!activeTour) return null;

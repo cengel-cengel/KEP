@@ -19,6 +19,7 @@ import {
   type ShipmentRoutingKlasse,
   type VorlaufCostInput,
 } from '../lib/vorlauf-costs.lib';
+import { routeDistanceKm } from '../lib/osrm.lib';
 
 function timeToDate(hhmm?: string | null): Date | null | undefined {
   if (hhmm === undefined) return undefined;
@@ -106,6 +107,84 @@ export class NvTourenService {
         `recalcVorlaufCosts(${tourId}) failed: ${err?.message ?? err}`,
       );
     }
+  }
+
+  /** Wraps recalcTourKm ohne Mutation zu blockieren. */
+  private async safeRecalcKm(tourId: string) {
+    try {
+      await this.recalcTourKm(tourId);
+    } catch (err: any) {
+      this.logger.warn(
+        `recalcTourKm(${tourId}) failed: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  async recalcTourKm(tourId: string) {
+    const tour = await this.prisma.nv_touren.findUnique({
+      where: { id: tourId },
+      include: TOUR_INCLUDE,
+    });
+    if (!tour) throw new NotFoundException('NV-Tour nicht gefunden');
+
+    const wh = await this.prisma.warehouses.findFirst({
+      where: { is_default: true, active: true },
+    });
+    if (!wh || wh.lat == null || wh.lng == null) {
+      this.logger.warn(
+        `recalcTourKm(${tourId}): default warehouse missing lat/lng — skip`,
+      );
+      return null;
+    }
+    const whLat = Number(wh.lat);
+    const whLng = Number(wh.lng);
+    if (!Number.isFinite(whLat) || !Number.isFinite(whLng)) {
+      this.logger.warn(`recalcTourKm(${tourId}): warehouse coords NaN — skip`);
+      return null;
+    }
+
+    const stopCoords: Array<[number, number]> = [];
+    for (const s of tour.stops) {
+      const sh: any = s.shipment;
+      const addr =
+        s.stop_type === 'DELIVERY'
+          ? sh?.addresses_shipments_delivery_address_idToaddresses
+          : sh?.addresses_shipments_loading_address_idToaddresses;
+      if (!addr || addr.lat == null || addr.lng == null) continue;
+      const lat = Number(addr.lat);
+      const lng = Number(addr.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      stopCoords.push([lng, lat]);
+    }
+    if (stopCoords.length === 0) {
+      this.logger.warn(
+        `recalcTourKm(${tourId}): no stops with coords — clearing`,
+      );
+      await this.prisma.nv_touren.update({
+        where: { id: tourId },
+        data: { geplante_km: null, km_calculated_at: new Date() },
+      });
+      return null;
+    }
+
+    const coords: Array<[number, number]> = [
+      [whLng, whLat],
+      ...stopCoords,
+      [whLng, whLat],
+    ];
+    const km = await routeDistanceKm(coords);
+    if (km == null) {
+      this.logger.warn(`recalcTourKm(${tourId}): OSRM returned null`);
+      return null;
+    }
+    await this.prisma.nv_touren.update({
+      where: { id: tourId },
+      data: {
+        geplante_km: km.toFixed(2),
+        km_calculated_at: new Date(),
+      },
+    });
+    return km;
   }
 
   async recalcVorlaufCosts(tourId: string) {
@@ -394,6 +473,7 @@ export class NvTourenService {
       }
     }
     await this.safeRecalc(id);
+    await this.safeRecalcKm(id);
     return result;
   }
 
@@ -542,6 +622,7 @@ export class NvTourenService {
       },
     });
     await this.safeRecalc(tourId);
+    await this.safeRecalcKm(tourId);
     return created;
   }
 
@@ -609,6 +690,7 @@ export class NvTourenService {
       });
     }
     await this.safeRecalc(existing.nv_tour_id);
+    await this.safeRecalcKm(existing.nv_tour_id);
     return result;
   }
 
@@ -619,6 +701,7 @@ export class NvTourenService {
     if (!existing) throw new NotFoundException('Stop nicht gefunden');
     await this.prisma.nv_tour_stops.delete({ where: { id: stopId } });
     await this.safeRecalc(existing.nv_tour_id);
+    await this.safeRecalcKm(existing.nv_tour_id);
     return { ok: true };
   }
 
@@ -632,6 +715,7 @@ export class NvTourenService {
       ),
     );
     await this.safeRecalc(tourId);
+    await this.safeRecalcKm(tourId);
     return { count: items.length };
   }
 
@@ -1111,8 +1195,10 @@ export class NvTourenService {
     }
     // Recalc fuer alle moeglicherweise befuellten Touren
     await this.safeRecalc(tourId);
+    await this.safeRecalcKm(tourId);
     if (currentTourId !== tourId) {
       await this.safeRecalc(currentTourId);
+      await this.safeRecalcKm(currentTourId);
     }
     return {
       added,

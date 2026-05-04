@@ -110,6 +110,7 @@ type NvTour = {
   total_kosten_eur: string | number | null;
   kosten_modus?: string | null;
   angefahrene_km: string | number | null;
+  geplante_km: string | number | null;
   stunden_geleistet: string | number | null;
   notizen: string | null;
   subunternehmer_id: string | null;
@@ -1492,6 +1493,14 @@ function TourCard({
                 {' · '}
                 <span className="font-mono text-emerald-700">
                   Σ € {sumVorlauf.toFixed(0)}
+                </span>
+              </>
+            )}
+            {tour.geplante_km != null && (
+              <>
+                {' · '}
+                <span className="font-mono text-slate-600">
+                  {Number(tour.geplante_km).toFixed(0)} km
                 </span>
               </>
             )}

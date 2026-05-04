@@ -121,6 +121,12 @@ export class NvTourenController {
     return this.svc.recalcVorlaufCosts(tourId);
   }
 
+  @Post(':id/recalc-km')
+  async recalcKm(@Param('id') tourId: string) {
+    const km = await this.svc.recalcTourKm(tourId);
+    return { ok: km != null, geplante_km: km };
+  }
+
   @Get(':id/cost-components')
   costComponentsByTour(@Param('id') tourId: string) {
     return this.svc.getCostComponentsByTour(tourId);

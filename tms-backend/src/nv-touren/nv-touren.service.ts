@@ -68,6 +68,7 @@ const TOUR_INCLUDE = {
           weight_kg: true,
           volume_m3: true,
           ldm: true,
+          freight_revenue: true,
           addresses_shipments_loading_address_idToaddresses: {
             select: {
               id: true,

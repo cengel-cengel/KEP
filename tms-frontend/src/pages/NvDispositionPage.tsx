@@ -96,6 +96,7 @@ type Stop = {
     weight_kg?: string | number | null;
     volume_m3?: string | number | null;
     ldm?: string | number | null;
+    freight_revenue?: string | number | null;
     addresses_shipments_loading_address_idToaddresses?: AddressGeo | null;
     addresses_shipments_delivery_address_idToaddresses?: AddressGeo | null;
   };
@@ -1612,14 +1613,37 @@ function TourCard({
     }
     return m;
   }, [costsQ.data]);
-  const sumVorlauf = useMemo(
-    () =>
-      (costsQ.data ?? []).reduce(
-        (s, c) => s + (c.total_eur ? Number(c.total_eur) : 0),
-        0,
-      ),
-    [costsQ.data],
-  );
+  const tourAggregates = useMemo(() => {
+    // Stopps = distinct loading- bzw. delivery-Adressen (mode-spezifisch
+    // pro Stop). Gleicher Algo wie computeStopGroups in stop-list.
+    const seen = new Set<string>();
+    let sumErloes = 0;
+    for (const s of tour.stops) {
+      const sh: any = s.shipment;
+      const addr =
+        s.stop_type === 'DELIVERY'
+          ? sh?.addresses_shipments_delivery_address_idToaddresses
+          : sh?.addresses_shipments_loading_address_idToaddresses;
+      const key = addr
+        ? `${addr.street ?? ''}|${addr.zip ?? ''}|${addr.city ?? ''}`
+        : `__none-${s.id}`;
+      seen.add(key);
+      const fr = sh?.freight_revenue;
+      if (fr != null) {
+        const n = Number(fr);
+        if (Number.isFinite(n)) sumErloes += n;
+      }
+    }
+    const distinctStops = seen.size;
+    const totalKosten = tour.total_kosten_eur
+      ? Number(tour.total_kosten_eur)
+      : 0;
+    const perStop =
+      distinctStops > 0 && totalKosten > 0 ? totalKosten / distinctStops : 0;
+    const sumDB = sumErloes - totalKosten;
+    return { distinctStops, totalKosten, perStop, sumErloes, sumDB };
+  }, [tour.stops, tour.total_kosten_eur]);
+
   const [hovered, setHovered] = useState(false);
 
   const handleDrop = (e: React.DragEvent) => {
@@ -1680,21 +1704,23 @@ function TourCard({
         title={isActive ? 'Tour-Karte schließen' : 'Tour-Karte anzeigen'}
       >
         <div>
-          <div className="font-semibold text-sm flex items-center gap-2">
+          <div className="font-semibold text-sm flex items-center gap-2 flex-wrap">
             <span>{tour.nv_stamm_tour?.code ?? '—'}</span>
             <span className="text-xs text-gray-500">
-              {tour.nv_stamm_tour?.nv_tour_gebiet?.name ?? ''}
+              {tour.subunternehmer?.business_partner?.name ??
+                tour.subunternehmer?.name ??
+                '— kein Sub —'}
             </span>
             <span
-              className={`text-xs font-mono ${
-                tour.total_kosten_eur && Number(tour.total_kosten_eur) > 0
-                  ? 'text-emerald-700 font-semibold'
-                  : 'text-gray-400'
+              className={`text-[10px] px-1.5 py-0.5 rounded ${
+                tour.status === 'PLANNING'
+                  ? 'bg-blue-100 text-blue-700'
+                  : tour.status === 'COMPLETED'
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-gray-100 text-gray-700'
               }`}
             >
-              {tour.total_kosten_eur && Number(tour.total_kosten_eur) > 0
-                ? `€ ${Number(tour.total_kosten_eur).toFixed(0)}`
-                : '€ —'}
+              {tour.status}
             </span>
             {tour.kosten_modus === 'SPOT' && (
               <span
@@ -1705,44 +1731,83 @@ function TourCard({
               </span>
             )}
           </div>
-          <div className="text-xs text-gray-500">
-            {tour.subunternehmer?.name ?? '— kein Sub —'}
-            {' · '}
-            <span
-              className={
-                tour.status === 'PLANNING'
-                  ? 'text-blue-600'
-                  : tour.status === 'COMPLETED'
-                    ? 'text-green-600'
-                    : 'text-gray-600'
+          <div className="text-xs text-gray-500 flex items-center gap-1 flex-wrap">
+            {(() => {
+              const parts: React.ReactNode[] = [];
+              parts.push(
+                <span key="stopps">
+                  Stopps:{' '}
+                  <span className="font-mono text-gray-700">
+                    {tourAggregates.distinctStops}
+                  </span>
+                </span>,
+              );
+              if (tour.geplante_km != null) {
+                parts.push(
+                  <span key="km">
+                    KM:{' '}
+                    <span className="font-mono text-slate-600">
+                      {Number(tour.geplante_km).toFixed(0)}
+                    </span>
+                  </span>,
+                );
               }
-            >
-              {tour.status}
-            </span>
-            {' · '}
-            <span className="text-green-700">
-              S:{tour.stops.filter((s) => s.is_stamm_kunde).length}
-            </span>
-            {' · '}
-            <span className="text-orange-600">
-              Spot:{tour.stops.filter((s) => !s.is_stamm_kunde).length}
-            </span>
-            {sumVorlauf > 0 && (
-              <>
-                {' · '}
-                <span className="font-mono text-emerald-700">
-                  Σ € {sumVorlauf.toFixed(0)}
+              if (tourAggregates.perStop > 0) {
+                parts.push(
+                  <span key="perstop">
+                    Ø/Stop:{' '}
+                    <span className="font-mono text-gray-700">
+                      €{tourAggregates.perStop.toFixed(0)}
+                    </span>
+                  </span>,
+                );
+              }
+              if (tourAggregates.sumErloes > 0) {
+                parts.push(
+                  <span key="erloes">
+                    Erlös:{' '}
+                    <span className="font-mono text-emerald-700">
+                      €{tourAggregates.sumErloes.toFixed(0)}
+                    </span>
+                  </span>,
+                );
+              }
+              if (tourAggregates.totalKosten > 0) {
+                parts.push(
+                  <span key="kosten">
+                    Kosten:{' '}
+                    <span className="font-mono text-rose-700">
+                      €{tourAggregates.totalKosten.toFixed(0)}
+                    </span>
+                  </span>,
+                );
+              }
+              if (
+                tourAggregates.sumErloes > 0 &&
+                tourAggregates.totalKosten > 0
+              ) {
+                parts.push(
+                  <span key="db">
+                    DB:{' '}
+                    <span
+                      className={`font-mono ${
+                        tourAggregates.sumDB >= 0
+                          ? 'text-emerald-700'
+                          : 'text-rose-700'
+                      }`}
+                    >
+                      €{tourAggregates.sumDB.toFixed(0)}
+                    </span>
+                  </span>,
+                );
+              }
+              return parts.map((p, i) => (
+                <span key={i} className="inline-flex items-center gap-1">
+                  {i > 0 && <span className="text-gray-300">·</span>}
+                  {p}
                 </span>
-              </>
-            )}
-            {tour.geplante_km != null && (
-              <>
-                {' · '}
-                <span className="font-mono text-slate-600">
-                  {Number(tour.geplante_km).toFixed(0)} km
-                </span>
-              </>
-            )}
+              ));
+            })()}
           </div>
           <CapacityBars cap={capQ.data} />
         </div>
@@ -1903,7 +1968,7 @@ function TourCard({
                 {g.items.map(({ stop: s }) => (
                   <li
                     key={s.id}
-                    className="px-3 py-1 pl-12 flex items-center gap-2"
+                    className="px-3 py-1 pl-12 grid grid-cols-[24px_1fr_64px_72px_64px_64px_80px] gap-2 items-center"
                   >
                     <button
                       onClick={(e) => {
@@ -1916,101 +1981,121 @@ function TourCard({
                     >
                       <Eye size={14} />
                     </button>
-                    <span className="inline-flex gap-1">
-                      {s.status === 'PLANNED' && (
-                        <button
-                          onClick={() => onSetStopStatus(s.id, 'ARRIVED')}
-                          className="px-1.5 py-0.5 text-[10px] bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                          title="Anfahrt"
-                        >
-                          → Anfahrt
-                        </button>
-                      )}
-                      {s.status === 'ARRIVED' && (
-                        <button
-                          onClick={() => onSetStopStatus(s.id, 'COMPLETED')}
-                          className="px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200"
-                          title="Erledigt"
-                        >
-                          ✓ Erledigt
-                        </button>
-                      )}
-                      {(s.status === 'PLANNED' || s.status === 'ARRIVED') && (
-                        <button
-                          onClick={() => onSetStopStatus(s.id, 'FAILED')}
-                          className="px-1.5 py-0.5 text-[10px] bg-red-100 text-red-700 rounded hover:bg-red-200"
-                          title="Fehlgeschlagen"
-                        >
-                          ✗ Fail
-                        </button>
-                      )}
-                      {s.status === 'COMPLETED' && (
-                        <span className="px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-700 rounded">
-                          ✓
-                        </span>
-                      )}
-                      {s.status === 'FAILED' && (
-                        <span className="px-1.5 py-0.5 text-[10px] bg-red-100 text-red-700 rounded">
-                          ✗
-                        </span>
-                      )}
-                    </span>
-                    <span className="font-mono text-xs">
-                      {s.shipment?.shipment_number ?? '—'}
-                    </span>
-                    {s.is_stamm_kunde && (
-                      <span
-                        className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700"
-                        title="Stammkunde"
-                      >
-                        Stamm
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="inline-flex gap-1">
+                        {s.status === 'PLANNED' && (
+                          <button
+                            onClick={() => onSetStopStatus(s.id, 'ARRIVED')}
+                            className="px-1.5 py-0.5 text-[10px] bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                            title="Anfahrt"
+                          >
+                            → Anfahrt
+                          </button>
+                        )}
+                        {s.status === 'ARRIVED' && (
+                          <button
+                            onClick={() => onSetStopStatus(s.id, 'COMPLETED')}
+                            className="px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200"
+                            title="Erledigt"
+                          >
+                            ✓ Erledigt
+                          </button>
+                        )}
+                        {(s.status === 'PLANNED' ||
+                          s.status === 'ARRIVED') && (
+                          <button
+                            onClick={() => onSetStopStatus(s.id, 'FAILED')}
+                            className="px-1.5 py-0.5 text-[10px] bg-red-100 text-red-700 rounded hover:bg-red-200"
+                            title="Fehlgeschlagen"
+                          >
+                            ✗ Fail
+                          </button>
+                        )}
+                        {s.status === 'COMPLETED' && (
+                          <span className="px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-700 rounded">
+                            ✓
+                          </span>
+                        )}
+                        {s.status === 'FAILED' && (
+                          <span className="px-1.5 py-0.5 text-[10px] bg-red-100 text-red-700 rounded">
+                            ✗
+                          </span>
+                        )}
                       </span>
-                    )}
-                    <span
-                      className="text-xs font-mono text-gray-600 ml-auto"
-                      title={
-                        s.servicezeit_min
-                          ? `Servicezeit ${s.servicezeit_min} min`
-                          : ''
-                      }
-                    >
-                      {(() => {
-                        const sh = s.shipment;
-                        const parts: string[] = [];
-                        if (sh?.package_count != null) {
-                          parts.push(`${sh.package_count} Pal`);
-                        }
-                        if (
-                          sh?.weight_kg != null &&
-                          Number(sh.weight_kg) > 0
-                        ) {
-                          parts.push(`${Number(sh.weight_kg).toFixed(0)} kg`);
-                        }
-                        if (sh?.ldm != null && Number(sh.ldm) > 0) {
-                          parts.push(`${Number(sh.ldm).toFixed(2)} LDM`);
-                        }
-                        return parts.join(' · ');
-                      })()}
-                    </span>
-                    {(() => {
-                      const cc = s.shipment?.id
-                        ? costsByShipment.get(s.shipment.id)
-                        : null;
-                      if (!cc || !cc.total_eur) return null;
-                      return (
-                        <button
-                          onClick={() =>
-                            s.shipment &&
-                            onOpenDrillDown(
-                              s.shipment.id,
-                              s.shipment.shipment_number,
-                            )
-                          }
-                          className="text-xs font-mono text-emerald-700 hover:underline"
-                          title="Cost-Breakdown"
+                      <span className="font-mono text-xs truncate">
+                        {s.shipment?.shipment_number ?? '—'}
+                      </span>
+                      {s.is_stamm_kunde && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700"
+                          title="Stammkunde"
                         >
-                          € {Number(cc.total_eur).toFixed(2)}
-                        </button>
+                          Stamm
+                        </span>
+                      )}
+                    </div>
+                    {(() => {
+                      const sh = s.shipment;
+                      const cell = (
+                        v: string | number | null | undefined,
+                        unit: string,
+                        decimals = 0,
+                      ) => {
+                        if (v == null) {
+                          return <span className="text-gray-300">—</span>;
+                        }
+                        const n = Number(v);
+                        if (!Number.isFinite(n) || n === 0) {
+                          return <span className="text-gray-300">—</span>;
+                        }
+                        return (
+                          <>
+                            <span className="font-mono">
+                              {n.toFixed(decimals)}
+                            </span>
+                            <span className="text-gray-400 ml-0.5">
+                              {unit}
+                            </span>
+                          </>
+                        );
+                      };
+                      const cc = sh?.id
+                        ? costsByShipment.get(sh.id)
+                        : null;
+                      return (
+                        <>
+                          <span className="text-xs text-right">
+                            {cell(sh?.package_count, 'Pak', 0)}
+                          </span>
+                          <span className="text-xs text-right">
+                            {cell(sh?.weight_kg, 'kg', 0)}
+                          </span>
+                          <span className="text-xs text-right">
+                            {cell(sh?.ldm, 'LDM', 2)}
+                          </span>
+                          <span
+                            className="text-xs text-right"
+                            title="Plätze (V1: package_count Fallback)"
+                          >
+                            {cell(sh?.package_count, 'Pl', 0)}
+                          </span>
+                          <span className="text-xs text-right">
+                            {cc && cc.total_eur ? (
+                              <button
+                                onClick={() =>
+                                  sh &&
+                                  onOpenDrillDown(sh.id, sh.shipment_number)
+                                }
+                                className="font-mono text-emerald-700 hover:underline"
+                                title="Cost-Breakdown"
+                              >
+                                €{Number(cc.total_eur).toFixed(0)}
+                              </button>
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                          </span>
+                        </>
                       );
                     })()}
                   </li>

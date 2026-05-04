@@ -441,6 +441,32 @@ export default function NvDispositionPage() {
       ).data,
     onSuccess: invalidate,
   });
+  const updateStopStatusMut = useMutation({
+    mutationFn: async (input: {
+      tourId: string;
+      stopId: string;
+      status: 'ARRIVED' | 'COMPLETED' | 'FAILED';
+    }) =>
+      (
+        await api.patch(
+          `/nv-touren/${input.tourId}/stops/${input.stopId}`,
+          { status: input.status },
+        )
+      ).data,
+    onSuccess: invalidate,
+  });
+  const updateTourStatusMut = useMutation({
+    mutationFn: async (input: {
+      tourId: string;
+      status: 'DISPATCHED' | 'IN_PROGRESS' | 'COMPLETED';
+    }) =>
+      (
+        await api.patch(`/nv-touren/${input.tourId}`, {
+          status: input.status,
+        })
+      ).data,
+    onSuccess: invalidate,
+  });
   const reorderMut = useMutation({
     mutationFn: async (input: {
       tourId: string;
@@ -939,6 +965,27 @@ export default function NvDispositionPage() {
                     tourId: tour.id,
                   });
                 }}
+                onSetStopStatus={(stopId, status) =>
+                  updateStopStatusMut.mutate({
+                    tourId: tour.id,
+                    stopId,
+                    status,
+                  })
+                }
+                onSetTourStatus={(status, openCount, shipmentCount) => {
+                  if (status === 'COMPLETED') {
+                    if (
+                      !confirm(
+                        `Tour abschließen? ${openCount} offene Stop(s) werden completed, ${shipmentCount} Sendung(en) ändern Status.`,
+                      )
+                    )
+                      return;
+                  }
+                  updateTourStatusMut.mutate({
+                    tourId: tour.id,
+                    status,
+                  });
+                }}
               />
             ))}
           </div>
@@ -1059,6 +1106,8 @@ function TourCard({
   onDeleteTour,
   onOpenKosten,
   onOpenDrillDown,
+  onSetStopStatus,
+  onSetTourStatus,
 }: {
   tour: NvTour;
   onDrop: (shipmentId: string, source?: 'map' | 'list') => void;
@@ -1067,6 +1116,15 @@ function TourCard({
   onDeleteTour: () => void;
   onOpenKosten: () => void;
   onOpenDrillDown: (shipmentId: string, shipmentNumber: string) => void;
+  onSetStopStatus: (
+    stopId: string,
+    status: 'ARRIVED' | 'COMPLETED' | 'FAILED',
+  ) => void;
+  onSetTourStatus: (
+    status: 'DISPATCHED' | 'IN_PROGRESS' | 'COMPLETED',
+    openCount: number,
+    shipmentCount: number,
+  ) => void;
 }) {
   const costsQ = useQuery<CostComponent[]>({
     queryKey: ['nv-tour-cost-comp', tour.id],
@@ -1212,16 +1270,51 @@ function TourCard({
           </div>
           <CapacityBars cap={capQ.data} />
         </div>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteTour();
-          }}
-          className="text-red-500 hover:text-red-700"
-          title="Tour löschen"
+        <div
+          className="flex items-center gap-1.5 ml-auto"
+          onClick={(e) => e.stopPropagation()}
         >
-          <Trash2 size={16} />
-        </button>
+          {tour.status === 'PLANNING' && (
+            <button
+              onClick={() =>
+                onSetTourStatus('DISPATCHED', 0, 0)
+              }
+              className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Starten
+            </button>
+          )}
+          {tour.status === 'DISPATCHED' && (
+            <button
+              onClick={() =>
+                onSetTourStatus('IN_PROGRESS', 0, 0)
+              }
+              className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              In Fahrt
+            </button>
+          )}
+          {tour.status === 'IN_PROGRESS' && (
+            <button
+              onClick={() => {
+                const open = tour.stops.filter(
+                  (s) => s.status === 'PLANNED' || s.status === 'ARRIVED',
+                ).length;
+                onSetTourStatus('COMPLETED', open, open);
+              }}
+              className="px-2 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700"
+            >
+              Abschließen
+            </button>
+          )}
+          <button
+            onClick={onDeleteTour}
+            className="text-red-500 hover:text-red-700"
+            title="Tour löschen"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
       </div>
       <ul className="divide-y divide-gray-100">
         {tour.stops.map((s, idx) => (
@@ -1234,6 +1327,45 @@ function TourCard({
             ) : (
               <Package size={14} className="text-blue-700" />
             )}
+            <span className="inline-flex gap-1">
+              {s.status === 'PLANNED' && (
+                <button
+                  onClick={() => onSetStopStatus(s.id, 'ARRIVED')}
+                  className="px-1.5 py-0.5 text-[10px] bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                  title="Anfahrt"
+                >
+                  → Anfahrt
+                </button>
+              )}
+              {s.status === 'ARRIVED' && (
+                <button
+                  onClick={() => onSetStopStatus(s.id, 'COMPLETED')}
+                  className="px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200"
+                  title="Erledigt"
+                >
+                  ✓ Erledigt
+                </button>
+              )}
+              {(s.status === 'PLANNED' || s.status === 'ARRIVED') && (
+                <button
+                  onClick={() => onSetStopStatus(s.id, 'FAILED')}
+                  className="px-1.5 py-0.5 text-[10px] bg-red-100 text-red-700 rounded hover:bg-red-200"
+                  title="Fehlgeschlagen"
+                >
+                  ✗ Fail
+                </button>
+              )}
+              {s.status === 'COMPLETED' && (
+                <span className="px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-700 rounded">
+                  ✓
+                </span>
+              )}
+              {s.status === 'FAILED' && (
+                <span className="px-1.5 py-0.5 text-[10px] bg-red-100 text-red-700 rounded">
+                  ✗
+                </span>
+              )}
+            </span>
             <span className="font-mono text-xs">
               {s.shipment?.shipment_number ?? '—'}
             </span>

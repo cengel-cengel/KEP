@@ -337,6 +337,29 @@ export class NvTourenService {
       },
       include: TOUR_INCLUDE,
     });
+    if (dto.status === 'COMPLETED' && existing.status !== 'COMPLETED') {
+      const openStops = await this.prisma.nv_tour_stops.findMany({
+        where: {
+          nv_tour_id: id,
+          status: { in: ['PLANNED', 'ARRIVED'] },
+        },
+        select: {
+          id: true,
+          shipment_id: true,
+          stop_type: true,
+        },
+      });
+      for (const s of openStops) {
+        await this.prisma.nv_tour_stops.update({
+          where: { id: s.id },
+          data: { status: 'COMPLETED' },
+        });
+        await this.completeStopShipment({
+          shipment_id: s.shipment_id,
+          stop_type: s.stop_type,
+        });
+      }
+    }
     await this.safeRecalc(id);
     return result;
   }
@@ -489,6 +512,23 @@ export class NvTourenService {
     return created;
   }
 
+  /**
+   * Setzt shipment.status passend zum stop_type wenn ein
+   * Stop COMPLETED wird (PICKUP→in_warehouse, DELIVERY→
+   * delivered). FAILED ändert nichts.
+   */
+  private async completeStopShipment(stop: {
+    shipment_id: string;
+    stop_type: string;
+  }) {
+    const newStatus =
+      stop.stop_type === 'DELIVERY' ? 'delivered' : 'in_warehouse';
+    await this.prisma.shipments.update({
+      where: { id: stop.shipment_id },
+      data: { status: newStatus as any },
+    });
+  }
+
   async updateStop(stopId: string, dto: UpdateNvTourStopDto) {
     const existing = await this.prisma.nv_tour_stops.findUnique({
       where: { id: stopId },
@@ -526,6 +566,15 @@ export class NvTourenService {
         notizen: dto.notizen === undefined ? undefined : dto.notizen,
       },
     });
+    if (
+      dto.status === 'COMPLETED' &&
+      existing.status !== 'COMPLETED'
+    ) {
+      await this.completeStopShipment({
+        shipment_id: existing.shipment_id,
+        stop_type: dto.stop_type ?? existing.stop_type,
+      });
+    }
     await this.safeRecalc(existing.nv_tour_id);
     return result;
   }

@@ -4,6 +4,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import NvDispoMap from '../components/nv/NvDispoMap';
 import type { MapShipment, TourStopPin } from '../components/nv/NvDispoMap';
+import BulkTourPicker from '../components/nv/BulkTourPicker';
+import CreateTourModal from '../components/nv/CreateTourModal';
+import type {
+  CreateTourPayload,
+  CreateTourStammTour,
+} from '../components/nv/CreateTourModal';
 import { api } from '../lib/api';
 import { haversineKm } from '../lib/distance';
 
@@ -79,6 +85,10 @@ export default function NvDispoMapPopupPage() {
   const mode: 'PICKUP' | 'DELIVERY' =
     params.get('mode') === 'DELIVERY' ? 'DELIVERY' : 'PICKUP';
 
+  const [pinAddShipmentId, setPinAddShipmentId] = useState<string | null>(
+    null,
+  );
+  const [showCreateTour, setShowCreateTour] = useState(false);
   const [selectedTourId, setSelectedTourId] = useState<string | null>(
     params.get('tour') || null,
   );
@@ -323,6 +333,42 @@ export default function NvDispoMapPopupPage() {
     }));
   }, [eligQ.data, farbenMap, activeTourPlzSet]);
 
+  const stammTourenQ = useQuery<CreateTourStammTour[]>({
+    queryKey: ['nv-stamm-touren'],
+    queryFn: async () =>
+      (await api.get<CreateTourStammTour[]>('/nv-stamm-touren')).data,
+  });
+
+  const createTourMut = useMutation({
+    mutationFn: async (input: CreateTourPayload) => {
+      const created = (
+        await api.post('/nv-touren', {
+          nv_stamm_tour_id: input.stamm_tour_id,
+          datum,
+          subunternehmer_id: input.subunternehmer_id ?? undefined,
+        })
+      ).data as { id: string };
+      const patch: any = {};
+      if (input.angefahrene_km != null)
+        patch.angefahrene_km = input.angefahrene_km;
+      if (input.stunden_geleistet != null)
+        patch.stunden_geleistet = input.stunden_geleistet;
+      if (input.kosten && input.kosten.fahrer != null) {
+        patch.fahrer_kosten_eur = input.kosten.fahrer;
+        patch.fahrzeug_kosten_eur = input.kosten.fahrzeug;
+        patch.kraftstoff_kosten_eur = input.kosten.kraftstoff;
+        patch.dispo_kosten_eur = input.kosten.dispo;
+        patch.sonstige_kosten_eur = input.kosten.sonstige;
+        patch.kosten_modus = 'TARIF';
+      }
+      if (Object.keys(patch).length > 0) {
+        await api.patch(`/nv-touren/${created.id}`, patch);
+      }
+      return created;
+    },
+    onSuccess: broadcastInvalidate,
+  });
+
   const deleteStopMut = useMutation({
     mutationFn: async (input: { tourId: string; stopId: string }) =>
       (
@@ -330,9 +376,33 @@ export default function NvDispoMapPopupPage() {
           `/nv-touren/${input.tourId}/stops/${input.stopId}`,
         )
       ).data,
-    onSuccess: broadcastInvalidate,
-    onError: (err: any) => {
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: ['nv-touren'] });
+      const prev = qc.getQueriesData<any[]>({ queryKey: ['nv-touren'] });
+      qc.setQueriesData<any[]>({ queryKey: ['nv-touren'] }, (old) =>
+        old
+          ? old.map((t: any) =>
+              t.id === input.tourId
+                ? {
+                    ...t,
+                    stops: (t.stops ?? []).filter(
+                      (s: any) => s.id !== input.stopId,
+                    ),
+                  }
+                : t,
+            )
+          : old,
+      );
+      return { prev };
+    },
+    onError: (err: any, _input, ctx) => {
+      if (ctx?.prev) {
+        for (const [key, data] of ctx.prev) qc.setQueryData(key, data);
+      }
       setBanner(`Fehler beim Entfernen: ${err?.message ?? '?'}`);
+    },
+    onSettled: () => {
+      broadcastInvalidate();
     },
   });
 
@@ -344,8 +414,21 @@ export default function NvDispoMapPopupPage() {
           stop_type: mode,
         })
       ).data,
-    onSuccess: broadcastInvalidate,
-    onError: (err: any) => {
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: ['nv-elig'] });
+      const prev = qc.getQueriesData<EligibleShipment[]>({
+        queryKey: ['nv-elig'],
+      });
+      qc.setQueriesData<EligibleShipment[]>(
+        { queryKey: ['nv-elig'] },
+        (old) => (old ? old.filter((s) => s.id !== input.shipmentId) : old),
+      );
+      return { prev };
+    },
+    onError: (err: any, _input, ctx) => {
+      if (ctx?.prev) {
+        for (const [key, data] of ctx.prev) qc.setQueryData(key, data);
+      }
       const status = err?.response?.status;
       const code = err?.response?.data?.code;
       setBanner(
@@ -354,12 +437,15 @@ export default function NvDispoMapPopupPage() {
           : `Fehler: ${err?.message ?? '?'}`,
       );
     },
+    onSettled: () => {
+      broadcastInvalidate();
+    },
   });
 
   const onPinClick = (shipmentId: string) => {
     const targetTourId = activeTourViewId ?? selectedTourId;
     if (!targetTourId) {
-      setBanner('Ziel-Tour wählen (Drop-down im Header oder Hauptfenster).');
+      setPinAddShipmentId(shipmentId);
       return;
     }
     addStopMut.mutate(
@@ -465,6 +551,52 @@ export default function NvDispoMapPopupPage() {
           onRouteError={(msg) => setBanner(msg)}
         />
       </div>
+
+      {showCreateTour && (
+        <CreateTourModal
+          stammTouren={stammTourenQ.data ?? []}
+          onClose={() => setShowCreateTour(false)}
+          onCreate={async (payload) => {
+            const created = await createTourMut.mutateAsync(payload);
+            setShowCreateTour(false);
+            if (pinAddShipmentId && created?.id) {
+              addStopMut.mutate({
+                tourId: created.id,
+                shipmentId: pinAddShipmentId,
+              });
+              setPinAddShipmentId(null);
+            }
+          }}
+          saving={createTourMut.isPending}
+        />
+      )}
+
+      {pinAddShipmentId && !showCreateTour && (
+        <BulkTourPicker
+          title="Tour für Sendung wählen"
+          touren={tourenQ.data ?? []}
+          onClose={() => setPinAddShipmentId(null)}
+          onPicked={(tourId) => {
+            const sid = pinAddShipmentId;
+            setPinAddShipmentId(null);
+            if (sid) {
+              addStopMut.mutate(
+                { tourId, shipmentId: sid },
+                {
+                  onSuccess: () => {
+                    setClickedSequence((seq) =>
+                      seq.includes(sid) ? seq : [...seq, sid],
+                    );
+                    broadcastInvalidate();
+                    window.setTimeout(broadcastInvalidate, 3000);
+                  },
+                },
+              );
+            }
+          }}
+          onCreateNew={() => setShowCreateTour(true)}
+        />
+      )}
     </div>
   );
 }

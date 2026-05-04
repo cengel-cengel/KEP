@@ -447,15 +447,14 @@ export default function NvDispoMap({
           mapRef.current.removeLayer(tourPolylineRef.current);
         }
         tourPolylineRef.current = L.polyline(latlngs, {
-          color: '#6b7280',
-          weight: 3,
-          opacity: 0.7,
-          dashArray: '8,8',
+          color: '#1a73e8',
+          weight: 6,
+          opacity: 0.85,
         }).addTo(map);
       })
       .catch((err) => {
         if (err?.name === 'AbortError') return;
-        // Fallback Luftlinie
+        // Fallback Luftlinie (kein OSRM-Erfolg) bleibt grau-gestrichelt
         const latlngs: [number, number][] = sorted.map((s) => [s.lat, s.lng]);
         if (tourPolylineRef.current && mapRef.current) {
           mapRef.current.removeLayer(tourPolylineRef.current);

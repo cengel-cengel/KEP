@@ -15,6 +15,7 @@ interface Props {
   onClose: () => void;
   onEdit: () => void;
   onNavigate: (direction: 'prev' | 'next') => void;
+  showEditButton?: boolean;
 }
 
 const FREIGHT_PAYER_LABEL: Record<string, string> = {
@@ -55,6 +56,7 @@ export default function ShipmentDetailModal({
   onClose,
   onEdit,
   onNavigate,
+  showEditButton = true,
 }: Props) {
   const shipment = useMemo(
     () => shipments.find((s) => s.id === shipmentId) ?? null,
@@ -68,7 +70,7 @@ export default function ShipmentDetailModal({
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName ?? '';
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (e.key === 'e' || e.key === 'E') {
+      if ((e.key === 'e' || e.key === 'E') && showEditButton) {
         e.preventDefault();
         onEdit();
       } else if (e.key === 'Escape') {
@@ -84,7 +86,7 @@ export default function ShipmentDetailModal({
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [isOpen, onEdit, onClose, onNavigate]);
+  }, [isOpen, onEdit, onClose, onNavigate, showEditButton]);
 
   if (!shipment) return null;
   const r = shipment as unknown as Record<string, unknown>;
@@ -108,10 +110,10 @@ export default function ShipmentDetailModal({
   return (
     <Dialog.Root open={isOpen} onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/40 z-40" />
+        <Dialog.Overlay className="fixed inset-0 bg-black/40 z-[1000]" />
         <Dialog.Content
           onClick={(e) => e.stopPropagation()}
-          className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-[min(680px,95vw)] max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-xl"
+          className="fixed left-1/2 top-1/2 z-[1001] -translate-x-1/2 -translate-y-1/2 w-[min(680px,95vw)] max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-xl"
         >
           <div className="flex items-center justify-between px-5 py-3 border-b">
             <Dialog.Title className="text-base font-semibold flex items-center gap-2">
@@ -241,14 +243,16 @@ export default function ShipmentDetailModal({
                   Schließen
                 </button>
               </Dialog.Close>
-              <button
-                type="button"
-                onClick={onEdit}
-                className="px-3 py-1.5 rounded bg-[#1e40af] text-white hover:bg-[#1e3a8a] text-sm inline-flex items-center gap-1"
-              >
-                <Pencil size={14} />
-                Bearbeiten (E)
-              </button>
+              {showEditButton && (
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="px-3 py-1.5 rounded bg-[#1e40af] text-white hover:bg-[#1e3a8a] text-sm inline-flex items-center gap-1"
+                >
+                  <Pencil size={14} />
+                  Bearbeiten (E)
+                </button>
+              )}
             </div>
           </div>
         </Dialog.Content>

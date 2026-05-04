@@ -1380,6 +1380,7 @@ export default function NvDispositionPage() {
         onClose={() => setDetailShipmentId(null)}
         onEdit={() => setDetailShipmentId(null)}
         onNavigate={() => {}}
+        showEditButton={false}
       />
     </div>
   );
@@ -1646,135 +1647,223 @@ function TourCard({
         </div>
       </div>
       <ul className="divide-y divide-gray-100">
-        {tour.stops.map((s, idx) => (
-          <li key={s.id} className="px-3 py-1.5 flex items-center gap-2 text-sm">
-            <span className="text-xs font-mono text-gray-500 w-6 text-right">
-              {s.position}
-            </span>
-            {s.stop_type === 'DELIVERY' ? (
-              <Truck size={14} className="text-purple-700" />
-            ) : (
-              <Package size={14} className="text-blue-700" />
-            )}
-            <span className="inline-flex gap-1">
-              {s.status === 'PLANNED' && (
-                <button
-                  onClick={() => onSetStopStatus(s.id, 'ARRIVED')}
-                  className="px-1.5 py-0.5 text-[10px] bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                  title="Anfahrt"
-                >
-                  → Anfahrt
-                </button>
-              )}
-              {s.status === 'ARRIVED' && (
-                <button
-                  onClick={() => onSetStopStatus(s.id, 'COMPLETED')}
-                  className="px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200"
-                  title="Erledigt"
-                >
-                  ✓ Erledigt
-                </button>
-              )}
-              {(s.status === 'PLANNED' || s.status === 'ARRIVED') && (
-                <button
-                  onClick={() => onSetStopStatus(s.id, 'FAILED')}
-                  className="px-1.5 py-0.5 text-[10px] bg-red-100 text-red-700 rounded hover:bg-red-200"
-                  title="Fehlgeschlagen"
-                >
-                  ✗ Fail
-                </button>
-              )}
-              {s.status === 'COMPLETED' && (
-                <span className="px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-700 rounded">
-                  ✓
+        {(() => {
+          // Adress-Gruppierung: aufeinanderfolgende Stops mit gleicher
+          // Loading- bzw. Delivery-Adresse erhalten dieselbe Stop-Nr.
+          type Group = {
+            stopNr: number;
+            addressLabel: string;
+            firstIdx: number;
+            lastIdx: number;
+            items: { stop: Stop; idx: number }[];
+          };
+          const groups: Group[] = [];
+          let currentNr = 0;
+          let lastKey: string | null = null;
+          tour.stops.forEach((s, idx) => {
+            const sh = s.shipment;
+            const addr =
+              s.stop_type === 'DELIVERY'
+                ? sh?.addresses_shipments_delivery_address_idToaddresses
+                : sh?.addresses_shipments_loading_address_idToaddresses;
+            const key = addr
+              ? `${addr.street ?? ''}|${addr.zip ?? ''}|${addr.city ?? ''}`
+              : `__none-${s.id}`;
+            if (key !== lastKey) {
+              currentNr += 1;
+              lastKey = key;
+              const label = addr
+                ? [
+                    [addr.zip, addr.city].filter(Boolean).join(' '),
+                    addr.street,
+                  ]
+                    .filter(Boolean)
+                    .join(', ')
+                : '— Adresse fehlt —';
+              groups.push({
+                stopNr: currentNr,
+                addressLabel: label,
+                firstIdx: idx,
+                lastIdx: idx,
+                items: [],
+              });
+            }
+            const g = groups[groups.length - 1];
+            g.lastIdx = idx;
+            g.items.push({ stop: s, idx });
+          });
+          return groups.map((g) => (
+            <li key={`group-${g.firstIdx}`} className="text-sm">
+              <div className="px-3 py-1.5 flex items-center gap-2 bg-gray-50 border-b border-gray-100">
+                <span className="text-xs font-mono font-semibold text-gray-700 w-10">
+                  Stop {g.stopNr}
                 </span>
-              )}
-              {s.status === 'FAILED' && (
-                <span className="px-1.5 py-0.5 text-[10px] bg-red-100 text-red-700 rounded">
-                  ✗
+                {g.items[0].stop.stop_type === 'DELIVERY' ? (
+                  <Truck size={14} className="text-purple-700" />
+                ) : (
+                  <Package size={14} className="text-blue-700" />
+                )}
+                <span className="text-xs text-gray-700 truncate flex-1">
+                  {g.addressLabel}
                 </span>
-              )}
-            </span>
-            <span className="font-mono text-xs">
-              {s.shipment?.shipment_number ?? '—'}
-            </span>
-            {s.is_stamm_kunde && (
-              <span
-                className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700"
-                title="Stammkunde"
-              >
-                Stamm
-              </span>
-            )}
-            <span
-              className="text-xs font-mono text-gray-600 ml-auto"
-              title={
-                s.servicezeit_min ? `Servicezeit ${s.servicezeit_min} min` : ''
-              }
-            >
-              {(() => {
-                const sh = s.shipment;
-                const parts: string[] = [];
-                if (sh?.package_count != null) {
-                  parts.push(`${sh.package_count} Pal`);
-                }
-                if (sh?.weight_kg != null && Number(sh.weight_kg) > 0) {
-                  parts.push(`${Number(sh.weight_kg).toFixed(0)} kg`);
-                }
-                if (sh?.ldm != null && Number(sh.ldm) > 0) {
-                  parts.push(`${Number(sh.ldm).toFixed(2)} LDM`);
-                }
-                return parts.join(' · ');
-              })()}
-            </span>
-            {(() => {
-              const cc = s.shipment?.id
-                ? costsByShipment.get(s.shipment.id)
-                : null;
-              if (!cc || !cc.total_eur) return null;
-              return (
                 <button
-                  onClick={() =>
-                    s.shipment &&
-                    onOpenDrillDown(s.shipment.id, s.shipment.shipment_number)
+                  onClick={() => onMoveStop(g.firstIdx, -1)}
+                  disabled={g.firstIdx === 0}
+                  className="text-gray-500 hover:text-gray-700 disabled:opacity-30"
+                  title="Stop nach oben"
+                >
+                  <ArrowUp size={14} />
+                </button>
+                <button
+                  onClick={() => onMoveStop(g.lastIdx, 1)}
+                  disabled={g.lastIdx === tour.stops.length - 1}
+                  className="text-gray-500 hover:text-gray-700 disabled:opacity-30"
+                  title="Stop nach unten"
+                >
+                  <ArrowDown size={14} />
+                </button>
+                <button
+                  onClick={() => {
+                    const n = g.items.length;
+                    if (
+                      !confirm(
+                        n === 1
+                          ? 'Stop löschen?'
+                          : `${n} Stops an diesem Halt löschen?`,
+                      )
+                    )
+                      return;
+                    for (const it of g.items) onDeleteStop(it.stop.id);
+                  }}
+                  className="text-red-500 hover:text-red-700"
+                  title={
+                    g.items.length === 1
+                      ? 'Stop löschen'
+                      : `${g.items.length} Stops löschen`
                   }
-                  className="text-xs font-mono text-emerald-700 hover:underline"
-                  title="Cost-Breakdown"
                 >
-                  € {Number(cc.total_eur).toFixed(2)}
+                  <Trash2 size={14} />
                 </button>
-              );
-            })()}
-            <button
-              onClick={() => s.shipment && onOpenDetail(s.shipment.id)}
-              disabled={!s.shipment}
-              className="text-gray-500 hover:text-blue-700 disabled:opacity-30"
-              title="Sendungs-Detail"
-            >
-              <Eye size={14} />
-            </button>
-            <button
-              onClick={() => onMoveStop(idx, -1)}
-              disabled={idx === 0}
-              className="text-gray-500 hover:text-gray-700 disabled:opacity-30"
-            >
-              <ArrowUp size={14} />
-            </button>
-            <button
-              onClick={() => onMoveStop(idx, 1)}
-              disabled={idx === tour.stops.length - 1}
-              className="text-gray-500 hover:text-gray-700 disabled:opacity-30"
-            >
-              <ArrowDown size={14} />
-            </button>
-            <button
-              onClick={() => onDeleteStop(s.id)}
-              className="text-red-500 hover:text-red-700"
-            >
-              <Trash2 size={14} />
-            </button>
-          </li>
-        ))}
+              </div>
+              <ul className="divide-y divide-gray-50">
+                {g.items.map(({ stop: s }) => (
+                  <li
+                    key={s.id}
+                    className="px-3 py-1 pl-12 flex items-center gap-2"
+                  >
+                    <span className="inline-flex gap-1">
+                      {s.status === 'PLANNED' && (
+                        <button
+                          onClick={() => onSetStopStatus(s.id, 'ARRIVED')}
+                          className="px-1.5 py-0.5 text-[10px] bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                          title="Anfahrt"
+                        >
+                          → Anfahrt
+                        </button>
+                      )}
+                      {s.status === 'ARRIVED' && (
+                        <button
+                          onClick={() => onSetStopStatus(s.id, 'COMPLETED')}
+                          className="px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200"
+                          title="Erledigt"
+                        >
+                          ✓ Erledigt
+                        </button>
+                      )}
+                      {(s.status === 'PLANNED' || s.status === 'ARRIVED') && (
+                        <button
+                          onClick={() => onSetStopStatus(s.id, 'FAILED')}
+                          className="px-1.5 py-0.5 text-[10px] bg-red-100 text-red-700 rounded hover:bg-red-200"
+                          title="Fehlgeschlagen"
+                        >
+                          ✗ Fail
+                        </button>
+                      )}
+                      {s.status === 'COMPLETED' && (
+                        <span className="px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-700 rounded">
+                          ✓
+                        </span>
+                      )}
+                      {s.status === 'FAILED' && (
+                        <span className="px-1.5 py-0.5 text-[10px] bg-red-100 text-red-700 rounded">
+                          ✗
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-mono text-xs">
+                      {s.shipment?.shipment_number ?? '—'}
+                    </span>
+                    {s.is_stamm_kunde && (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700"
+                        title="Stammkunde"
+                      >
+                        Stamm
+                      </span>
+                    )}
+                    <span
+                      className="text-xs font-mono text-gray-600 ml-auto"
+                      title={
+                        s.servicezeit_min
+                          ? `Servicezeit ${s.servicezeit_min} min`
+                          : ''
+                      }
+                    >
+                      {(() => {
+                        const sh = s.shipment;
+                        const parts: string[] = [];
+                        if (sh?.package_count != null) {
+                          parts.push(`${sh.package_count} Pal`);
+                        }
+                        if (
+                          sh?.weight_kg != null &&
+                          Number(sh.weight_kg) > 0
+                        ) {
+                          parts.push(`${Number(sh.weight_kg).toFixed(0)} kg`);
+                        }
+                        if (sh?.ldm != null && Number(sh.ldm) > 0) {
+                          parts.push(`${Number(sh.ldm).toFixed(2)} LDM`);
+                        }
+                        return parts.join(' · ');
+                      })()}
+                    </span>
+                    {(() => {
+                      const cc = s.shipment?.id
+                        ? costsByShipment.get(s.shipment.id)
+                        : null;
+                      if (!cc || !cc.total_eur) return null;
+                      return (
+                        <button
+                          onClick={() =>
+                            s.shipment &&
+                            onOpenDrillDown(
+                              s.shipment.id,
+                              s.shipment.shipment_number,
+                            )
+                          }
+                          className="text-xs font-mono text-emerald-700 hover:underline"
+                          title="Cost-Breakdown"
+                        >
+                          € {Number(cc.total_eur).toFixed(2)}
+                        </button>
+                      );
+                    })()}
+                    <button
+                      onClick={() =>
+                        s.shipment && onOpenDetail(s.shipment.id)
+                      }
+                      disabled={!s.shipment}
+                      className="text-gray-500 hover:text-blue-700 disabled:opacity-30"
+                      title="Sendungs-Detail"
+                    >
+                      <Eye size={14} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ));
+        })()}
       </ul>
       <div
         className={`px-3 py-2 text-xs text-center border-t ${

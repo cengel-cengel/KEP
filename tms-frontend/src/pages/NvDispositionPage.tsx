@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, ExternalLink, Eye, Package, Pencil, Plus, Sparkles, Trash2, Truck, X } from 'lucide-react';
 import NvTourKostenModal from '../components/NvTourKostenModal';
 import ShipmentDetailModal from '../components/ShipmentDetailModal';
+import ShipmentEditModal from '../components/ShipmentEditModal';
 import type { Shipment } from '../types/shipment';
 import NvDispoMap from '../components/nv/NvDispoMap';
 import type { MapShipment, TourStopPin } from '../components/nv/NvDispoMap';
@@ -320,6 +321,9 @@ export default function NvDispositionPage() {
     tourId: string;
   } | null>(null);
   const [detailShipmentId, setDetailShipmentId] = useState<string | null>(null);
+  const [editingShipmentId, setEditingShipmentId] = useState<string | null>(
+    null,
+  );
   const [viewMode, setViewMode] = useState<'list' | 'map' | 'split3'>('list');
   const [selectedTourId, setSelectedTourId] = useState<string | null>(null);
   const [clickedSequence, setClickedSequence] = useState<string[]>([]);
@@ -417,6 +421,21 @@ export default function NvDispositionPage() {
       (t) => t.nv_stamm_tour?.nv_tour_gebiet?.id === filterTour,
     );
   }, [tourenQ.data, filterTour]);
+
+  // Detail-/Edit-Modal benötigt Sendungen aus eligible UND aus
+  // bereits gestoppten Tour-Sendungen (sonst null beim Eye-Klick im Tour).
+  const allShipmentsForDetail = useMemo(() => {
+    const map = new Map<string, unknown>();
+    for (const s of eligQ.data ?? []) map.set(s.id, s);
+    for (const t of tourenQ.data ?? []) {
+      for (const stop of t.stops) {
+        if (stop.shipment && !map.has(stop.shipment.id)) {
+          map.set(stop.shipment.id, stop.shipment);
+        }
+      }
+    }
+    return Array.from(map.values()) as Shipment[];
+  }, [eligQ.data, tourenQ.data]);
 
   const popupChannelRef = useRef<BroadcastChannel | null>(null);
   const popupWindowRef = useRef<Window | null>(null);
@@ -1375,13 +1394,40 @@ export default function NvDispositionPage() {
 
       <ShipmentDetailModal
         shipmentId={detailShipmentId}
-        shipments={(eligQ.data ?? []) as unknown as Shipment[]}
+        shipments={allShipmentsForDetail}
         isOpen={!!detailShipmentId}
         onClose={() => setDetailShipmentId(null)}
-        onEdit={() => setDetailShipmentId(null)}
+        onEdit={() => {
+          if (detailShipmentId) {
+            setEditingShipmentId(detailShipmentId);
+            setDetailShipmentId(null);
+          }
+        }}
         onNavigate={() => {}}
-        showEditButton={false}
       />
+      {editingShipmentId &&
+        (() => {
+          const target = allShipmentsForDetail.find(
+            (s) => s.id === editingShipmentId,
+          );
+          if (!target) {
+            setEditingShipmentId(null);
+            return null;
+          }
+          return (
+            <ShipmentEditModal
+              shipment={target}
+              open={!!editingShipmentId}
+              onOpenChange={(o) => {
+                if (!o) {
+                  setEditingShipmentId(null);
+                  invalidate();
+                  qc.invalidateQueries({ queryKey: ['shipments'] });
+                }
+              }}
+            />
+          );
+        })()}
     </div>
   );
 }
@@ -1751,6 +1797,17 @@ function TourCard({
                     key={s.id}
                     className="px-3 py-1 pl-12 flex items-center gap-2"
                   >
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (s.shipment) onOpenDetail(s.shipment.id);
+                      }}
+                      disabled={!s.shipment}
+                      className="text-gray-500 hover:text-blue-700 disabled:opacity-30"
+                      title="Sendungs-Detail"
+                    >
+                      <Eye size={14} />
+                    </button>
                     <span className="inline-flex gap-1">
                       {s.status === 'PLANNED' && (
                         <button
@@ -1848,16 +1905,6 @@ function TourCard({
                         </button>
                       );
                     })()}
-                    <button
-                      onClick={() =>
-                        s.shipment && onOpenDetail(s.shipment.id)
-                      }
-                      disabled={!s.shipment}
-                      className="text-gray-500 hover:text-blue-700 disabled:opacity-30"
-                      title="Sendungs-Detail"
-                    >
-                      <Eye size={14} />
-                    </button>
                   </li>
                 ))}
               </ul>

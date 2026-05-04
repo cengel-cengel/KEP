@@ -634,7 +634,10 @@ export default function NvDispositionPage() {
   }, [activeTour]);
 
   const isEligibleInActiveTour = useMemo(() => {
-    if (!activeTourPlzSet && activeTourStopCoords.length === 0) {
+    // Kein Filter wenn weder PLZ-Pattern noch Tour-Stops vorhanden
+    // (sonst würde alles ausgeblendet wenn Tour leer ist).
+    const hasPlz = !!activeTourPlzSet && activeTourPlzSet.size > 0;
+    if (!hasPlz && activeTourStopCoords.length === 0) {
       return null;
     }
     return (s: EligibleShipment): boolean => {
@@ -868,19 +871,23 @@ export default function NvDispositionPage() {
     );
 
   const onPinClick = (shipmentId: string) => {
-    if (!selectedTourId) {
-      // Kein Ziel-Tour: Tour-Picker öffnen
+    // Bevorzuge aktive Tour-View; sonst Ziel-Tour aus Header-Dropdown
+    const targetTourId = activeTourViewId ?? selectedTourId;
+    if (!targetTourId) {
+      // Keine Tour aktiv UND keine Ziel-Tour: Picker öffnen
       setPinAddShipmentId(shipmentId);
       return;
     }
     addStopMut.mutate(
-      { tourId: selectedTourId, shipmentId },
+      { tourId: targetTourId, shipmentId },
       {
         onSuccess: () => {
           setClickedSequence((seq) =>
             seq.includes(shipmentId) ? seq : [...seq, shipmentId],
           );
           invalidate();
+          // Background-Reorder/KM in 1-2s fertig — zweites invalidate
+          window.setTimeout(invalidate, 3000);
         },
       },
     );
@@ -888,7 +895,15 @@ export default function NvDispositionPage() {
 
   const handleTourStopClick = (stopId: string) => {
     if (!activeTourViewId) return;
-    deleteStopMut.mutate({ tourId: activeTourViewId, stopId });
+    deleteStopMut.mutate(
+      { tourId: activeTourViewId, stopId },
+      {
+        onSuccess: () => {
+          invalidate();
+          window.setTimeout(invalidate, 3000);
+        },
+      },
+    );
   };
 
   const moveStop = (tour: NvTour, idx: number, dir: -1 | 1) => {
@@ -2257,6 +2272,17 @@ function BulkTourPicker({
             <X size={18} />
           </button>
         </div>
+        {onCreateNew && (
+          <div className="px-3 py-2 border-b bg-gray-50">
+            <button
+              onClick={onCreateNew}
+              className="w-full text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 rounded px-3 py-2 inline-flex items-center justify-center gap-1"
+            >
+              <Plus size={14} />
+              Neue Tour anlegen
+            </button>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto">
           {touren.length === 0 && (
             <div className="p-3 text-sm text-gray-500">
@@ -2278,17 +2304,6 @@ function BulkTourPicker({
             </button>
           ))}
         </div>
-        {onCreateNew && (
-          <div className="border-t px-3 py-2">
-            <button
-              onClick={onCreateNew}
-              className="w-full text-sm text-blue-700 hover:bg-blue-50 rounded px-3 py-2 inline-flex items-center justify-center gap-1"
-            >
-              <Plus size={14} />
-              Neue Tour anlegen
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

@@ -754,8 +754,13 @@ export class NvTourenService {
         },
       },
     });
-    await this.safeRecalc(tourId);
-    await this.safeOptimizeTour(tourId);
+    // Background: cost-recalc + route-optimize blockieren die
+    // Response nicht (OSRM ~1-2s). UI invalidiert ein zweites Mal
+    // nach 3s und fängt die neuen positions/km ab.
+    setImmediate(() => {
+      void this.safeRecalc(tourId);
+      void this.safeOptimizeTour(tourId);
+    });
     return created;
   }
 
@@ -833,8 +838,10 @@ export class NvTourenService {
     });
     if (!existing) throw new NotFoundException('Stop nicht gefunden');
     await this.prisma.nv_tour_stops.delete({ where: { id: stopId } });
-    await this.safeRecalc(existing.nv_tour_id);
-    await this.safeOptimizeTour(existing.nv_tour_id);
+    setImmediate(() => {
+      void this.safeRecalc(existing.nv_tour_id);
+      void this.safeOptimizeTour(existing.nv_tour_id);
+    });
     return { ok: true };
   }
 
@@ -1326,13 +1333,16 @@ export class NvTourenService {
         }
       }
     }
-    // Recalc fuer alle moeglicherweise befuellten Touren
-    await this.safeRecalc(tourId);
-    await this.safeOptimizeTour(tourId);
-    if (currentTourId !== tourId) {
-      await this.safeRecalc(currentTourId);
-      await this.safeOptimizeTour(currentTourId);
-    }
+    // Recalc + Optimize fuer alle moeglicherweise befuellten Touren
+    // im Background — Response sofort.
+    const tourIdsToRecalc = [tourId];
+    if (currentTourId !== tourId) tourIdsToRecalc.push(currentTourId);
+    setImmediate(() => {
+      for (const tid of tourIdsToRecalc) {
+        void this.safeRecalc(tid);
+        void this.safeOptimizeTour(tid);
+      }
+    });
     return {
       added,
       skipped,

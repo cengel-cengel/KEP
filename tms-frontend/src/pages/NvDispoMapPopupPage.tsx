@@ -280,7 +280,8 @@ export default function NvDispoMapPopupPage() {
   }, [activeTour]);
 
   const isEligibleInActiveTour = useMemo(() => {
-    if (!activeTourPlzSet && activeTourStopCoords.length === 0) return null;
+    const hasPlz = !!activeTourPlzSet && activeTourPlzSet.size > 0;
+    if (!hasPlz && activeTourStopCoords.length === 0) return null;
     return (s: EligibleShipment): boolean => {
       const zip = s.pin_address?.zip ?? s.loading_address?.zip ?? '';
       if (zip && activeTourPlzSet?.has(zip)) return true;
@@ -356,18 +357,20 @@ export default function NvDispoMapPopupPage() {
   });
 
   const onPinClick = (shipmentId: string) => {
-    if (!selectedTourId) {
+    const targetTourId = activeTourViewId ?? selectedTourId;
+    if (!targetTourId) {
       setBanner('Ziel-Tour wählen (Drop-down im Header oder Hauptfenster).');
       return;
     }
     addStopMut.mutate(
-      { tourId: selectedTourId, shipmentId },
+      { tourId: targetTourId, shipmentId },
       {
         onSuccess: () => {
           setClickedSequence((seq) =>
             seq.includes(shipmentId) ? seq : [...seq, shipmentId],
           );
           broadcastInvalidate();
+          window.setTimeout(broadcastInvalidate, 3000);
         },
       },
     );
@@ -375,7 +378,15 @@ export default function NvDispoMapPopupPage() {
 
   const handleTourStopClick = (stopId: string) => {
     if (!activeTourViewId) return;
-    deleteStopMut.mutate({ tourId: activeTourViewId, stopId });
+    deleteStopMut.mutate(
+      { tourId: activeTourViewId, stopId },
+      {
+        onSuccess: () => {
+          broadcastInvalidate();
+          window.setTimeout(broadcastInvalidate, 3000);
+        },
+      },
+    );
   };
 
   const updateModeParam = (m: 'PICKUP' | 'DELIVERY') => {

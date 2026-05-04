@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, ExternalLink, Eye, Package, Pencil, Plus, Sparkles,
 import NvTourKostenModal from '../components/NvTourKostenModal';
 import ShipmentDetailModal from '../components/ShipmentDetailModal';
 import ShipmentEditModal from '../components/ShipmentEditModal';
+import { haversineKm } from '../lib/distance';
 import type { Shipment } from '../types/shipment';
 import NvDispoMap from '../components/nv/NvDispoMap';
 import type { MapShipment, TourStopPin } from '../components/nv/NvDispoMap';
@@ -134,6 +135,8 @@ type NvTour = {
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
+
+const TOUR_RADIUS_KM = 20;
 
 function eligColumns(
   onOpenDetail: (id: string) => void,
@@ -609,6 +612,51 @@ export default function NvDispositionPage() {
     return set;
   }, [activeTour]);
 
+  const activeTourStopCoords = useMemo<Array<[number, number]>>(() => {
+    if (!activeTour) return [];
+    const out: Array<[number, number]> = [];
+    for (const s of activeTour.stops) {
+      const sh: any = s.shipment;
+      if (!sh) continue;
+      const addr =
+        s.stop_type === 'DELIVERY'
+          ? sh.addresses_shipments_delivery_address_idToaddresses
+          : sh.addresses_shipments_loading_address_idToaddresses;
+      if (!addr) continue;
+      const lat = addr.lat != null ? Number(addr.lat) : NaN;
+      const lng = addr.lng != null ? Number(addr.lng) : NaN;
+      if (Number.isFinite(lat) && Number.isFinite(lng)) out.push([lat, lng]);
+    }
+    return out;
+  }, [activeTour]);
+
+  const isEligibleInActiveTour = useMemo(() => {
+    if (!activeTourPlzSet && activeTourStopCoords.length === 0) {
+      return null;
+    }
+    return (s: EligibleShipment): boolean => {
+      const zip = s.pin_address?.zip ?? s.loading_address?.zip ?? '';
+      if (zip && activeTourPlzSet?.has(zip)) return true;
+      const lat =
+        s.pin_address?.lat != null
+          ? Number(s.pin_address.lat)
+          : s.loading_address?.lat != null
+            ? Number(s.loading_address.lat)
+            : NaN;
+      const lng =
+        s.pin_address?.lng != null
+          ? Number(s.pin_address.lng)
+          : s.loading_address?.lng != null
+            ? Number(s.loading_address.lng)
+            : NaN;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+      for (const [tlat, tlng] of activeTourStopCoords) {
+        if (haversineKm(lat, lng, tlat, tlng) <= TOUR_RADIUS_KM) return true;
+      }
+      return false;
+    };
+  }, [activeTourPlzSet, activeTourStopCoords]);
+
   const farbenMap = useMemo(() => {
     const m = new Map<string, string>();
     for (const g of tourGebieteQ.data ?? []) {
@@ -818,7 +866,10 @@ export default function NvDispositionPage() {
 
   const onPinClick = (shipmentId: string) => {
     if (!selectedTourId) {
-      setBanner({ kind: 'err', msg: 'Erst Ziel-Tour wählen.' });
+      // Kein Ziel-Tour: Sequence-Builder-Fallback
+      setClickedSequence((seq) =>
+        seq.includes(shipmentId) ? seq : [...seq, shipmentId],
+      );
       return;
     }
     addStopMut.mutate(
@@ -1314,9 +1365,8 @@ export default function NvDispositionPage() {
               <NvDispoMap
                 shipments={((eligQ.data ?? []) as EligibleShipment[])
                   .filter((s) => {
-                    if (activeTourPlzSet) {
-                      const zip = s.pin_address?.zip ?? '';
-                      return zip ? activeTourPlzSet.has(zip) : false;
+                    if (isEligibleInActiveTour) {
+                      return isEligibleInActiveTour(s);
                     }
                     return expandedGroup
                       ? s.matched_tour_gebiet_code === expandedGroup

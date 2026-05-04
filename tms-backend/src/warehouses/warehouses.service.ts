@@ -95,16 +95,17 @@ export class WarehousesService {
           : dto.lng,
     };
     const addressChanged =
-      dto.street !== undefined ||
-      dto.zip !== undefined ||
-      dto.city !== undefined ||
-      dto.country !== undefined;
+      (dto.street !== undefined && dto.street !== existing.street) ||
+      (dto.zip !== undefined && dto.zip !== existing.zip) ||
+      (dto.city !== undefined && dto.city !== existing.city) ||
+      (dto.country !== undefined && dto.country !== existing.country);
     let lat: number | null | undefined =
       dto.lat === undefined ? undefined : dto.lat;
     let lng: number | null | undefined =
       dto.lng === undefined ? undefined : dto.lng;
-    // Geocode if address changed and no explicit lat/lng
-    if (addressChanged && dto.lat === undefined && dto.lng === undefined) {
+    // Geocode if address changed and lat/lng nicht gesetzt
+    // (null oder undefined zaehlen beide als "nicht gesetzt")
+    if (addressChanged && dto.lat == null && dto.lng == null) {
       const geo = await this.maybeGeocode({
         street: merged.street,
         zip: merged.zip,

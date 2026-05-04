@@ -12,8 +12,11 @@ export interface GeoCoord {
 
 export async function nominatimGeocode(
   query: string,
+  timeoutMs = 5000,
 ): Promise<GeoCoord | null> {
   if (!query || query.trim().length < 3) return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const url = `${NOMINATIM_URL}?q=${encodeURIComponent(query)}&format=json&limit=1`;
     const res = await fetch(url, {
@@ -21,6 +24,7 @@ export async function nominatimGeocode(
         'User-Agent': 'tms-deploy-ready/1.0 (kontakt@ked-logistik.de)',
         Accept: 'application/json',
       },
+      signal: ctrl.signal,
     });
     if (!res.ok) return null;
     const arr = (await res.json()) as Array<{ lat?: string; lon?: string }>;
@@ -33,6 +37,8 @@ export async function nominatimGeocode(
     return { lat, lng };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

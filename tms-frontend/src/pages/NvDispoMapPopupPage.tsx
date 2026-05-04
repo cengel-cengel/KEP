@@ -357,10 +357,7 @@ export default function NvDispoMapPopupPage() {
 
   const onPinClick = (shipmentId: string) => {
     if (!selectedTourId) {
-      // Kein Ziel-Tour: Sequence-Builder-Fallback
-      setClickedSequence((seq) =>
-        seq.includes(shipmentId) ? seq : [...seq, shipmentId],
-      );
+      setBanner('Ziel-Tour wählen (Drop-down im Header oder Hauptfenster).');
       return;
     }
     addStopMut.mutate(
@@ -378,7 +375,6 @@ export default function NvDispoMapPopupPage() {
 
   const handleTourStopClick = (stopId: string) => {
     if (!activeTourViewId) return;
-    if (!confirm('Sendung aus Tour entfernen?')) return;
     deleteStopMut.mutate({ tourId: activeTourViewId, stopId });
   };
 

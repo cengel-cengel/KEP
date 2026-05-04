@@ -259,6 +259,9 @@ export default function NvDispositionPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showCreateTour, setShowCreateTour] = useState(false);
   const [bulkPickerOpen, setBulkPickerOpen] = useState(false);
+  const [pinAddShipmentId, setPinAddShipmentId] = useState<string | null>(
+    null,
+  );
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [kostenTourId, setKostenTourId] = useState<string | null>(null);
   const [activeTourViewId, setActiveTourViewId] = useState<string | null>(
@@ -866,10 +869,8 @@ export default function NvDispositionPage() {
 
   const onPinClick = (shipmentId: string) => {
     if (!selectedTourId) {
-      // Kein Ziel-Tour: Sequence-Builder-Fallback
-      setClickedSequence((seq) =>
-        seq.includes(shipmentId) ? seq : [...seq, shipmentId],
-      );
+      // Kein Ziel-Tour: Tour-Picker öffnen
+      setPinAddShipmentId(shipmentId);
       return;
     }
     addStopMut.mutate(
@@ -887,7 +888,6 @@ export default function NvDispositionPage() {
 
   const handleTourStopClick = (stopId: string) => {
     if (!activeTourViewId) return;
-    if (!confirm('Sendung aus Tour entfernen?')) return;
     deleteStopMut.mutate({ tourId: activeTourViewId, stopId });
   };
 
@@ -1407,8 +1407,16 @@ export default function NvDispositionPage() {
           stammTouren={stammTourenQ.data ?? []}
           onClose={() => setShowCreateTour(false)}
           onCreate={async (payload) => {
-            await createTourMut.mutateAsync(payload);
+            const created = await createTourMut.mutateAsync(payload);
             setShowCreateTour(false);
+            // Wenn aus Pin-Picker gestartet → Sendung zur neuen Tour hinzu
+            if (pinAddShipmentId && created?.id) {
+              addStopMut.mutate({
+                tourId: created.id,
+                shipmentId: pinAddShipmentId,
+              });
+              setPinAddShipmentId(null);
+            }
           }}
           saving={createTourMut.isPending}
         />
@@ -1425,6 +1433,32 @@ export default function NvDispositionPage() {
               setBulkPickerOpen(false);
             }
           }}
+        />
+      )}
+
+      {pinAddShipmentId && !showCreateTour && (
+        <BulkTourPicker
+          title="Tour für Sendung wählen"
+          touren={filteredTouren}
+          onClose={() => setPinAddShipmentId(null)}
+          onPicked={(tourId) => {
+            const sid = pinAddShipmentId;
+            setPinAddShipmentId(null);
+            if (sid) {
+              addStopMut.mutate(
+                { tourId, shipmentId: sid },
+                {
+                  onSuccess: () => {
+                    setClickedSequence((seq) =>
+                      seq.includes(sid) ? seq : [...seq, sid],
+                    );
+                    invalidate();
+                  },
+                },
+              );
+            }
+          }}
+          onCreateNew={() => setShowCreateTour(true)}
         />
       )}
 
@@ -2203,16 +2237,22 @@ function BulkTourPicker({
   touren,
   onClose,
   onPicked,
+  onCreateNew,
+  title,
 }: {
   touren: NvTour[];
   onClose: () => void;
   onPicked: (tourId: string) => void;
+  onCreateNew?: () => void;
+  title?: string;
 }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <h2 className="font-semibold text-gray-800">Tour auswählen</h2>
+          <h2 className="font-semibold text-gray-800">
+            {title ?? 'Tour auswählen'}
+          </h2>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
             <X size={18} />
           </button>
@@ -2238,6 +2278,17 @@ function BulkTourPicker({
             </button>
           ))}
         </div>
+        {onCreateNew && (
+          <div className="border-t px-3 py-2">
+            <button
+              onClick={onCreateNew}
+              className="w-full text-sm text-blue-700 hover:bg-blue-50 rounded px-3 py-2 inline-flex items-center justify-center gap-1"
+            >
+              <Plus size={14} />
+              Neue Tour anlegen
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -11,8 +11,16 @@ type EligibleShipment = {
   shipment_number: string;
   matched_tour_gebiet_code?: string | null;
   customer?: { id: string; partner_number: string; name: string } | null;
-  pin_address?: { lat: string | number | null; lng: string | number | null } | null;
-  loading_address?: { lat: string | number | null; lng: string | number | null } | null;
+  pin_address?: {
+    zip?: string | null;
+    lat: string | number | null;
+    lng: string | number | null;
+  } | null;
+  loading_address?: {
+    zip?: string | null;
+    lat: string | number | null;
+    lng: string | number | null;
+  } | null;
 };
 
 type TourGebiet = { id: string; code: string; name: string; farbe: string };
@@ -25,10 +33,12 @@ type NvTourStop = {
     id: string;
     shipment_number: string;
     addresses_shipments_loading_address_idToaddresses?: {
+      zip?: string | null;
       lat: string | number | null;
       lng: string | number | null;
     } | null;
     addresses_shipments_delivery_address_idToaddresses?: {
+      zip?: string | null;
       lat: string | number | null;
       lng: string | number | null;
     } | null;
@@ -38,7 +48,10 @@ type NvTourStop = {
 type NvTour = {
   id: string;
   status: string;
-  nv_stamm_tour?: { code: string } | null;
+  nv_stamm_tour?: {
+    code: string;
+    nv_tour_gebiet?: { plz_pattern?: string | null } | null;
+  } | null;
   stops: NvTourStop[];
 };
 
@@ -227,8 +240,34 @@ export default function NvDispoMapPopupPage() {
     return stops;
   }, [activeTour, defaultWarehouseQ.data]);
 
+  const activeTourPlzSet = useMemo(() => {
+    if (!activeTour) return null;
+    const set = new Set<string>();
+    for (const s of activeTour.stops) {
+      const sh = s.shipment;
+      const addr =
+        s.stop_type === 'DELIVERY'
+          ? sh?.addresses_shipments_delivery_address_idToaddresses
+          : sh?.addresses_shipments_loading_address_idToaddresses;
+      if (addr?.zip) set.add(addr.zip);
+    }
+    const pat = activeTour.nv_stamm_tour?.nv_tour_gebiet?.plz_pattern ?? '';
+    for (const part of pat.split(',')) {
+      const p = part.trim();
+      if (p) set.add(p);
+    }
+    return set.size > 0 ? set : null;
+  }, [activeTour]);
+
   const mapShipments = useMemo<MapShipment[]>(() => {
-    return (eligQ.data ?? []).map((s) => ({
+    const list = eligQ.data ?? [];
+    const filtered = activeTourPlzSet
+      ? list.filter((s) => {
+          const zip = s.pin_address?.zip ?? s.loading_address?.zip ?? '';
+          return zip ? activeTourPlzSet.has(zip) : false;
+        })
+      : list;
+    return filtered.map((s) => ({
       id: s.id,
       shipment_number: s.shipment_number,
       customer: s.customer ?? null,
@@ -239,7 +278,7 @@ export default function NvDispoMapPopupPage() {
         undefined,
       tour_gebiet_code: s.matched_tour_gebiet_code,
     }));
-  }, [eligQ.data, farbenMap]);
+  }, [eligQ.data, farbenMap, activeTourPlzSet]);
 
   const addStopMut = useMutation({
     mutationFn: async (input: { tourId: string; shipmentId: string }) =>

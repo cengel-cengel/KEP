@@ -70,6 +70,7 @@ const TOUR_INCLUDE = {
           addresses_shipments_loading_address_idToaddresses: {
             select: {
               id: true,
+              name: true,
               street: true,
               zip: true,
               city: true,
@@ -80,6 +81,7 @@ const TOUR_INCLUDE = {
           addresses_shipments_delivery_address_idToaddresses: {
             select: {
               id: true,
+              name: true,
               street: true,
               zip: true,
               city: true,

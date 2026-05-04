@@ -401,10 +401,10 @@ export default function ShipmentEditModal({ shipment, open, onOpenChange }: Prop
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/40 z-40" />
+        <Dialog.Overlay className="fixed inset-0 bg-black/40 z-[1000]" />
         <Dialog.Content
           onClick={(e) => e.stopPropagation()}
-          className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-[min(680px,95vw)] max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-xl"
+          className="fixed left-1/2 top-1/2 z-[1001] -translate-x-1/2 -translate-y-1/2 w-[min(680px,95vw)] max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-xl"
         >
           <div className="flex items-center justify-between px-5 py-3 border-b">
             <Dialog.Title className="text-base font-semibold">

@@ -31,6 +31,7 @@ type StammTour = {
 type Customer = { id: string; customer_number: string; name: string };
 type Address = {
   id: string;
+  name?: string | null;
   street: string | null;
   zip: string | null;
   city: string | null;
@@ -1722,9 +1723,10 @@ function TourCard({
                 ? [
                     [addr.zip, addr.city].filter(Boolean).join(' '),
                     addr.street,
+                    addr.name,
                   ]
                     .filter(Boolean)
-                    .join(', ')
+                    .join(' · ')
                 : '— Adresse fehlt —';
               groups.push({
                 stopNr: currentNr,

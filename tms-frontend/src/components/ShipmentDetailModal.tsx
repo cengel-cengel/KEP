@@ -49,6 +49,20 @@ function pickAddr(
   };
 }
 
+function fmtMoney(v: unknown): string {
+  if (v == null) return '—';
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n)) return '—';
+  return `€ ${n.toFixed(2)}`;
+}
+
+function fmtPct(v: unknown): string {
+  if (v == null) return '—';
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n)) return '—';
+  return `${n.toFixed(1)} %`;
+}
+
 export default function ShipmentDetailModal({
   shipmentId,
   shipments,
@@ -58,10 +72,18 @@ export default function ShipmentDetailModal({
   onNavigate,
   showEditButton = true,
 }: Props) {
-  const shipment = useMemo(
+  const baseShipment = useMemo(
     () => shipments.find((s) => s.id === shipmentId) ?? null,
     [shipments, shipmentId],
   );
+  const detailQ = useQuery<Shipment>({
+    queryKey: ['shipments', 'detail', shipmentId],
+    queryFn: async () =>
+      (await api.get<Shipment>(`/shipments/${shipmentId}`)).data,
+    enabled: isOpen && !!shipmentId,
+    staleTime: 30_000,
+  });
+  const shipment = (detailQ.data ?? baseShipment) as Shipment | null;
 
   // Keyboard-Shortcuts
   useEffect(() => {
@@ -146,6 +168,31 @@ export default function ShipmentDetailModal({
                 </div>
               </Section>
             </div>
+
+            <Section title="Wirtschaftlichkeit">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                <KV label="Erlös" value={fmtMoney(r.freight_revenue)} />
+                <KV
+                  label="Vorlauf"
+                  value={fmtMoney(r.pre_carriage_cost)}
+                />
+                <KV
+                  label="Hauptlauf"
+                  value={fmtMoney(r.main_carriage_cost)}
+                />
+                <KV
+                  label="Nachlauf"
+                  value={fmtMoney(r.on_carriage_cost)}
+                />
+              </div>
+              <div className="mt-2 pt-2 border-t border-gray-200 grid grid-cols-2 gap-x-4 gap-y-1.5">
+                <KV
+                  label="DB"
+                  value={fmtMoney(r.contribution_margin)}
+                />
+                <KV label="DB %" value={fmtPct(r.cm_percent)} />
+              </div>
+            </Section>
 
             <Section title={`Packstücke (${items.length})`}>
               {items.length === 0 ? (

@@ -20,6 +20,7 @@ import {
   type VorlaufCostInput,
 } from '../lib/vorlauf-costs.lib';
 import { routeDistanceKm } from '../lib/osrm.lib';
+import { routeTrip } from '../lib/osrm.lib';
 
 function timeToDate(hhmm?: string | null): Date | null | undefined {
   if (hhmm === undefined) return undefined;
@@ -120,6 +121,136 @@ export class NvTourenService {
         `recalcTourKm(${tourId}) failed: ${err?.message ?? err}`,
       );
     }
+  }
+
+  /** Wraps optimizeTourRoute ohne Mutation zu blockieren. */
+  private async safeOptimizeTour(tourId: string) {
+    try {
+      await this.optimizeTourRoute(tourId);
+    } catch (err: any) {
+      this.logger.warn(
+        `optimizeTourRoute(${tourId}) failed: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  async optimizeTourRoute(tourId: string) {
+    const tour = await this.prisma.nv_touren.findUnique({
+      where: { id: tourId },
+      include: TOUR_INCLUDE,
+    });
+    if (!tour) throw new NotFoundException('NV-Tour nicht gefunden');
+
+    const wh = await this.prisma.warehouses.findFirst({
+      where: { is_default: true, active: true },
+    });
+    if (!wh || wh.lat == null || wh.lng == null) {
+      this.logger.warn(
+        `optimizeTourRoute(${tourId}): default warehouse missing lat/lng — skip`,
+      );
+      return null;
+    }
+    const whLat = Number(wh.lat);
+    const whLng = Number(wh.lng);
+    if (!Number.isFinite(whLat) || !Number.isFinite(whLng)) {
+      this.logger.warn(
+        `optimizeTourRoute(${tourId}): warehouse coords NaN — skip`,
+      );
+      return null;
+    }
+
+    const sortedStops = [...tour.stops].sort(
+      (a, b) => a.position - b.position,
+    );
+    const stopsWithCoords: Array<{ id: string; coord: [number, number] }> = [];
+    let anyMissing = false;
+    for (const s of sortedStops) {
+      const sh: any = s.shipment;
+      const addr =
+        s.stop_type === 'DELIVERY'
+          ? sh?.addresses_shipments_delivery_address_idToaddresses
+          : sh?.addresses_shipments_loading_address_idToaddresses;
+      if (!addr || addr.lat == null || addr.lng == null) {
+        anyMissing = true;
+        continue;
+      }
+      const lat = Number(addr.lat);
+      const lng = Number(addr.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        anyMissing = true;
+        continue;
+      }
+      stopsWithCoords.push({ id: s.id, coord: [lng, lat] });
+    }
+
+    if (stopsWithCoords.length === 0) {
+      this.logger.warn(
+        `optimizeTourRoute(${tourId}): no stops with coords — fallback recalcTourKm`,
+      );
+      return this.recalcTourKm(tourId);
+    }
+    if (anyMissing) {
+      this.logger.warn(
+        `optimizeTourRoute(${tourId}): some stops without coords — skip reorder, only recalc KM`,
+      );
+      return this.recalcTourKm(tourId);
+    }
+    if (stopsWithCoords.length === 1) {
+      // Trip-API braucht ≥2 Coords zwischen Lager-Pinnings; mit 1 Stop
+      // ist Sequenz trivial (WH→Stop→WH). Nur KM neu berechnen.
+      return this.recalcTourKm(tourId);
+    }
+
+    const coords: Array<[number, number]> = [
+      [whLng, whLat],
+      ...stopsWithCoords.map((s) => s.coord),
+      [whLng, whLat],
+    ];
+    const result = await routeTrip(coords);
+    if (!result) {
+      this.logger.warn(
+        `optimizeTourRoute(${tourId}): OSRM trip returned null — fallback recalcTourKm`,
+      );
+      return this.recalcTourKm(tourId);
+    }
+
+    // optimizedOrder[optPos] = inputIdx (0..coords.length-1).
+    // Index 0 und last sind Lager → herausfiltern, mittlere mappen
+    // auf stop-Indizes via -1.
+    const newOrderStopIds: string[] = [];
+    const lastIdx = coords.length - 1;
+    for (const inputIdx of result.optimizedOrder) {
+      if (inputIdx === 0 || inputIdx === lastIdx) continue;
+      const stopIdx = inputIdx - 1;
+      if (stopIdx >= 0 && stopIdx < stopsWithCoords.length) {
+        newOrderStopIds.push(stopsWithCoords[stopIdx].id);
+      }
+    }
+    if (newOrderStopIds.length !== stopsWithCoords.length) {
+      this.logger.warn(
+        `optimizeTourRoute(${tourId}): order mismatch (${newOrderStopIds.length}/${stopsWithCoords.length}) — fallback recalcTourKm`,
+      );
+      return this.recalcTourKm(tourId);
+    }
+
+    // Reorder + KM in einer Transaktion
+    // (DEFERRABLE Position-Constraint erlaubt batch-Update).
+    await this.prisma.$transaction([
+      ...newOrderStopIds.map((stopId, i) =>
+        this.prisma.nv_tour_stops.update({
+          where: { id: stopId },
+          data: { position: i + 1 },
+        }),
+      ),
+      this.prisma.nv_touren.update({
+        where: { id: tourId },
+        data: {
+          geplante_km: result.distanceKm.toFixed(2),
+          km_calculated_at: new Date(),
+        },
+      }),
+    ]);
+    return result.distanceKm;
   }
 
   async recalcTourKm(tourId: string) {
@@ -624,7 +755,7 @@ export class NvTourenService {
       },
     });
     await this.safeRecalc(tourId);
-    await this.safeRecalcKm(tourId);
+    await this.safeOptimizeTour(tourId);
     return created;
   }
 
@@ -703,7 +834,7 @@ export class NvTourenService {
     if (!existing) throw new NotFoundException('Stop nicht gefunden');
     await this.prisma.nv_tour_stops.delete({ where: { id: stopId } });
     await this.safeRecalc(existing.nv_tour_id);
-    await this.safeRecalcKm(existing.nv_tour_id);
+    await this.safeOptimizeTour(existing.nv_tour_id);
     return { ok: true };
   }
 
@@ -1197,10 +1328,10 @@ export class NvTourenService {
     }
     // Recalc fuer alle moeglicherweise befuellten Touren
     await this.safeRecalc(tourId);
-    await this.safeRecalcKm(tourId);
+    await this.safeOptimizeTour(tourId);
     if (currentTourId !== tourId) {
       await this.safeRecalc(currentTourId);
-      await this.safeRecalcKm(currentTourId);
+      await this.safeOptimizeTour(currentTourId);
     }
     return {
       added,

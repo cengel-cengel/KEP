@@ -885,6 +885,12 @@ export default function NvDispositionPage() {
     );
   };
 
+  const handleTourStopClick = (stopId: string) => {
+    if (!activeTourViewId) return;
+    if (!confirm('Sendung aus Tour entfernen?')) return;
+    deleteStopMut.mutate({ tourId: activeTourViewId, stopId });
+  };
+
   const moveStop = (tour: NvTour, idx: number, dir: -1 | 1) => {
     const target = idx + dir;
     if (target < 0 || target >= tour.stops.length) return;
@@ -1385,6 +1391,7 @@ export default function NvDispositionPage() {
                     tour_gebiet_code: s.matched_tour_gebiet_code,
                   }))}
                 tourStops={activeTour ? activeTourStopPins : undefined}
+                onTourStopClick={handleTourStopClick}
                 clickedSequence={clickedSequence}
                 onPinClick={onPinClick}
                 onReset={() => setClickedSequence([])}

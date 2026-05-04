@@ -322,6 +322,19 @@ export default function NvDispoMapPopupPage() {
     }));
   }, [eligQ.data, farbenMap, activeTourPlzSet]);
 
+  const deleteStopMut = useMutation({
+    mutationFn: async (input: { tourId: string; stopId: string }) =>
+      (
+        await api.delete(
+          `/nv-touren/${input.tourId}/stops/${input.stopId}`,
+        )
+      ).data,
+    onSuccess: broadcastInvalidate,
+    onError: (err: any) => {
+      setBanner(`Fehler beim Entfernen: ${err?.message ?? '?'}`);
+    },
+  });
+
   const addStopMut = useMutation({
     mutationFn: async (input: { tourId: string; shipmentId: string }) =>
       (
@@ -361,6 +374,12 @@ export default function NvDispoMapPopupPage() {
         },
       },
     );
+  };
+
+  const handleTourStopClick = (stopId: string) => {
+    if (!activeTourViewId) return;
+    if (!confirm('Sendung aus Tour entfernen?')) return;
+    deleteStopMut.mutate({ tourId: activeTourViewId, stopId });
   };
 
   const updateModeParam = (m: 'PICKUP' | 'DELIVERY') => {
@@ -432,6 +451,7 @@ export default function NvDispoMapPopupPage() {
         <NvDispoMap
           shipments={mapShipments}
           tourStops={activeTour ? activeTourStopPins : undefined}
+          onTourStopClick={handleTourStopClick}
           clickedSequence={clickedSequence}
           onPinClick={onPinClick}
           onReset={() => setClickedSequence([])}

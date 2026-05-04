@@ -101,6 +101,7 @@ export default function NvDispoMap({
   onReset,
   onRouteError,
   tourStops,
+  onTourStopClick,
 }: {
   shipments: MapShipment[];
   clickedSequence: string[];
@@ -108,6 +109,7 @@ export default function NvDispoMap({
   onReset?: () => void;
   onRouteError?: (msg: string) => void;
   tourStops?: TourStopPin[];
+  onTourStopClick?: (stopId: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -412,8 +414,11 @@ export default function NvDispoMap({
         ? s.label ?? 'Lager'
         : `Stop ${s.position}${
             s.shipment_number ? ' · ' + s.shipment_number : ''
-          }`;
+          } · klick zum Entfernen`;
       m.bindTooltip(tip, { direction: 'top', offset: [0, -34] });
+      if (!s.isWarehouse && onTourStopClick) {
+        m.on('click', () => onTourStopClick(s.id));
+      }
       tourMarkersRef.current.set(s.id, m);
     }
     // OSRM-Polyline (separat von clickedSequence)
@@ -467,7 +472,7 @@ export default function NvDispoMap({
         }).addTo(map);
       })
       .finally(() => window.clearTimeout(timeoutId));
-  }, [tourStops]);
+  }, [tourStops, onTourStopClick]);
 
   return (
     <div className="relative w-full h-full">

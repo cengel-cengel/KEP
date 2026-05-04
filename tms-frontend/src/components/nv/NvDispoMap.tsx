@@ -120,6 +120,16 @@ export default function NvDispoMap({
   const tourAbortRef = useRef<AbortController | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<number | null>(null);
+  // Ref-Pattern: Marker-Handler verwenden .current und sehen
+  // immer den aktuellen Callback. Kein Stale-Closure mehr.
+  const onPinClickRef = useRef(onPinClick);
+  const onTourStopClickRef = useRef(onTourStopClick);
+  useEffect(() => {
+    onPinClickRef.current = onPinClick;
+  }, [onPinClick]);
+  useEffect(() => {
+    onTourStopClickRef.current = onTourStopClick;
+  }, [onTourStopClick]);
   const cacheRef = useRef<
     Map<string, { coords: [number, number][]; distance: number; duration: number }>
   >(new Map());
@@ -169,7 +179,7 @@ export default function NvDispoMap({
         attachDragHandlers(existing, s.id);
       } else {
         const marker = L.marker(ll, { icon }).addTo(map);
-        marker.on('click', () => onPinClick(s.id));
+        marker.on('click', () => onPinClickRef.current(s.id));
         const tip = `${s.shipment_number} · ${s.customer?.name ?? ''}<br>${s.loading_address?.zip ?? ''} ${s.loading_address?.city ?? ''}`;
         marker.bindTooltip(tip, { direction: 'top', offset: [0, -34] });
         markersRef.current.set(s.id, marker);
@@ -416,8 +426,10 @@ export default function NvDispoMap({
             s.shipment_number ? ' · ' + s.shipment_number : ''
           } · klick zum Entfernen`;
       m.bindTooltip(tip, { direction: 'top', offset: [0, -34] });
-      if (!s.isWarehouse && onTourStopClick) {
-        m.on('click', () => onTourStopClick(s.id));
+      if (!s.isWarehouse) {
+        m.on('click', () => {
+          onTourStopClickRef.current?.(s.id);
+        });
       }
       tourMarkersRef.current.set(s.id, m);
     }

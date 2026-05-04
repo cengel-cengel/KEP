@@ -939,7 +939,7 @@ export default function NvDispositionPage() {
         }`}
       >
         {(viewMode === 'list' || viewMode === 'split3') && (
-        <div className="bg-white rounded-lg border overflow-y-auto">
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-y-auto">
           <div className="px-3 py-2 border-b bg-gray-50 sticky top-0">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-sm">
@@ -1012,7 +1012,7 @@ export default function NvDispositionPage() {
         </div>
         )}
 
-        <div className="bg-white rounded-lg border overflow-y-auto">
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-y-auto">
           <div className="px-3 py-2 border-b bg-gray-50 sticky top-0">
             <h2 className="font-semibold text-sm">
               NV-Touren {datum} ({tourenQ.data?.length ?? 0})
@@ -1079,7 +1079,7 @@ export default function NvDispositionPage() {
         </div>
 
         {(viewMode === 'map' || viewMode === 'split3') && (
-          <div className="bg-white rounded-lg border overflow-hidden flex flex-col">
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden flex flex-col">
             <div className="px-3 py-2 border-b bg-gray-50 flex items-center gap-2">
               <h2 className="font-semibold text-sm">Karte</h2>
               <select
@@ -1300,10 +1300,10 @@ function TourCard({
       onDrop={handleDrop}
       className={`rounded-lg ${
         hovered
-          ? 'border-2 border-blue-500 bg-blue-50'
+          ? 'border-2 border-blue-500 bg-blue-50 shadow-md'
           : isActive
-            ? 'border-2 bg-white'
-            : 'border border-gray-200 bg-white'
+            ? 'border-2 bg-white shadow-md'
+            : 'border border-gray-200 bg-white shadow-sm'
       }`}
       style={
         isActive && !hovered

@@ -603,9 +603,17 @@ export default function NvDispositionPage() {
     if (!activeTour) return null;
     const set = new Set<string>();
     // PLZ aus tour.nv_stamm_tour.nv_tour_gebiet.plz_pattern
-    const pp =
-      (activeTour.nv_stamm_tour?.nv_tour_gebiet as any)?.plz_pattern;
-    if (Array.isArray(pp)) for (const p of pp) if (typeof p === 'string') set.add(p);
+    // Json-Feld → kann Array, String oder null sein.
+    const pp = (activeTour.nv_stamm_tour?.nv_tour_gebiet as any)
+      ?.plz_pattern;
+    if (Array.isArray(pp)) {
+      for (const p of pp) if (typeof p === 'string' && p) set.add(p);
+    } else if (typeof pp === 'string') {
+      for (const part of pp.split(',')) {
+        const p = part.trim();
+        if (p) set.add(p);
+      }
+    }
     // PLZ aus Stop-Adressen
     for (const s of activeTour.stops) {
       const sh: any = s.shipment;

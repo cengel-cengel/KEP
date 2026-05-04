@@ -59,7 +59,9 @@ type NvTour = {
   status: string;
   nv_stamm_tour?: {
     code: string;
-    nv_tour_gebiet?: { plz_pattern?: string | null } | null;
+    nv_tour_gebiet?: {
+      plz_pattern?: string | string[] | null;
+    } | null;
   } | null;
   stops: NvTourStop[];
 };
@@ -264,10 +266,18 @@ export default function NvDispoMapPopupPage() {
           : sh?.addresses_shipments_loading_address_idToaddresses;
       if (addr?.zip) set.add(addr.zip);
     }
-    const pat = activeTour.nv_stamm_tour?.nv_tour_gebiet?.plz_pattern ?? '';
-    for (const part of pat.split(',')) {
-      const p = part.trim();
-      if (p) set.add(p);
+    const pat = activeTour.nv_stamm_tour?.nv_tour_gebiet?.plz_pattern as
+      | string
+      | string[]
+      | null
+      | undefined;
+    if (Array.isArray(pat)) {
+      for (const p of pat) if (typeof p === 'string' && p) set.add(p);
+    } else if (typeof pat === 'string') {
+      for (const part of pat.split(',')) {
+        const p = part.trim();
+        if (p) set.add(p);
+      }
     }
     return set.size > 0 ? set : null;
   }, [activeTour]);

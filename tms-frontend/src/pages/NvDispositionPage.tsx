@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, Package, Pencil, Plus, Sparkles, Trash2, Truck, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Eye, Package, Pencil, Plus, Sparkles, Trash2, Truck, X } from 'lucide-react';
 import NvTourKostenModal from '../components/NvTourKostenModal';
 import ShipmentDetailModal from '../components/ShipmentDetailModal';
 import type { Shipment } from '../types/shipment';
@@ -134,34 +134,26 @@ function todayISO() {
 }
 
 function eligColumns(
-  selected: Set<string>,
-  handleSelect: (id: string, shiftKey: boolean) => void,
   onOpenDetail: (id: string) => void,
 ): Column<EligibleShipment>[] {
   return [
     {
-      key: 'select',
+      key: 'detail',
       header: '',
       width: 32,
       minWidth: 32,
       resizable: false,
       render: (s) => (
-        <input
-          type="checkbox"
-          checked={selected.has(s.id)}
+        <button
           onClick={(e) => {
             e.stopPropagation();
-            // checkbox toggles via onChange; do shift-aware select here
-            const shift = e.shiftKey;
-            // defer to next tick to let onChange run? Use direct handler
-            // since onChange will not have shiftKey available.
-            e.preventDefault();
-            handleSelect(s.id, shift);
+            onOpenDetail(s.id);
           }}
-          onChange={() => {
-            /* no-op: handled in onClick to capture shiftKey */
-          }}
-        />
+          className="text-gray-500 hover:text-blue-700"
+          title="Detail"
+        >
+          <Eye size={16} />
+        </button>
       ),
     },
     {
@@ -231,25 +223,6 @@ function eligColumns(
           </span>
         );
       },
-    },
-    {
-      key: 'actions',
-      header: '',
-      width: 48,
-      resizable: false,
-      align: 'right',
-      render: (s) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenDetail(s.id);
-          }}
-          className="text-gray-500 hover:text-blue-700"
-          title="Detail"
-        >
-          <Pencil size={16} />
-        </button>
-      ),
     },
   ];
 }
@@ -1095,11 +1068,7 @@ export default function NvDispositionPage() {
               {!collapsed && (
               <ResponsiveTable<EligibleShipment>
                 storageKey={`nv-dispo-elig-${groupKey}`}
-                columns={eligColumns(
-                  selected,
-                  handleSelect,
-                  (id) => setDetailShipmentId(id),
-                )}
+                columns={eligColumns((id) => setDetailShipmentId(id))}
                 data={items}
                 rowKey={(s) => s.id}
                 density="compact"
@@ -1157,6 +1126,9 @@ export default function NvDispositionPage() {
                   if (confirm(`Tour löschen?`)) deleteTourMut.mutate(tour.id);
                 }}
                 onOpenKosten={() => setKostenTourId(tour.id)}
+                onOpenDetail={(shipmentId) =>
+                  setDetailShipmentId(shipmentId)
+                }
                 onToggleTourView={() =>
                   setActiveTourViewId((prev) =>
                     prev === tour.id ? null : tour.id,
@@ -1316,6 +1288,7 @@ function TourCard({
   onDeleteTour,
   onOpenKosten,
   onOpenDrillDown,
+  onOpenDetail,
   onSetStopStatus,
   onSetTourStatus,
   onToggleTourView,
@@ -1328,6 +1301,7 @@ function TourCard({
   onDeleteTour: () => void;
   onOpenKosten: () => void;
   onOpenDrillDown: (shipmentId: string, shipmentNumber: string) => void;
+  onOpenDetail: (shipmentId: string) => void;
   onSetStopStatus: (
     stopId: string,
     status: 'ARRIVED' | 'COMPLETED' | 'FAILED',
@@ -1660,6 +1634,14 @@ function TourCard({
                 </button>
               );
             })()}
+            <button
+              onClick={() => s.shipment && onOpenDetail(s.shipment.id)}
+              disabled={!s.shipment}
+              className="text-gray-500 hover:text-blue-700 disabled:opacity-30"
+              title="Sendungs-Detail"
+            >
+              <Eye size={14} />
+            </button>
             <button
               onClick={() => onMoveStop(idx, -1)}
               disabled={idx === 0}

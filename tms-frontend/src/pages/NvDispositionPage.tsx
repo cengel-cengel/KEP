@@ -507,9 +507,10 @@ export default function NvDispositionPage() {
       popupWindowRef.current.focus();
       return;
     }
-    const url = `/nv-disposition/map-popup?datum=${encodeURIComponent(
-      datum,
-    )}&mode=${mode}`;
+    const sp = new URLSearchParams({ datum, mode });
+    if (selectedTourId) sp.set('tour', selectedTourId);
+    if (activeTourViewId) sp.set('active', activeTourViewId);
+    const url = `/nv-disposition/map-popup?${sp.toString()}`;
     const w = window.open(
       url,
       'nv-dispo-map-popup',

@@ -415,7 +415,6 @@ export default function NvDispoMapPopupPage() {
         })
       ).data,
     onMutate: async (input) => {
-      console.log('[Popup] addStop onMutate', input);
       await qc.cancelQueries({ queryKey: ['nv-elig'] });
       const prev = qc.getQueriesData<EligibleShipment[]>({
         queryKey: ['nv-elig'],
@@ -427,7 +426,6 @@ export default function NvDispoMapPopupPage() {
       return { prev };
     },
     onError: (err: any, _input, ctx) => {
-      console.error('[Popup] addStop error', err);
       if (ctx?.prev) {
         for (const [key, data] of ctx.prev) qc.setQueryData(key, data);
       }
@@ -446,12 +444,6 @@ export default function NvDispoMapPopupPage() {
 
   const onPinClick = (shipmentId: string) => {
     const targetTourId = activeTourViewId ?? selectedTourId;
-    console.log('[Popup] pin-click', {
-      shipmentId,
-      activeTourViewId,
-      selectedTourId,
-      targetTourId,
-    });
     if (!targetTourId) {
       setPinAddShipmentId(shipmentId);
       return;

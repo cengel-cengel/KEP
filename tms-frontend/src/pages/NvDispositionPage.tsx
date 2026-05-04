@@ -5,14 +5,20 @@ import NvTourKostenModal from '../components/NvTourKostenModal';
 import ShipmentDetailModal from '../components/ShipmentDetailModal';
 import type { Shipment } from '../types/shipment';
 import NvDispoMap from '../components/nv/NvDispoMap';
-import type { MapShipment } from '../components/nv/NvDispoMap';
+import type { MapShipment, TourStopPin } from '../components/nv/NvDispoMap';
 import CostDrillDownModal from '../components/nv/CostDrillDownModal';
 import type { CostComponent } from '../components/nv/CostDrillDownModal';
 import ResponsiveTable from '../components/table/ResponsiveTable';
 import type { Column } from '../components/table/ResponsiveTable';
 import { api } from '../lib/api';
 
-type TourGebiet = { id: string; code: string; name: string; farbe?: string | null };
+type TourGebiet = {
+  id: string;
+  code: string;
+  name: string;
+  farbe?: string | null;
+  plz_pattern?: string[] | null;
+};
 type StammTour = {
   id: string;
   code: string;
@@ -87,6 +93,8 @@ type Stop = {
     weight_kg?: string | number | null;
     volume_m3?: string | number | null;
     ldm?: string | number | null;
+    addresses_shipments_loading_address_idToaddresses?: AddressGeo | null;
+    addresses_shipments_delivery_address_idToaddresses?: AddressGeo | null;
   };
 };
 type NvTour = {
@@ -274,6 +282,9 @@ export default function NvDispositionPage() {
   const [bulkPickerOpen, setBulkPickerOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [kostenTourId, setKostenTourId] = useState<string | null>(null);
+  const [activeTourViewId, setActiveTourViewId] = useState<string | null>(
+    null,
+  );
   const [expandedGroup, setExpandedGroup] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     try {
@@ -384,6 +395,59 @@ export default function NvDispositionPage() {
     qc.invalidateQueries({ queryKey: ['nv-tour-capacity'] });
     qc.invalidateQueries({ queryKey: ['shipment-cost-comp'] });
   };
+
+  const activeTour = useMemo(
+    () =>
+      activeTourViewId
+        ? (tourenQ.data ?? []).find((t) => t.id === activeTourViewId) ?? null
+        : null,
+    [activeTourViewId, tourenQ.data],
+  );
+
+  const activeTourStopPins = useMemo<TourStopPin[]>(() => {
+    if (!activeTour) return [];
+    const out: TourStopPin[] = [];
+    for (const s of activeTour.stops) {
+      const sh: any = s.shipment;
+      if (!sh) continue;
+      const addr =
+        s.stop_type === 'DELIVERY'
+          ? sh.addresses_shipments_delivery_address_idToaddresses
+          : sh.addresses_shipments_loading_address_idToaddresses;
+      if (!addr || addr.lat == null || addr.lng == null) continue;
+      const lat = Number(addr.lat);
+      const lng = Number(addr.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      out.push({
+        id: s.id,
+        position: s.position,
+        shipment_number: sh.shipment_number,
+        lat,
+        lng,
+      });
+    }
+    return out;
+  }, [activeTour]);
+
+  const activeTourPlzSet = useMemo(() => {
+    if (!activeTour) return null;
+    const set = new Set<string>();
+    // PLZ aus tour.nv_stamm_tour.nv_tour_gebiet.plz_pattern
+    const pp =
+      (activeTour.nv_stamm_tour?.nv_tour_gebiet as any)?.plz_pattern;
+    if (Array.isArray(pp)) for (const p of pp) if (typeof p === 'string') set.add(p);
+    // PLZ aus Stop-Adressen
+    for (const s of activeTour.stops) {
+      const sh: any = s.shipment;
+      if (!sh) continue;
+      const addr =
+        s.stop_type === 'DELIVERY'
+          ? sh.addresses_shipments_delivery_address_idToaddresses
+          : sh.addresses_shipments_loading_address_idToaddresses;
+      if (addr?.zip) set.add(addr.zip);
+    }
+    return set;
+  }, [activeTour]);
 
   const farbenMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -975,6 +1039,12 @@ export default function NvDispositionPage() {
                   if (confirm(`Tour löschen?`)) deleteTourMut.mutate(tour.id);
                 }}
                 onOpenKosten={() => setKostenTourId(tour.id)}
+                onToggleTourView={() =>
+                  setActiveTourViewId((prev) =>
+                    prev === tour.id ? null : tour.id,
+                  )
+                }
+                isActive={activeTourViewId === tour.id}
                 onOpenDrillDown={(shipmentId, shipmentNumber) => {
                   setDrillDown({
                     shipmentId,
@@ -1028,11 +1098,15 @@ export default function NvDispositionPage() {
             <div className="flex-1 min-h-0 relative">
               <NvDispoMap
                 shipments={((eligQ.data ?? []) as EligibleShipment[])
-                  .filter((s) =>
-                    expandedGroup
+                  .filter((s) => {
+                    if (activeTourPlzSet) {
+                      const zip = s.pin_address?.zip ?? '';
+                      return zip ? activeTourPlzSet.has(zip) : false;
+                    }
+                    return expandedGroup
                       ? s.matched_tour_gebiet_code === expandedGroup
-                      : true,
-                  )
+                      : true;
+                  })
                   .map((s): MapShipment => ({
                     id: s.id,
                     shipment_number: s.shipment_number,
@@ -1045,6 +1119,7 @@ export default function NvDispositionPage() {
                       undefined,
                     tour_gebiet_code: s.matched_tour_gebiet_code,
                   }))}
+                tourStops={activeTour ? activeTourStopPins : undefined}
                 clickedSequence={clickedSequence}
                 onPinClick={onPinClick}
                 onReset={() => setClickedSequence([])}
@@ -1125,6 +1200,8 @@ function TourCard({
   onOpenDrillDown,
   onSetStopStatus,
   onSetTourStatus,
+  onToggleTourView,
+  isActive,
 }: {
   tour: NvTour;
   onDrop: (shipmentId: string, source?: 'map' | 'list') => void;
@@ -1142,6 +1219,8 @@ function TourCard({
     openCount: number,
     shipmentCount: number,
   ) => void;
+  onToggleTourView: () => void;
+  isActive: boolean;
 }) {
   const costsQ = useQuery<CostComponent[]>({
     queryKey: ['nv-tour-cost-comp', tour.id],
@@ -1219,14 +1298,29 @@ function TourCard({
       }}
       onDragLeave={() => setHovered(false)}
       onDrop={handleDrop}
-      className={`border rounded-lg ${
-        hovered ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'
+      className={`rounded-lg ${
+        hovered
+          ? 'border-2 border-blue-500 bg-blue-50'
+          : isActive
+            ? 'border-2 bg-white'
+            : 'border border-gray-200 bg-white'
       }`}
+      style={
+        isActive && !hovered
+          ? {
+              borderColor:
+                tour.nv_stamm_tour?.nv_tour_gebiet?.farbe ?? '#1e40af',
+              backgroundColor:
+                (tour.nv_stamm_tour?.nv_tour_gebiet?.farbe ?? '#1e40af') +
+                '14',
+            }
+          : undefined
+      }
     >
       <div
         className="px-3 py-2 border-b bg-gray-50 flex items-center justify-between cursor-pointer hover:bg-gray-100"
-        onClick={onOpenKosten}
-        title="Klick für Kosten-Eingabe"
+        onClick={onToggleTourView}
+        title={isActive ? 'Tour-Karte schließen' : 'Tour-Karte anzeigen'}
       >
         <div>
           <div className="font-semibold text-sm flex items-center gap-2">
@@ -1324,6 +1418,13 @@ function TourCard({
               Abschließen
             </button>
           )}
+          <button
+            onClick={onOpenKosten}
+            className="text-blue-600 hover:text-blue-800"
+            title="Kosten bearbeiten"
+          >
+            <Pencil size={16} />
+          </button>
           <button
             onClick={onDeleteTour}
             className="text-red-500 hover:text-red-700"

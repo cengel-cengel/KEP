@@ -32,7 +32,15 @@ const TOUR_INCLUDE = {
       id: true,
       code: true,
       name: true,
-      nv_tour_gebiet: { select: { id: true, code: true, name: true } },
+      nv_tour_gebiet: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          farbe: true,
+          plz_pattern: true,
+        },
+      },
     },
   },
   subunternehmer: {
@@ -58,6 +66,26 @@ const TOUR_INCLUDE = {
           weight_kg: true,
           volume_m3: true,
           ldm: true,
+          addresses_shipments_loading_address_idToaddresses: {
+            select: {
+              id: true,
+              street: true,
+              zip: true,
+              city: true,
+              lat: true,
+              lng: true,
+            },
+          },
+          addresses_shipments_delivery_address_idToaddresses: {
+            select: {
+              id: true,
+              street: true,
+              zip: true,
+              city: true,
+              lat: true,
+              lng: true,
+            },
+          },
         },
       },
     },

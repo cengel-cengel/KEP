@@ -58,23 +58,36 @@ function makeIcon(active: boolean, label?: string | number, color?: string) {
   });
 }
 
+export type TourStopPin = {
+  id: string;
+  position: number;
+  shipment_number?: string;
+  lat: number;
+  lng: number;
+};
+
 export default function NvDispoMap({
   shipments,
   clickedSequence,
   onPinClick,
   onReset,
   onRouteError,
+  tourStops,
 }: {
   shipments: MapShipment[];
   clickedSequence: string[];
   onPinClick: (shipmentId: string) => void;
   onReset?: () => void;
   onRouteError?: (msg: string) => void;
+  tourStops?: TourStopPin[];
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const polylineRef = useRef<L.Polyline | null>(null);
+  const tourMarkersRef = useRef<Map<string, L.Marker>>(new Map());
+  const tourPolylineRef = useRef<L.Polyline | null>(null);
+  const tourAbortRef = useRef<AbortController | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<number | null>(null);
   const cacheRef = useRef<
@@ -313,8 +326,96 @@ export default function NvDispoMap({
       if (polylineRef.current && mapRef.current) {
         mapRef.current.removeLayer(polylineRef.current);
       }
+      tourAbortRef.current?.abort();
+      if (tourPolylineRef.current && mapRef.current) {
+        mapRef.current.removeLayer(tourPolylineRef.current);
+      }
+      for (const m of tourMarkersRef.current.values()) {
+        if (mapRef.current) mapRef.current.removeLayer(m);
+      }
     };
   }, []);
+
+  // Tour-Stops als gruene nummerierte Marker + OSRM-Polyline
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    // Marker neu aufbauen
+    for (const m of tourMarkersRef.current.values()) {
+      map.removeLayer(m);
+    }
+    tourMarkersRef.current.clear();
+    if (!tourStops || tourStops.length === 0) {
+      if (tourPolylineRef.current) {
+        map.removeLayer(tourPolylineRef.current);
+        tourPolylineRef.current = null;
+      }
+      return;
+    }
+    const sorted = [...tourStops].sort((a, b) => a.position - b.position);
+    for (const s of sorted) {
+      const icon = makeIcon(true, s.position, '#16a34a');
+      const m = L.marker([s.lat, s.lng], { icon }).addTo(map);
+      m.bindTooltip(
+        `Stop ${s.position}${
+          s.shipment_number ? ' · ' + s.shipment_number : ''
+        }`,
+        { direction: 'top', offset: [0, -34] },
+      );
+      tourMarkersRef.current.set(s.id, m);
+    }
+    // OSRM-Polyline (separat von clickedSequence)
+    tourAbortRef.current?.abort();
+    if (tourPolylineRef.current) {
+      map.removeLayer(tourPolylineRef.current);
+      tourPolylineRef.current = null;
+    }
+    if (sorted.length < 2) return;
+    const ctrl = new AbortController();
+    tourAbortRef.current = ctrl;
+    const timeoutId = window.setTimeout(() => ctrl.abort(), 5000);
+    const url = `https://router.project-osrm.org/route/v1/driving/${sorted
+      .map((s) => `${s.lng},${s.lat}`)
+      .join(';')}?overview=full&geometries=geojson`;
+    fetch(url, { signal: ctrl.signal })
+      .then((r) => {
+        if (!r.ok) throw new Error(`OSRM ${r.status}`);
+        return r.json();
+      })
+      .then((j: any) => {
+        const geom = j?.routes?.[0]?.geometry?.coordinates as
+          | [number, number][]
+          | undefined;
+        if (!geom || geom.length < 2) return;
+        const latlngs: [number, number][] = geom.map(([lng, lat]) => [
+          lat,
+          lng,
+        ]);
+        if (tourPolylineRef.current && mapRef.current) {
+          mapRef.current.removeLayer(tourPolylineRef.current);
+        }
+        tourPolylineRef.current = L.polyline(latlngs, {
+          color: '#16a34a',
+          weight: 4,
+          opacity: 0.6,
+        }).addTo(map);
+      })
+      .catch((err) => {
+        if (err?.name === 'AbortError') return;
+        // Fallback Luftlinie
+        const latlngs: [number, number][] = sorted.map((s) => [s.lat, s.lng]);
+        if (tourPolylineRef.current && mapRef.current) {
+          mapRef.current.removeLayer(tourPolylineRef.current);
+        }
+        tourPolylineRef.current = L.polyline(latlngs, {
+          color: '#16a34a',
+          weight: 3,
+          opacity: 0.4,
+          dashArray: '5,10',
+        }).addTo(map);
+      })
+      .finally(() => window.clearTimeout(timeoutId));
+  }, [tourStops]);
 
   return (
     <div className="relative w-full h-full">

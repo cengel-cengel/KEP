@@ -1077,10 +1077,28 @@ export default function NvDispositionPage() {
                 rowProps={(s) => ({
                   draggable: true,
                   onDragStart: (e: React.DragEvent<HTMLDivElement>) => {
+                    const idsToDrag =
+                      selected.has(s.id) && selected.size > 1
+                        ? Array.from(selected)
+                        : [s.id];
                     e.dataTransfer.setData(
                       'application/json',
-                      JSON.stringify({ shipmentId: s.id }),
+                      JSON.stringify({
+                        shipmentIds: idsToDrag,
+                        source: 'list',
+                      }),
                     );
+                    if (idsToDrag.length > 1) {
+                      const ghost = document.createElement('div');
+                      ghost.textContent = `${idsToDrag.length} Sendungen ziehen`;
+                      ghost.style.cssText =
+                        'position:absolute;top:-1000px;left:-1000px;padding:6px 10px;background:#1e40af;color:white;border-radius:6px;font-size:12px;font-weight:500;font-family:system-ui,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.3);';
+                      document.body.appendChild(ghost);
+                      e.dataTransfer.setDragImage(ghost, 10, 10);
+                      setTimeout(() => {
+                        document.body.removeChild(ghost);
+                      }, 0);
+                    }
                     setDraggingId(s.id);
                   },
                   onDragEnd: () => setDraggingId(null),
@@ -1115,9 +1133,13 @@ export default function NvDispositionPage() {
               <TourCard
                 key={tour.id}
                 tour={tour}
-                onDrop={(shipmentId, source) =>
-                  dropOnTour(tour.id, shipmentId, source)
-                }
+                onDrop={(ids, source) => {
+                  if (ids.length === 1) {
+                    dropOnTour(tour.id, ids[0], source);
+                  } else {
+                    dropBulkOnTour(tour.id, ids);
+                  }
+                }}
                 onMoveStop={(idx, dir) => moveStop(tour, idx, dir)}
                 onDeleteStop={(stopId) =>
                   deleteStopMut.mutate({ tourId: tour.id, stopId })
@@ -1295,7 +1317,7 @@ function TourCard({
   isActive,
 }: {
   tour: NvTour;
-  onDrop: (shipmentId: string, source?: 'map' | 'list') => void;
+  onDrop: (shipmentIds: string[], source?: 'map' | 'list') => void;
   onMoveStop: (idx: number, dir: -1 | 1) => void;
   onDeleteStop: (stopId: string) => void;
   onDeleteTour: () => void;
@@ -1369,11 +1391,17 @@ function TourCard({
     const json = e.dataTransfer.getData('application/json');
     if (!json) return;
     try {
-      const { shipmentId, source } = JSON.parse(json) as {
+      const parsed = JSON.parse(json) as {
         shipmentId?: string;
+        shipmentIds?: string[];
         source?: 'map' | 'list';
       };
-      if (shipmentId) onDrop(shipmentId, source);
+      const ids = Array.isArray(parsed.shipmentIds)
+        ? parsed.shipmentIds
+        : parsed.shipmentId
+          ? [parsed.shipmentId]
+          : [];
+      if (ids.length > 0) onDrop(ids, parsed.source);
     } catch {
       /* ignore */
     }

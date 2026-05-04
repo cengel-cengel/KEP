@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, Eye, Package, Pencil, Plus, Sparkles, Trash2, Truck, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ExternalLink, Eye, Package, Pencil, Plus, Sparkles, Trash2, Truck, X } from 'lucide-react';
 import NvTourKostenModal from '../components/NvTourKostenModal';
 import ShipmentDetailModal from '../components/ShipmentDetailModal';
 import type { Shipment } from '../types/shipment';
@@ -418,12 +418,63 @@ export default function NvDispositionPage() {
     );
   }, [tourenQ.data, filterTour]);
 
+  const popupChannelRef = useRef<BroadcastChannel | null>(null);
+  useEffect(() => {
+    let ch: BroadcastChannel | null = null;
+    try {
+      ch = new BroadcastChannel('tms-nv-dispo-popup');
+      popupChannelRef.current = ch;
+      ch.onmessage = (ev) => {
+        const data = ev.data as { type?: string } | undefined;
+        if (data?.type === 'invalidate') {
+          qc.invalidateQueries({ queryKey: ['nv-touren'] });
+          qc.invalidateQueries({ queryKey: ['nv-elig'] });
+          qc.invalidateQueries({ queryKey: ['nv-tour-cost-comp'] });
+          qc.invalidateQueries({ queryKey: ['nv-tour-capacity'] });
+          qc.invalidateQueries({ queryKey: ['shipment-cost-comp'] });
+        }
+      };
+    } catch {
+      /* BroadcastChannel not supported -> silent no-op */
+    }
+    return () => {
+      try {
+        ch?.close();
+      } catch {
+        /* ignore */
+      }
+      popupChannelRef.current = null;
+    };
+  }, [qc]);
+
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['nv-touren'] });
     qc.invalidateQueries({ queryKey: ['nv-elig'] });
     qc.invalidateQueries({ queryKey: ['nv-tour-cost-comp'] });
     qc.invalidateQueries({ queryKey: ['nv-tour-capacity'] });
     qc.invalidateQueries({ queryKey: ['shipment-cost-comp'] });
+    try {
+      popupChannelRef.current?.postMessage({ type: 'invalidate' });
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const openMapPopup = () => {
+    const url = `/nv-disposition/map-popup?datum=${encodeURIComponent(
+      datum,
+    )}&mode=${mode}`;
+    const w = window.open(
+      url,
+      'nv-dispo-map-popup',
+      'width=1200,height=900,noopener=no',
+    );
+    if (!w) {
+      setBanner({
+        kind: 'err',
+        msg: 'Pop-up blockiert — bitte für diese Seite erlauben.',
+      });
+    }
   };
 
   const activeTour = useMemo(
@@ -1206,6 +1257,13 @@ export default function NvDispositionPage() {
                   </option>
                 ))}
               </select>
+              <button
+                onClick={openMapPopup}
+                className="text-gray-500 hover:text-blue-700"
+                title="Karte in neuem Fenster öffnen"
+              >
+                <ExternalLink size={14} />
+              </button>
             </div>
             <div className="flex-1 min-h-0 relative">
               <NvDispoMap

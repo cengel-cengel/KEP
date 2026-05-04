@@ -7,6 +7,7 @@ import NewShipmentPage from './pages/NewShipmentPage';
 import BeladeplanPage from './pages/BeladeplanPage';
 import DispositionPage from './pages/DispositionPage';
 import NvDispositionPage from './pages/NvDispositionPage';
+import NvDispoMapPopupPage from './pages/NvDispoMapPopupPage';
 import MapDispositionPage from './pages/MapDispositionPage';
 import MapPage from './pages/MapPage';
 import ClearancePage from './pages/ClearancePage';
@@ -38,6 +39,14 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/nv-disposition/map-popup"
+        element={
+          <PrivateRoute>
+            <NvDispoMapPopupPage />
+          </PrivateRoute>
+        }
+      />
       <Route
         element={
           <PrivateRoute>

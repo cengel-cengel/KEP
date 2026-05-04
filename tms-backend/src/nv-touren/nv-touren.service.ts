@@ -784,7 +784,11 @@ export class NvTourenService {
       stops_added: number;
       stops_skipped: number;
       stops_skipped_capacity: number;
+      stops_skipped_too_big: number;
+      new_tours_created: number;
     }[] = [];
+    let total_skipped_too_big = 0;
+    let total_new_tours_created = 0;
 
     for (const st of stammTouren) {
       let tour = await this.prisma.nv_touren.findFirst({
@@ -809,6 +813,8 @@ export class NvTourenService {
       }
       const result = await this.copyStammKunden(tour.id, mode);
       stops_added_total += result.added ?? 0;
+      total_skipped_too_big += result.skipped_too_big ?? 0;
+      total_new_tours_created += result.new_tours_created ?? 0;
       details.push({
         tour_id: tour.id,
         code: st.code,
@@ -816,14 +822,67 @@ export class NvTourenService {
         stops_added: result.added ?? 0,
         stops_skipped: result.skipped ?? 0,
         stops_skipped_capacity: result.skipped_capacity ?? 0,
+        stops_skipped_too_big: result.skipped_too_big ?? 0,
+        new_tours_created: result.new_tours_created ?? 0,
       });
     }
 
     return {
-      touren_created,
+      touren_created: touren_created + total_new_tours_created,
+      touren_created_template: touren_created,
+      new_tours_created: total_new_tours_created,
       stops_added: stops_added_total,
+      stops_skipped_too_big: total_skipped_too_big,
       details,
     };
+  }
+
+  /**
+   * Pruft ob eine Sendung ueberhaupt in eine LEERE Tour
+   * mit der gegebenen Sub-Konfig passen wuerde.
+   * Returns true wenn shipment passt; false wenn ein
+   * shipment-Wert sub.max_* alleine schon ueberschreitet
+   * (zu gross fuer Sub).
+   */
+  private async shipmentFitsInEmptyTour(
+    shipmentId: string,
+    sub: {
+      max_paletten: number | null;
+      max_gewicht_kg: any;
+      max_volumen_m3: any;
+      max_ldm: any;
+    } | null,
+  ): Promise<boolean> {
+    if (!sub) return true;
+    const ship = await this.prisma.shipments.findUnique({
+      where: { id: shipmentId },
+      select: {
+        package_count: true,
+        weight_kg: true,
+        volume_m3: true,
+        ldm: true,
+      },
+    });
+    if (!ship) return true;
+    const checks: { val: number; max: number | null }[] = [
+      { val: Number(ship.package_count ?? 0), max: sub.max_paletten ?? null },
+      {
+        val: Number(ship.weight_kg ?? 0),
+        max: sub.max_gewicht_kg != null ? Number(sub.max_gewicht_kg) : null,
+      },
+      {
+        val: Number(ship.volume_m3 ?? 0),
+        max: sub.max_volumen_m3 != null ? Number(sub.max_volumen_m3) : null,
+      },
+      {
+        val: Number(ship.ldm ?? 0),
+        max: sub.max_ldm != null ? Number(sub.max_ldm) : null,
+      },
+    ];
+    for (const c of checks) {
+      if (c.max != null && c.val > c.max) return false;
+    }
+    return true;
   }
 
   async copyStammKunden(
@@ -836,6 +895,8 @@ export class NvTourenService {
         id: true,
         datum: true,
         nv_stamm_tour_id: true,
+        subunternehmer_id: true,
+        fahrzeug_typ: true,
       },
     });
     if (!tour) throw new NotFoundException('NV-Tour nicht gefunden');
@@ -844,6 +905,8 @@ export class NvTourenService {
         added: 0,
         skipped: 0,
         skipped_capacity: 0,
+        skipped_too_big: 0,
+        new_tours_created: 0,
         reason: 'Tour ohne Stamm-Tour',
       };
     }
@@ -865,10 +928,30 @@ export class NvTourenService {
       ).map((s) => s.shipment_id),
     );
 
+    // Sub des Original-Tours fuer too_big-Checks und
+    // Auto-Tour-Anlegen (gleicher Sub).
+    const originalSubId = tour.subunternehmer_id ?? null;
+    const subForChecks = originalSubId
+      ? await this.prisma.nv_subunternehmer.findUnique({
+          where: { id: originalSubId },
+          select: {
+            id: true,
+            max_paletten: true,
+            max_gewicht_kg: true,
+            max_volumen_m3: true,
+            max_ldm: true,
+            tarif_typ: true,
+            tarif_tagespauschale_eur: true,
+            tarif_pro_stop_eur: true,
+          },
+        })
+      : null;
+
+    let currentTourId = tourId;
     let nextPos =
       (
         await this.prisma.nv_tour_stops.aggregate({
-          where: { nv_tour_id: tourId },
+          where: { nv_tour_id: currentTourId },
           _max: { position: true },
         })
       )._max.position ?? -1;
@@ -876,6 +959,34 @@ export class NvTourenService {
     let added = 0;
     let skipped = 0;
     let skipped_capacity = 0;
+    let skipped_too_big = 0;
+    let new_tours_created = 0;
+
+    const createNewTourSameTemplate = async (): Promise<string> => {
+      const created = await this.prisma.nv_touren.create({
+        data: {
+          nv_stamm_tour_id: tour.nv_stamm_tour_id,
+          datum: tour.datum,
+          status: 'PLANNING',
+          subunternehmer_id: tour.subunternehmer_id ?? undefined,
+          fahrzeug_typ: tour.fahrzeug_typ ?? undefined,
+          fahrer_kosten_eur:
+            subForChecks?.tarif_typ === 'TAGESPAUSCHALE' &&
+            subForChecks.tarif_tagespauschale_eur != null
+              ? Number(subForChecks.tarif_tagespauschale_eur)
+              : undefined,
+          fahrzeug_kosten_eur: 90,
+          kraftstoff_kosten_eur: 70,
+          dispo_kosten_eur: 30,
+          sonstige_kosten_eur: 10,
+          kosten_modus: 'TARIF',
+        },
+        select: { id: true },
+      });
+      new_tours_created++;
+      return created.id;
+    };
+
     for (const sk of stammKunden) {
       const shipments = await this.prisma.shipments.findMany({
         where:
@@ -903,20 +1014,47 @@ export class NvTourenService {
           skipped++;
           continue;
         }
-        try {
-          await this.assertCapacityOk(tourId, s.id);
-        } catch (err: any) {
-          if (err instanceof ConflictException) {
-            skipped_capacity++;
-            continue;
-          }
-          throw err;
+        // 1) Pre-Check: passt Sendung ueberhaupt in eine
+        // leere Tour mit dieser Sub-Konfig?
+        const fits = await this.shipmentFitsInEmptyTour(
+          s.id,
+          subForChecks,
+        );
+        if (!fits) {
+          skipped_too_big++;
+          continue;
         }
+        // 2) Versuche aktuelle Tour, sonst neue Tour anlegen
+        let placed = false;
+        for (let attempt = 0; attempt < 2 && !placed; attempt++) {
+          try {
+            await this.assertCapacityOk(currentTourId, s.id);
+            placed = true;
+          } catch (err: any) {
+            if (err instanceof ConflictException && attempt === 0) {
+              currentTourId = await createNewTourSameTemplate();
+              nextPos =
+                (
+                  await this.prisma.nv_tour_stops.aggregate({
+                    where: { nv_tour_id: currentTourId },
+                    _max: { position: true },
+                  })
+                )._max.position ?? -1;
+              continue;
+            }
+            if (err instanceof ConflictException) {
+              skipped_capacity++;
+              break;
+            }
+            throw err;
+          }
+        }
+        if (!placed) continue;
         nextPos++;
         try {
           await this.prisma.nv_tour_stops.create({
             data: {
-              nv_tour_id: tourId,
+              nv_tour_id: currentTourId,
               shipment_id: s.id,
               position: nextPos,
               stop_type: mode,
@@ -931,8 +1069,18 @@ export class NvTourenService {
         }
       }
     }
+    // Recalc fuer alle moeglicherweise befuellten Touren
     await this.safeRecalc(tourId);
-    return { added, skipped, skipped_capacity };
+    if (currentTourId !== tourId) {
+      await this.safeRecalc(currentTourId);
+    }
+    return {
+      added,
+      skipped,
+      skipped_capacity,
+      skipped_too_big,
+      new_tours_created,
+    };
   }
 
   async getCostComponentsByTour(tourId: string) {

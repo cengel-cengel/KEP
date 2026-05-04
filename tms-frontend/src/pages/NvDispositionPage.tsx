@@ -529,8 +529,15 @@ export default function NvDispositionPage() {
     mutationFn: async () => {
       const res = await api.post<{
         touren_created: number;
+        touren_created_template?: number;
+        new_tours_created?: number;
         stops_added: number;
-        details?: { stops_skipped_capacity?: number }[];
+        stops_skipped_too_big?: number;
+        details?: {
+          stops_skipped_capacity?: number;
+          stops_skipped_too_big?: number;
+          new_tours_created?: number;
+        }[];
       }>(`/nv-touren/auto-suggest`, undefined, { params: { datum, mode } });
       return res.data;
     },
@@ -540,12 +547,22 @@ export default function NvDispositionPage() {
         (s, d) => s + (d.stops_skipped_capacity ?? 0),
         0,
       );
+      const tooBig = res.stops_skipped_too_big ?? 0;
+      const newTours = res.new_tours_created ?? 0;
+      const baseTours = res.touren_created_template ?? res.touren_created;
+      const hasIssues = skippedCap > 0 || tooBig > 0;
+      const parts: string[] = [];
+      parts.push(
+        newTours > 0
+          ? `${baseTours} Tour(en) erstellt (${newTours} neu wegen Kapazität)`
+          : `${baseTours} Tour(en) erstellt`,
+      );
+      parts.push(`${res.stops_added} Stop(s) hinzugefügt`);
+      if (skippedCap > 0) parts.push(`${skippedCap} blockiert (Kapazität)`);
+      if (tooBig > 0) parts.push(`${tooBig} zu groß (übersprungen)`);
       setBanner({
-        kind: skippedCap > 0 ? 'err' : 'ok',
-        msg:
-          `${res.touren_created} Tour(en) erstellt, ` +
-          `${res.stops_added} Stop(s) hinzugefügt` +
-          (skippedCap > 0 ? `, ${skippedCap} blockiert (Kapazität).` : '.'),
+        kind: hasIssues ? 'err' : 'ok',
+        msg: parts.join(' · ') + '.',
       });
     },
     onError: (err: any) => {

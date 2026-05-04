@@ -15,6 +15,7 @@ export interface Column<T> {
   maxWidth?: number;
   align?: 'left' | 'center' | 'right';
   resizable?: boolean;
+  reorderable?: boolean;
   className?: string;
 }
 
@@ -67,6 +68,39 @@ function saveWidths(key: string, widths: Record<string, number>) {
   }
 }
 
+function loadOrder(key: string): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(`tms.table.${key}.order`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.filter((v): v is string => typeof v === 'string');
+    }
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
+
+function saveOrder(key: string, order: string[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(`tms.table.${key}.order`, JSON.stringify(order));
+  } catch {
+    /* ignore */
+  }
+}
+
+function reorderKeys(arr: string[], from: string, to: string): string[] {
+  if (from === to) return arr;
+  const r = arr.filter((k) => k !== from);
+  const i = r.indexOf(to);
+  if (i === -1) return arr;
+  r.splice(i, 0, from);
+  return r;
+}
+
 export default function ResponsiveTable<T>({
   storageKey,
   columns,
@@ -83,7 +117,11 @@ export default function ResponsiveTable<T>({
   const [widths, setWidths] = useState<Record<string, number>>(() =>
     loadWidths(storageKey),
   );
+  const [order, setOrder] = useState<string[]>(() => loadOrder(storageKey));
+  const [draggingColKey, setDraggingColKey] = useState<string | null>(null);
+  const [dragOverColKey, setDragOverColKey] = useState<string | null>(null);
   const persistRef = useRef<number | null>(null);
+  const orderPersistRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (persistRef.current) window.clearTimeout(persistRef.current);
@@ -95,8 +133,36 @@ export default function ResponsiveTable<T>({
     };
   }, [storageKey, widths]);
 
+  useEffect(() => {
+    if (orderPersistRef.current) window.clearTimeout(orderPersistRef.current);
+    orderPersistRef.current = window.setTimeout(() => {
+      saveOrder(storageKey, order);
+    }, 100);
+    return () => {
+      if (orderPersistRef.current)
+        window.clearTimeout(orderPersistRef.current);
+    };
+  }, [storageKey, order]);
+
+  const orderedColumns = useMemo(() => {
+    const byKey = new Map(columns.map((c) => [c.key, c]));
+    const result: Column<T>[] = [];
+    const seen = new Set<string>();
+    for (const k of order) {
+      const c = byKey.get(k);
+      if (c && !seen.has(k)) {
+        result.push(c);
+        seen.add(k);
+      }
+    }
+    for (const c of columns) {
+      if (!seen.has(c.key)) result.push(c);
+    }
+    return result;
+  }, [columns, order]);
+
   const gridTemplate = useMemo(() => {
-    return columns
+    return orderedColumns
       .map((c) => {
         const min = c.minWidth ?? 80;
         const w = widths[c.key] ?? c.width;
@@ -108,7 +174,58 @@ export default function ResponsiveTable<T>({
         return `${clamped}px`;
       })
       .join(' ');
-  }, [columns, widths]);
+  }, [orderedColumns, widths]);
+
+  const handleHeaderDragStart = (
+    e: React.DragEvent<HTMLDivElement>,
+    col: Column<T>,
+  ) => {
+    const target = e.target as HTMLElement;
+    if (target?.closest('[data-resize-handle="true"]')) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/x-tms-col', col.key);
+    setDraggingColKey(col.key);
+  };
+
+  const handleHeaderDragOver = (
+    e: React.DragEvent<HTMLDivElement>,
+    col: Column<T>,
+  ) => {
+    if (!Array.from(e.dataTransfer.types).includes('text/x-tms-col')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (col.key !== dragOverColKey) setDragOverColKey(col.key);
+  };
+
+  const handleHeaderDragLeave = (
+    e: React.DragEvent<HTMLDivElement>,
+    col: Column<T>,
+  ) => {
+    if (e.currentTarget === e.target && dragOverColKey === col.key) {
+      setDragOverColKey(null);
+    }
+  };
+
+  const handleHeaderDrop = (
+    e: React.DragEvent<HTMLDivElement>,
+    col: Column<T>,
+  ) => {
+    e.preventDefault();
+    const fromKey = e.dataTransfer.getData('text/x-tms-col');
+    setDraggingColKey(null);
+    setDragOverColKey(null);
+    if (!fromKey || fromKey === col.key) return;
+    const currentKeys = orderedColumns.map((c) => c.key);
+    setOrder(reorderKeys(currentKeys, fromKey, col.key));
+  };
+
+  const handleHeaderDragEnd = () => {
+    setDraggingColKey(null);
+    setDragOverColKey(null);
+  };
 
   const dragRef = useRef<{
     key: string;
@@ -181,28 +298,52 @@ export default function ResponsiveTable<T>({
           }`}
           style={wrapperStyle}
         >
-          {columns.map((c) => (
-            <div
-              key={c.key}
-              role="columnheader"
-              className={`relative font-medium text-gray-600 ${cellPadding} ${
-                c.align === 'right'
-                  ? 'text-right'
-                  : c.align === 'center'
-                    ? 'text-center'
-                    : 'text-left'
-              } ${c.className ?? ''}`}
-            >
-              {c.header}
-              {c.resizable !== false && (
-                <div
-                  onPointerDown={(e) => startResize(e, c)}
-                  className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none touch-none hover:bg-blue-300/60"
-                  title="Spaltenbreite ändern"
-                />
-              )}
-            </div>
-          ))}
+          {orderedColumns.map((c) => {
+            const reorderable = c.reorderable !== false;
+            const isDragging = draggingColKey === c.key;
+            const isDragOver =
+              dragOverColKey === c.key && draggingColKey !== c.key;
+            return (
+              <div
+                key={c.key}
+                role="columnheader"
+                draggable={reorderable}
+                onDragStart={
+                  reorderable ? (e) => handleHeaderDragStart(e, c) : undefined
+                }
+                onDragOver={
+                  reorderable ? (e) => handleHeaderDragOver(e, c) : undefined
+                }
+                onDragLeave={
+                  reorderable ? (e) => handleHeaderDragLeave(e, c) : undefined
+                }
+                onDrop={reorderable ? (e) => handleHeaderDrop(e, c) : undefined}
+                onDragEnd={reorderable ? handleHeaderDragEnd : undefined}
+                className={`relative font-medium text-gray-600 ${cellPadding} ${
+                  c.align === 'right'
+                    ? 'text-right'
+                    : c.align === 'center'
+                      ? 'text-center'
+                      : 'text-left'
+                } ${reorderable ? 'cursor-grab active:cursor-grabbing' : ''} ${
+                  isDragging ? 'opacity-50' : ''
+                } ${
+                  isDragOver ? 'border-l-2 border-blue-500' : ''
+                } ${c.className ?? ''}`}
+              >
+                {c.header}
+                {c.resizable !== false && (
+                  <div
+                    data-resize-handle="true"
+                    draggable={false}
+                    onPointerDown={(e) => startResize(e, c)}
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none touch-none hover:bg-blue-300/60"
+                    title="Spaltenbreite ändern"
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <div role="rowgroup">
@@ -214,7 +355,7 @@ export default function ResponsiveTable<T>({
                 className="grid border-b border-gray-100"
                 style={wrapperStyle}
               >
-                {columns.map((c) => (
+                {orderedColumns.map((c) => (
                   <div
                     key={c.key}
                     role="cell"
@@ -254,7 +395,7 @@ export default function ResponsiveTable<T>({
                   } ${extraClass}`}
                   style={{ ...wrapperStyle, ...extraStyle }}
                 >
-                  {columns.map((c) => (
+                  {orderedColumns.map((c) => (
                     <div
                       key={c.key}
                       role="cell"

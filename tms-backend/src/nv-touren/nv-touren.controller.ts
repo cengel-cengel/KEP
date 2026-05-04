@@ -28,7 +28,10 @@ export class NvTourenController {
   constructor(private readonly svc: NvTourenService) {}
 
   @Get()
-  list(@Query('datum') datum?: string, @Query('status') status?: string) {
+  list(
+    @Query('datum') datum?: string,
+    @Query('status') status?: string | string[],
+  ) {
     return this.svc.list({ datum, status });
   }
 

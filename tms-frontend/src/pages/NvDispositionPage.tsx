@@ -285,6 +285,39 @@ export default function NvDispositionPage() {
   const [activeTourViewId, setActiveTourViewId] = useState<string | null>(
     null,
   );
+  const [activeTourStatuses, setActiveTourStatuses] = useState<Set<string>>(
+    () => {
+      if (typeof window === 'undefined') return new Set(['PLANNING']);
+      try {
+        const raw = localStorage.getItem('tms.nv-dispo.tour-statuses');
+        const arr = raw ? (JSON.parse(raw) as unknown) : null;
+        if (Array.isArray(arr) && arr.every((x) => typeof x === 'string')) {
+          const s = new Set(arr as string[]);
+          if (s.size > 0) return s;
+        }
+      } catch {
+        /* ignore */
+      }
+      return new Set(['PLANNING']);
+    },
+  );
+  const toggleTourStatus = (st: string) => {
+    setActiveTourStatuses((prev) => {
+      const next = new Set(prev);
+      if (next.has(st)) next.delete(st);
+      else next.add(st);
+      const final = next.size === 0 ? new Set(['PLANNING']) : next;
+      try {
+        localStorage.setItem(
+          'tms.nv-dispo.tour-statuses',
+          JSON.stringify([...final]),
+        );
+      } catch {
+        /* ignore */
+      }
+      return final;
+    });
+  };
   const [expandedGroup, setExpandedGroup] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     try {
@@ -370,14 +403,18 @@ export default function NvDispositionPage() {
     },
     enabled: !!datum,
   });
+  const statusKey = useMemo(
+    () => [...activeTourStatuses].sort().join(','),
+    [activeTourStatuses],
+  );
   const tourenQ = useQuery<NvTour[]>({
-    queryKey: ['nv-touren', datum],
-    queryFn: async () =>
-      (
-        await api.get<NvTour[]>('/nv-touren', {
-          params: { datum },
-        })
-      ).data,
+    queryKey: ['nv-touren', datum, statusKey],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set('datum', datum);
+      for (const s of activeTourStatuses) params.append('status', s);
+      return (await api.get<NvTour[]>('/nv-touren', { params })).data;
+    },
     enabled: !!datum,
   });
   const filteredTouren = useMemo(() => {
@@ -851,6 +888,29 @@ export default function NvDispositionPage() {
           <Sparkles size={16} />
           {autoSuggestMut.isPending ? 'Erstelle…' : 'Auto-Vorschlag'}
         </button>
+        <div className="inline-flex rounded border border-gray-300 overflow-hidden text-xs">
+          {(
+            [
+              ['PLANNING', 'Planung'],
+              ['DISPATCHED', 'Gestartet'],
+              ['IN_PROGRESS', 'In Fahrt'],
+              ['COMPLETED', 'Abgeschlossen'],
+            ] as const
+          ).map(([key, label], i) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => toggleTourStatus(key)}
+              className={`px-2.5 py-1.5 ${i > 0 ? 'border-l border-gray-300' : ''} ${
+                activeTourStatuses.has(key)
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <button
           onClick={() => setShowCreateTour(true)}
           className="bg-blue-600 text-white text-sm rounded px-3 py-2 flex items-center gap-1 hover:bg-blue-700"

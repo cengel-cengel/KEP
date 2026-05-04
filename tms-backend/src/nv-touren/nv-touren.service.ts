@@ -268,10 +268,15 @@ export class NvTourenService {
     });
   }
 
-  async list(filter: { datum?: string; status?: string }) {
+  async list(filter: { datum?: string; status?: string | string[] }) {
     const where: any = {};
     if (filter.datum) where.datum = new Date(filter.datum);
-    if (filter.status) where.status = filter.status;
+    const statusList = Array.isArray(filter.status)
+      ? filter.status
+      : filter.status
+        ? [filter.status]
+        : ['PLANNING'];
+    where.status = { in: statusList };
     const rows = await this.prisma.nv_touren.findMany({
       where,
       orderBy: [{ datum: 'desc' }, { created_at: 'asc' }],
@@ -667,6 +672,13 @@ export class NvTourenService {
     const stoppedShipmentIds = new Set(
       (
         await this.prisma.nv_tour_stops.findMany({
+          where: {
+            stop_type: mode,
+            status: { notIn: ['COMPLETED', 'FAILED'] },
+            nv_tour: {
+              status: { in: ['PLANNING', 'DISPATCHED', 'IN_PROGRESS'] },
+            },
+          },
           select: { shipment_id: true },
         })
       ).map((s) => s.shipment_id),

@@ -153,13 +153,11 @@ export default function NvDispoMap({
     const map = mapRef.current;
     if (!map) return;
     const seenIds = new Set<string>();
-    const bounds: [number, number][] = [];
 
     for (const s of shipments) {
       seenIds.add(s.id);
       const ll = toLatLng(s.loading_address);
       if (!ll) continue;
-      bounds.push(ll);
       const seqNumber = clickedIndex.get(s.id);
       const icon = makeIcon(seqNumber != null, seqNumber, s.color);
       const existing = markersRef.current.get(s.id);
@@ -209,14 +207,36 @@ export default function NvDispoMap({
         markersRef.current.delete(id);
       }
     }
+    // Auto-Fit übernimmt zentrale useEffect (shipments + tourStops).
+  }, [shipments, clickedIndex, onPinClick]);
 
-    if (bounds.length > 0) {
-      const lb = L.latLngBounds(bounds.map((b) => L.latLng(b[0], b[1])));
-      if (markersRef.current.size > 1) {
-        map.fitBounds(lb.pad(0.2), { animate: false });
+  // Zentraler Auto-Fit: alle Shipments + Tour-Stops (inkl. Lager-Pins).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const coords: [number, number][] = [];
+    for (const s of shipments) {
+      const ll = toLatLng(s.loading_address);
+      if (ll) coords.push(ll);
+    }
+    for (const t of tourStops ?? []) {
+      if (Number.isFinite(t.lat) && Number.isFinite(t.lng)) {
+        coords.push([t.lat, t.lng]);
       }
     }
-  }, [shipments, clickedIndex, onPinClick]);
+    if (coords.length === 0) return;
+    const id = window.setTimeout(() => {
+      const lb = L.latLngBounds(coords.map((c) => L.latLng(c[0], c[1])));
+      if (lb.isValid()) {
+        map.fitBounds(lb, {
+          padding: [50, 50],
+          maxZoom: 14,
+          animate: false,
+        });
+      }
+    }, 200);
+    return () => window.clearTimeout(id);
+  }, [shipments, tourStops]);
 
   // OSRM-Route bei Aenderung der clickedSequence
   useEffect(() => {

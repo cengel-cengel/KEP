@@ -419,6 +419,8 @@ export default function NvDispositionPage() {
   }, [tourenQ.data, filterTour]);
 
   const popupChannelRef = useRef<BroadcastChannel | null>(null);
+  const popupWindowRef = useRef<Window | null>(null);
+  const [mapInPopup, setMapInPopup] = useState(false);
   useEffect(() => {
     let ch: BroadcastChannel | null = null;
     try {
@@ -447,6 +449,17 @@ export default function NvDispositionPage() {
     };
   }, [qc]);
 
+  useEffect(() => {
+    if (!mapInPopup) return;
+    const id = window.setInterval(() => {
+      if (popupWindowRef.current?.closed) {
+        popupWindowRef.current = null;
+        setMapInPopup(false);
+      }
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [mapInPopup]);
+
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['nv-touren'] });
     qc.invalidateQueries({ queryKey: ['nv-elig'] });
@@ -461,6 +474,10 @@ export default function NvDispositionPage() {
   };
 
   const openMapPopup = () => {
+    if (popupWindowRef.current && !popupWindowRef.current.closed) {
+      popupWindowRef.current.focus();
+      return;
+    }
     const url = `/nv-disposition/map-popup?datum=${encodeURIComponent(
       datum,
     )}&mode=${mode}`;
@@ -474,7 +491,11 @@ export default function NvDispositionPage() {
         kind: 'err',
         msg: 'Pop-up blockiert — bitte für diese Seite erlauben.',
       });
+      return;
     }
+    popupWindowRef.current = w;
+    setMapInPopup(true);
+    if (viewMode === 'map') setViewMode('list');
   };
 
   const activeTour = useMemo(
@@ -1016,11 +1037,13 @@ export default function NvDispositionPage() {
             <button
               type="button"
               onClick={() => setViewMode('map')}
+              disabled={mapInPopup}
+              title={mapInPopup ? 'Karte ist im Pop-out-Fenster' : undefined}
               className={`px-3 py-2 border-l border-gray-300 ${
                 viewMode === 'map'
                   ? 'bg-[#1e40af] text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-50'
-              }`}
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               Karte
             </button>
@@ -1075,9 +1098,11 @@ export default function NvDispositionPage() {
 
       <div
         className={`flex-1 grid grid-cols-1 gap-3 p-3 overflow-hidden ${
-          viewMode === 'split3'
-            ? 'lg:grid-cols-[1fr_1.4fr_1.6fr]'
-            : 'lg:grid-cols-[2fr_3fr]'
+          mapInPopup
+            ? 'lg:grid-cols-1'
+            : viewMode === 'split3'
+              ? 'lg:grid-cols-[1fr_1.4fr_1.6fr]'
+              : 'lg:grid-cols-[2fr_3fr]'
         }`}
       >
         {(viewMode === 'list' || viewMode === 'split3') && (
@@ -1241,7 +1266,7 @@ export default function NvDispositionPage() {
           </div>
         </div>
 
-        {(viewMode === 'map' || viewMode === 'split3') && (
+        {!mapInPopup && (viewMode === 'map' || viewMode === 'split3') && (
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden flex flex-col">
             <div className="px-3 py-2 border-b bg-gray-50 flex items-center gap-2">
               <h2 className="font-semibold text-sm">Karte</h2>

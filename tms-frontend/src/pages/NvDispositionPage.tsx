@@ -98,6 +98,10 @@ type Stop = {
     weight_kg?: string | number | null;
     volume_m3?: string | number | null;
     ldm?: string | number | null;
+    length_cm?: number | null;
+    width_cm?: number | null;
+    height_cm?: number | null;
+    effective_pallets?: string | number | null;
     freight_revenue?: string | number | null;
     addresses_shipments_loading_address_idToaddresses?: AddressGeo | null;
     addresses_shipments_delivery_address_idToaddresses?: AddressGeo | null;
@@ -782,20 +786,6 @@ export default function NvDispositionPage() {
       invalidate();
     },
   });
-  const updateStopStatusMut = useMutation({
-    mutationFn: async (input: {
-      tourId: string;
-      stopId: string;
-      status: 'ARRIVED' | 'COMPLETED' | 'FAILED';
-    }) =>
-      (
-        await api.patch(
-          `/nv-touren/${input.tourId}/stops/${input.stopId}`,
-          { status: input.status },
-        )
-      ).data,
-    onSuccess: invalidate,
-  });
   const updateTourStatusMut = useMutation({
     mutationFn: async (input: {
       tourId: string;
@@ -1395,13 +1385,6 @@ export default function NvDispositionPage() {
                     tourId: tour.id,
                   });
                 }}
-                onSetStopStatus={(stopId, status) =>
-                  updateStopStatusMut.mutate({
-                    tourId: tour.id,
-                    stopId,
-                    status,
-                  })
-                }
                 onSetTourStatus={(status, openCount, shipmentCount) => {
                   if (status === 'COMPLETED') {
                     if (
@@ -1611,7 +1594,6 @@ function TourCard({
   onOpenKosten,
   onOpenDrillDown,
   onOpenDetail,
-  onSetStopStatus,
   onSetTourStatus,
   onToggleTourView,
   isActive,
@@ -1624,10 +1606,6 @@ function TourCard({
   onOpenKosten: () => void;
   onOpenDrillDown: (shipmentId: string, shipmentNumber: string) => void;
   onOpenDetail: (shipmentId: string) => void;
-  onSetStopStatus: (
-    stopId: string,
-    status: 'ARRIVED' | 'COMPLETED' | 'FAILED',
-  ) => void;
   onSetTourStatus: (
     status: 'DISPATCHED' | 'IN_PROGRESS' | 'COMPLETED',
     openCount: number,
@@ -2030,7 +2008,7 @@ function TourCard({
                 {g.items.map(({ stop: s }) => (
                   <li
                     key={s.id}
-                    className="px-3 py-1 pl-12 grid grid-cols-[24px_1fr_64px_72px_64px_64px_80px] gap-2 items-center"
+                    className="px-3 py-1 pl-12 grid grid-cols-[24px_1fr_64px_72px_64px_64px_110px_80px] gap-2 items-center"
                   >
                     <button
                       onClick={(e) => {
@@ -2043,59 +2021,9 @@ function TourCard({
                     >
                       <Eye size={14} />
                     </button>
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="inline-flex gap-1">
-                        {s.status === 'PLANNED' && (
-                          <button
-                            onClick={() => onSetStopStatus(s.id, 'ARRIVED')}
-                            className="px-1.5 py-0.5 text-[10px] bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                            title="Anfahrt"
-                          >
-                            → Anfahrt
-                          </button>
-                        )}
-                        {s.status === 'ARRIVED' && (
-                          <button
-                            onClick={() => onSetStopStatus(s.id, 'COMPLETED')}
-                            className="px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200"
-                            title="Erledigt"
-                          >
-                            ✓ Erledigt
-                          </button>
-                        )}
-                        {(s.status === 'PLANNED' ||
-                          s.status === 'ARRIVED') && (
-                          <button
-                            onClick={() => onSetStopStatus(s.id, 'FAILED')}
-                            className="px-1.5 py-0.5 text-[10px] bg-red-100 text-red-700 rounded hover:bg-red-200"
-                            title="Fehlgeschlagen"
-                          >
-                            ✗ Fail
-                          </button>
-                        )}
-                        {s.status === 'COMPLETED' && (
-                          <span className="px-1.5 py-0.5 text-[10px] bg-emerald-100 text-emerald-700 rounded">
-                            ✓
-                          </span>
-                        )}
-                        {s.status === 'FAILED' && (
-                          <span className="px-1.5 py-0.5 text-[10px] bg-red-100 text-red-700 rounded">
-                            ✗
-                          </span>
-                        )}
-                      </span>
-                      <span className="font-mono text-xs truncate">
-                        {s.shipment?.shipment_number ?? '—'}
-                      </span>
-                      {s.is_stamm_kunde && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700"
-                          title="Stammkunde"
-                        >
-                          Stamm
-                        </span>
-                      )}
-                    </div>
+                    <span className="font-mono text-xs truncate">
+                      {s.shipment?.shipment_number ?? '—'}
+                    </span>
                     {(() => {
                       const sh = s.shipment;
                       const cell = (
@@ -2121,6 +2049,20 @@ function TourCard({
                           </>
                         );
                       };
+                      const dimsCell = () => {
+                        const L = sh?.length_cm;
+                        const W = sh?.width_cm;
+                        const H = sh?.height_cm;
+                        if (L == null && W == null && H == null) {
+                          return <span className="text-gray-300">—</span>;
+                        }
+                        return (
+                          <span className="font-mono">
+                            {L ?? '—'}×{W ?? '—'}×{H ?? '—'}
+                            <span className="text-gray-400 ml-0.5">cm</span>
+                          </span>
+                        );
+                      };
                       const cc = sh?.id
                         ? costsByShipment.get(sh.id)
                         : null;
@@ -2137,9 +2079,16 @@ function TourCard({
                           </span>
                           <span
                             className="text-xs text-right"
-                            title="Plätze (V1: package_count Fallback)"
+                            title="Stack-aware Plätze (Fallback Pak)"
                           >
-                            {cell(sh?.package_count, 'Pl', 0)}
+                            {cell(
+                              sh?.effective_pallets ?? sh?.package_count,
+                              'Pl',
+                              1,
+                            )}
+                          </span>
+                          <span className="text-xs text-right">
+                            {dimsCell()}
                           </span>
                           <span className="text-xs text-right">
                             {cc && cc.total_eur ? (

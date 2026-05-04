@@ -22,6 +22,15 @@ import { CreateShipmentDto } from './dto/create-shipment.dto';
 import { UpdateShipmentDto } from './dto/update-shipment.dto';
 import { DispatchShipmentDto } from './dto/dispatch-shipment.dto';
 
+/**
+ * Stack-aware Berechnung: SATTEL_HOEHE = 220cm.
+ * Stapelbare Items teilen sich Stellplatz nach Höhe:
+ *   heightFactor = floor(220 / item.height_cm)
+ *   effective_pallets += quantity / max(1, heightFactor)
+ * LDM nutzt denselben Faktor (statt fixer 0.5-Halbierung).
+ */
+const SATTEL_HOEHE = 220;
+
 @Injectable()
 export class ShipmentsService {
   constructor(
@@ -797,6 +806,7 @@ export class ShipmentsService {
     let totalCount = 0;
     let totalCm3 = 0;
     let totalLdm = 0;
+    let totalEffectivePallets = 0;
     for (const it of items) {
       const L = Number(it.length_cm) || 0;
       const W = Number(it.width_cm) || 0;
@@ -809,9 +819,14 @@ export class ShipmentsService {
       totalKg += kg * qty;
       totalCount += qty;
       totalCm3 += L * W * H * qty;
-      // Stapelbare Paletten zaehlen mit halbem LDM-Wert
-      const stackFactor = it.stackable ? 0.5 : 1.0;
-      totalLdm += (stackFactor * qty * L * W) / 24000;
+      // Stack-aware Faktor: floor(SATTEL_HOEHE / item-höhe)
+      // Beispiel: H=110cm → factor 2 (zwei übereinander),
+      // H=80cm → factor 2 (220/80=2.75 → 2 sicher), H=220cm → 1.
+      const heightFactor =
+        it.stackable && H > 0 ? Math.floor(SATTEL_HOEHE / H) : 1;
+      const denom = Math.max(1, heightFactor);
+      totalEffectivePallets += qty / denom;
+      totalLdm += (qty * L * W) / 24000 / denom;
     }
     return this.prisma.shipments.update({
       where: { id: shipmentId },
@@ -823,6 +838,7 @@ export class ShipmentsService {
         package_count: totalCount,
         volume_m3: Math.round(totalCm3 / 1000) / 1000,
         ldm: Math.round(totalLdm * 100) / 100,
+        effective_pallets: Math.round(totalEffectivePallets * 100) / 100,
       },
     });
   }

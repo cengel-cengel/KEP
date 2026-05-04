@@ -68,6 +68,10 @@ const TOUR_INCLUDE = {
           weight_kg: true,
           volume_m3: true,
           ldm: true,
+          length_cm: true,
+          width_cm: true,
+          height_cm: true,
+          effective_pallets: true,
           freight_revenue: true,
           addresses_shipments_loading_address_idToaddresses: {
             select: {
@@ -629,6 +633,7 @@ export class NvTourenService {
       where: { id: shipmentId },
       select: {
         package_count: true,
+        effective_pallets: true,
         weight_kg: true,
         volume_m3: true,
         ldm: true,
@@ -636,7 +641,9 @@ export class NvTourenService {
     });
     if (!shipment) return;
     const add = {
-      paletten: Number(shipment.package_count ?? 0),
+      paletten: Number(
+        shipment.effective_pallets ?? shipment.package_count ?? 0,
+      ),
       gewicht_kg: Number(shipment.weight_kg ?? 0),
       volumen_m3: Number(shipment.volume_m3 ?? 0),
       ldm: Number(shipment.ldm ?? 0),
@@ -1123,6 +1130,7 @@ export class NvTourenService {
       where: { id: shipmentId },
       select: {
         package_count: true,
+        effective_pallets: true,
         weight_kg: true,
         volume_m3: true,
         ldm: true,
@@ -1130,7 +1138,10 @@ export class NvTourenService {
     });
     if (!ship) return true;
     const checks: { val: number; max: number | null }[] = [
-      { val: Number(ship.package_count ?? 0), max: sub.max_paletten ?? null },
+      {
+        val: Number(ship.effective_pallets ?? ship.package_count ?? 0),
+        max: sub.max_paletten ?? null,
+      },
       {
         val: Number(ship.weight_kg ?? 0),
         max: sub.max_gewicht_kg != null ? Number(sub.max_gewicht_kg) : null,
@@ -1388,6 +1399,7 @@ export class NvTourenService {
             shipment: {
               select: {
                 package_count: true,
+                effective_pallets: true,
                 weight_kg: true,
                 volume_m3: true,
                 ldm: true,
@@ -1404,7 +1416,9 @@ export class NvTourenService {
     let cur_volumen_m3 = 0;
     let cur_ldm = 0;
     for (const s of tour.stops) {
-      cur_paletten += Number(s.shipment.package_count ?? 0);
+      cur_paletten += Number(
+        s.shipment.effective_pallets ?? s.shipment.package_count ?? 0,
+      );
       cur_gewicht_kg += Number(s.shipment.weight_kg ?? 0);
       cur_volumen_m3 += Number(s.shipment.volume_m3 ?? 0);
       cur_ldm += Number(s.shipment.ldm ?? 0);

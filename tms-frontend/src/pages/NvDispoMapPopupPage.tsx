@@ -454,7 +454,7 @@ export default function NvDispoMapPopupPage() {
         stop_type: mode,
       });
       broadcastInvalidate();
-      window.setTimeout(broadcastInvalidate, 3000);
+      window.setTimeout(broadcastInvalidate, 1500);
     } catch (err: any) {
       const cur = getOrCreatePending(tourId);
       for (const a of adds) cur.adds.add(a);
@@ -591,7 +591,7 @@ export default function NvDispoMapPopupPage() {
                         seq.includes(sid) ? seq : [...seq, sid],
                       );
                       broadcastInvalidate();
-                      window.setTimeout(broadcastInvalidate, 3000);
+                      window.setTimeout(broadcastInvalidate, 1500);
                     },
                   },
                 );

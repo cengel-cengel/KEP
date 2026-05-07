@@ -961,7 +961,7 @@ export default function NvDispositionPage() {
         stop_type: mode,
       });
       invalidate();
-      window.setTimeout(invalidate, 3000);
+      window.setTimeout(invalidate, 1500);
     } catch (err: any) {
       const cur = getOrCreatePending(tourId);
       for (const a of adds) cur.adds.add(a);
@@ -1141,6 +1141,36 @@ export default function NvDispositionPage() {
     }
   };
 
+  const mapShipments = useMemo<MapShipment[]>(() => {
+    return ((eligQ.data ?? []) as EligibleShipment[])
+      .filter((s) => {
+        if (isEligibleInActiveTour) {
+          return isEligibleInActiveTour(s);
+        }
+        return expandedGroup
+          ? s.matched_tour_gebiet_code === expandedGroup
+          : true;
+      })
+      .map((s) => ({
+        id: s.id,
+        shipment_number: s.shipment_number,
+        customer: s.customer ?? null,
+        loading_address: s.pin_address ?? s.loading_address ?? null,
+        color:
+          (s.matched_tour_gebiet_code &&
+            farbenMap.get(s.matched_tour_gebiet_code)) ||
+          undefined,
+        tour_gebiet_code: s.matched_tour_gebiet_code,
+      }));
+  }, [eligQ.data, isEligibleInActiveTour, expandedGroup, farbenMap]);
+
+  const visibleTourStops = useMemo(() => {
+    if (!activeTour) return undefined;
+    return activeTourStopPins.filter(
+      (s) => !pendingRemoveStopIds.has(s.id),
+    );
+  }, [activeTour, activeTourStopPins, pendingRemoveStopIds]);
+
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-gray-50">
       {pinAddShipmentId && !showCreateTour && (() => {
@@ -1164,7 +1194,7 @@ export default function NvDispositionPage() {
                         seq.includes(sid) ? seq : [...seq, sid],
                       );
                       invalidate();
-                      window.setTimeout(invalidate, 3000);
+                      window.setTimeout(invalidate, 1500);
                     },
                   },
                 );
@@ -1566,34 +1596,8 @@ export default function NvDispositionPage() {
             </div>
             <div className="flex-1 min-h-0 relative">
               <NvDispoMap
-                shipments={((eligQ.data ?? []) as EligibleShipment[])
-                  .filter((s) => {
-                    if (isEligibleInActiveTour) {
-                      return isEligibleInActiveTour(s);
-                    }
-                    return expandedGroup
-                      ? s.matched_tour_gebiet_code === expandedGroup
-                      : true;
-                  })
-                  .map((s): MapShipment => ({
-                    id: s.id,
-                    shipment_number: s.shipment_number,
-                    customer: s.customer ?? null,
-                    loading_address:
-                      s.pin_address ?? s.loading_address ?? null,
-                    color:
-                      (s.matched_tour_gebiet_code &&
-                        farbenMap.get(s.matched_tour_gebiet_code)) ||
-                      undefined,
-                    tour_gebiet_code: s.matched_tour_gebiet_code,
-                  }))}
-                tourStops={
-                  activeTour
-                    ? activeTourStopPins.filter(
-                        (s) => !pendingRemoveStopIds.has(s.id),
-                      )
-                    : undefined
-                }
+                shipments={mapShipments}
+                tourStops={visibleTourStops}
                 onTourStopClick={handleTourStopClick}
                 pendingAddIds={pendingAddIds}
                 pendingRemoveStopIds={pendingRemoveStopIds}

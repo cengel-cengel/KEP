@@ -6,6 +6,7 @@ import ShipmentDetailModal from '../components/ShipmentDetailModal';
 import ShipmentEditModal from '../components/ShipmentEditModal';
 import BulkTourPicker from '../components/nv/BulkTourPicker';
 import CreateTourModal from '../components/nv/CreateTourModal';
+import QuickAddBar from '../components/nv/QuickAddBar';
 import { haversineKm } from '../lib/distance';
 import type { Shipment } from '../types/shipment';
 import NvDispoMap from '../components/nv/NvDispoMap';
@@ -1038,6 +1039,37 @@ export default function NvDispositionPage() {
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-gray-50">
+      {pinAddShipmentId && !showCreateTour && (() => {
+        const ship = allShipmentsForDetail.find(
+          (s) => s.id === pinAddShipmentId,
+        );
+        return (
+          <QuickAddBar
+            shipmentNumber={(ship as any)?.shipment_number ?? null}
+            touren={filteredTouren}
+            onClose={() => setPinAddShipmentId(null)}
+            onPick={(tourId) => {
+              const sid = pinAddShipmentId;
+              setPinAddShipmentId(null);
+              if (sid) {
+                addStopMut.mutate(
+                  { tourId, shipmentId: sid },
+                  {
+                    onSuccess: () => {
+                      setClickedSequence((seq) =>
+                        seq.includes(sid) ? seq : [...seq, sid],
+                      );
+                      invalidate();
+                      window.setTimeout(invalidate, 3000);
+                    },
+                  },
+                );
+              }
+            }}
+            onCreateNew={() => setShowCreateTour(true)}
+          />
+        );
+      })()}
       <div className="bg-white border-b px-4 py-3 flex flex-wrap items-center gap-3 sticky top-0 z-20">
         <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
           <button
@@ -1494,32 +1526,6 @@ export default function NvDispositionPage() {
               setBulkPickerOpen(false);
             }
           }}
-        />
-      )}
-
-      {pinAddShipmentId && !showCreateTour && (
-        <BulkTourPicker
-          title="Tour für Sendung wählen"
-          touren={filteredTouren}
-          onClose={() => setPinAddShipmentId(null)}
-          onPicked={(tourId) => {
-            const sid = pinAddShipmentId;
-            setPinAddShipmentId(null);
-            if (sid) {
-              addStopMut.mutate(
-                { tourId, shipmentId: sid },
-                {
-                  onSuccess: () => {
-                    setClickedSequence((seq) =>
-                      seq.includes(sid) ? seq : [...seq, sid],
-                    );
-                    invalidate();
-                  },
-                },
-              );
-            }
-          }}
-          onCreateNew={() => setShowCreateTour(true)}
         />
       )}
 

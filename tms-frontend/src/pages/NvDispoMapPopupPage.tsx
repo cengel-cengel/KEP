@@ -491,6 +491,19 @@ export default function NvDispoMapPopupPage() {
     setParams(sp, { replace: true });
   };
 
+  // URL-Sync: tour + active werden bei state-Wechsel in URL geschrieben.
+  // mode + datum laufen über updateModeParam bzw. sind beim Open gesetzt.
+  useEffect(() => {
+    const sp = new URLSearchParams(params);
+    if (selectedTourId) sp.set('tour', selectedTourId);
+    else sp.delete('tour');
+    if (activeTourViewId) sp.set('active', activeTourViewId);
+    else sp.delete('active');
+    setParams(sp, { replace: true });
+    // params/setParams absichtlich NICHT in deps — würde Loop triggern
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTourId, activeTourViewId]);
+
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-50">
       <div className="bg-white border-b px-3 py-2 flex items-center gap-2 text-sm">

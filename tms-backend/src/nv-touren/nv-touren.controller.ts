@@ -121,6 +121,19 @@ export class NvTourenController {
     return this.svc.recalcVorlaufCosts(tourId);
   }
 
+  @Post(':id/batch-stops')
+  batchStops(
+    @Param('id') tourId: string,
+    @Body()
+    dto: { adds?: string[]; removes?: string[]; stop_type?: string },
+  ) {
+    return this.svc.batchStops(tourId, {
+      adds: dto.adds ?? [],
+      removes: dto.removes ?? [],
+      stop_type: dto.stop_type,
+    });
+  }
+
   @Post(':id/recalc-km')
   async recalcKm(@Param('id') tourId: string) {
     const km = await this.svc.recalcTourKm(tourId);

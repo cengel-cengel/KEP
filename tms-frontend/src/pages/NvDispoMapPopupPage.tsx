@@ -379,42 +379,8 @@ export default function NvDispoMapPopupPage() {
     onSuccess: broadcastInvalidate,
   });
 
-  const deleteStopMut = useMutation({
-    mutationFn: async (input: { tourId: string; stopId: string }) =>
-      (
-        await api.delete(
-          `/nv-touren/${input.tourId}/stops/${input.stopId}`,
-        )
-      ).data,
-    onMutate: async (input) => {
-      await qc.cancelQueries({ queryKey: ['nv-touren'] });
-      const prev = qc.getQueriesData<any[]>({ queryKey: ['nv-touren'] });
-      qc.setQueriesData<any[]>({ queryKey: ['nv-touren'] }, (old) =>
-        old
-          ? old.map((t: any) =>
-              t.id === input.tourId
-                ? {
-                    ...t,
-                    stops: (t.stops ?? []).filter(
-                      (s: any) => s.id !== input.stopId,
-                    ),
-                  }
-                : t,
-            )
-          : old,
-      );
-      return { prev };
-    },
-    onError: (err: any, _input, ctx) => {
-      if (ctx?.prev) {
-        for (const [key, data] of ctx.prev) qc.setQueryData(key, data);
-      }
-      setBanner(`Fehler beim Entfernen: ${err?.message ?? '?'}`);
-    },
-    onSettled: () => {
-      broadcastInvalidate();
-    },
-  });
+  // deleteStopMut entfernt: Tour-Stop-Klicks laufen jetzt über
+  // pendingRemoves + Batch-Sync. Falls je wieder gebraucht: NV-2i13 git-history.
 
   const addStopMut = useMutation({
     mutationFn: async (input: { tourId: string; shipmentId: string }) =>
@@ -452,37 +418,135 @@ export default function NvDispoMapPopupPage() {
     },
   });
 
+  // Pending-State pro Tour: lokale Änderungen werden 1s gesammelt
+  // und dann als Batch zum Server geschickt.
+  const pendingByTourRef = useRef<
+    Map<string, { adds: Set<string>; removes: Set<string> }>
+  >(new Map());
+  const syncTimersRef = useRef<Map<string, number>>(new Map());
+  const [pendingVersion, setPendingVersion] = useState(0);
+  const SYNC_DEBOUNCE_MS = 1000;
+
+  const getOrCreatePending = (tourId: string) => {
+    let p = pendingByTourRef.current.get(tourId);
+    if (!p) {
+      p = { adds: new Set(), removes: new Set() };
+      pendingByTourRef.current.set(tourId, p);
+    }
+    return p;
+  };
+
+  const flushSync = async (tourId: string) => {
+    const p = pendingByTourRef.current.get(tourId);
+    if (!p || (p.adds.size === 0 && p.removes.size === 0)) return;
+    const adds = Array.from(p.adds);
+    const removes = Array.from(p.removes);
+    pendingByTourRef.current.set(tourId, {
+      adds: new Set(),
+      removes: new Set(),
+    });
+    syncTimersRef.current.delete(tourId);
+    setPendingVersion((v) => v + 1);
+    try {
+      await api.post(`/nv-touren/${tourId}/batch-stops`, {
+        adds,
+        removes,
+        stop_type: mode,
+      });
+      broadcastInvalidate();
+      window.setTimeout(broadcastInvalidate, 3000);
+    } catch (err: any) {
+      const cur = getOrCreatePending(tourId);
+      for (const a of adds) cur.adds.add(a);
+      for (const r of removes) cur.removes.add(r);
+      setPendingVersion((v) => v + 1);
+      const status = err?.response?.status;
+      const code = err?.response?.data?.code;
+      if (status === 409 && code === 'CAPACITY_EXCEEDED') {
+        const axes = (err.response.data?.would_exceed ?? [])
+          .map((w: any) => `${w.axis} (${w.total}/${w.max})`)
+          .join(', ');
+        setBanner(`Kapazität: ${axes || '?'}`);
+      } else {
+        setBanner(`Batch-Sync Fehler (${status ?? '?'}). Pending erhalten.`);
+      }
+    }
+  };
+
+  const scheduleSync = (tourId: string) => {
+    const existing = syncTimersRef.current.get(tourId);
+    if (existing) window.clearTimeout(existing);
+    const timer = window.setTimeout(
+      () => flushSync(tourId),
+      SYNC_DEBOUNCE_MS,
+    );
+    syncTimersRef.current.set(tourId, timer);
+  };
+
+  const clearAllPending = () => {
+    pendingByTourRef.current.clear();
+    for (const t of syncTimersRef.current.values()) window.clearTimeout(t);
+    syncTimersRef.current.clear();
+    setPendingVersion((v) => v + 1);
+  };
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && pendingByTourRef.current.size > 0) {
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName ?? '';
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        clearAllPending();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
+  const pendingAddIds = useMemo(() => {
+    void pendingVersion;
+    const out = new Set<string>();
+    for (const p of pendingByTourRef.current.values()) {
+      for (const a of p.adds) out.add(a);
+    }
+    return out;
+  }, [pendingVersion]);
+
+  const pendingRemoveStopIds = useMemo(() => {
+    void pendingVersion;
+    const out = new Set<string>();
+    for (const p of pendingByTourRef.current.values()) {
+      for (const r of p.removes) out.add(r);
+    }
+    return out;
+  }, [pendingVersion]);
+
   const onPinClick = (shipmentId: string) => {
     const targetTourId = activeTourViewId ?? selectedTourId;
     if (!targetTourId) {
       setPinAddShipmentId(shipmentId);
       return;
     }
-    addStopMut.mutate(
-      { tourId: targetTourId, shipmentId },
-      {
-        onSuccess: () => {
-          setClickedSequence((seq) =>
-            seq.includes(shipmentId) ? seq : [...seq, shipmentId],
-          );
-          broadcastInvalidate();
-          window.setTimeout(broadcastInvalidate, 3000);
-        },
-      },
-    );
+    const p = getOrCreatePending(targetTourId);
+    if (p.adds.has(shipmentId)) {
+      p.adds.delete(shipmentId);
+    } else {
+      p.adds.add(shipmentId);
+    }
+    setPendingVersion((v) => v + 1);
+    scheduleSync(targetTourId);
   };
 
   const handleTourStopClick = (stopId: string) => {
     if (!activeTourViewId) return;
-    deleteStopMut.mutate(
-      { tourId: activeTourViewId, stopId },
-      {
-        onSuccess: () => {
-          broadcastInvalidate();
-          window.setTimeout(broadcastInvalidate, 3000);
-        },
-      },
-    );
+    const p = getOrCreatePending(activeTourViewId);
+    if (p.removes.has(stopId)) {
+      p.removes.delete(stopId);
+    } else {
+      p.removes.add(stopId);
+    }
+    setPendingVersion((v) => v + 1);
+    scheduleSync(activeTourViewId);
   };
 
   const updateModeParam = (m: 'PICKUP' | 'DELIVERY') => {
@@ -597,8 +661,16 @@ export default function NvDispoMapPopupPage() {
       <div className="flex-1 min-h-0 relative">
         <NvDispoMap
           shipments={mapShipments}
-          tourStops={activeTour ? activeTourStopPins : undefined}
+          tourStops={
+            activeTour
+              ? activeTourStopPins.filter(
+                  (s) => !pendingRemoveStopIds.has(s.id),
+                )
+              : undefined
+          }
           onTourStopClick={handleTourStopClick}
+          pendingAddIds={pendingAddIds}
+          pendingRemoveStopIds={pendingRemoveStopIds}
           clickedSequence={clickedSequence}
           onPinClick={onPinClick}
           onReset={() => setClickedSequence([])}

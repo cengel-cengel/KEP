@@ -853,6 +853,186 @@ export class NvTourenService {
     return { ok: true };
   }
 
+  /**
+   * Batch-Mutation: Mehrere stops gleichzeitig add+remove.
+   * Capacity-Check kumulativ (current - removed + added vs sub-limits).
+   * $transaction für atomare Persistenz.
+   * Optimize+Recalc im Background (setImmediate).
+   */
+  async batchStops(
+    tourId: string,
+    input: { adds: string[]; removes: string[]; stop_type?: string },
+  ) {
+    const adds = Array.from(new Set(input.adds ?? [])).filter(Boolean);
+    const removes = Array.from(new Set(input.removes ?? [])).filter(Boolean);
+    const stopType =
+      input.stop_type === 'DELIVERY' ? 'DELIVERY' : 'PICKUP';
+    if (adds.length === 0 && removes.length === 0) {
+      return { ok: true, added: 0, removed: 0 };
+    }
+
+    const tour = await this.prisma.nv_touren.findUnique({
+      where: { id: tourId },
+      include: {
+        subunternehmer: {
+          select: {
+            max_paletten: true,
+            max_gewicht_kg: true,
+            max_volumen_m3: true,
+            max_ldm: true,
+          },
+        },
+        stops: {
+          select: {
+            id: true,
+            shipment: {
+              select: {
+                package_count: true,
+                effective_pallets: true,
+                weight_kg: true,
+                volume_m3: true,
+                ldm: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!tour) throw new NotFoundException('NV-Tour nicht gefunden');
+
+    // Validate removes existieren in dieser Tour
+    const stopIdsInTour = new Set(tour.stops.map((s) => s.id));
+    for (const r of removes) {
+      if (!stopIdsInTour.has(r)) {
+        throw new NotFoundException(`Stop ${r} nicht in Tour`);
+      }
+    }
+
+    // Aggregate current totals
+    let curPal = 0;
+    let curKg = 0;
+    let curM3 = 0;
+    let curLdm = 0;
+    for (const s of tour.stops) {
+      curPal += Number(
+        s.shipment.effective_pallets ?? s.shipment.package_count ?? 0,
+      );
+      curKg += Number(s.shipment.weight_kg ?? 0);
+      curM3 += Number(s.shipment.volume_m3 ?? 0);
+      curLdm += Number(s.shipment.ldm ?? 0);
+    }
+
+    // Subtract removed-stop totals
+    const removedSet = new Set(removes);
+    for (const s of tour.stops) {
+      if (!removedSet.has(s.id)) continue;
+      curPal -= Number(
+        s.shipment.effective_pallets ?? s.shipment.package_count ?? 0,
+      );
+      curKg -= Number(s.shipment.weight_kg ?? 0);
+      curM3 -= Number(s.shipment.volume_m3 ?? 0);
+      curLdm -= Number(s.shipment.ldm ?? 0);
+    }
+
+    // Add adds-shipment totals
+    const addsShipments =
+      adds.length > 0
+        ? await this.prisma.shipments.findMany({
+            where: { id: { in: adds } },
+            select: {
+              id: true,
+              package_count: true,
+              effective_pallets: true,
+              weight_kg: true,
+              volume_m3: true,
+              ldm: true,
+            },
+          })
+        : [];
+    const foundIds = new Set(addsShipments.map((s) => s.id));
+    for (const a of adds) {
+      if (!foundIds.has(a)) {
+        throw new NotFoundException(`Sendung ${a} nicht gefunden`);
+      }
+    }
+    for (const sh of addsShipments) {
+      curPal += Number(sh.effective_pallets ?? sh.package_count ?? 0);
+      curKg += Number(sh.weight_kg ?? 0);
+      curM3 += Number(sh.volume_m3 ?? 0);
+      curLdm += Number(sh.ldm ?? 0);
+    }
+
+    // Cumulative capacity check
+    const sub = tour.subunternehmer;
+    const checks: {
+      axis: string;
+      total: number;
+      max: number | null;
+    }[] = [
+      { axis: 'paletten', total: curPal, max: sub?.max_paletten ?? null },
+      {
+        axis: 'gewicht_kg',
+        total: curKg,
+        max: sub?.max_gewicht_kg != null ? Number(sub.max_gewicht_kg) : null,
+      },
+      {
+        axis: 'volumen_m3',
+        total: curM3,
+        max: sub?.max_volumen_m3 != null ? Number(sub.max_volumen_m3) : null,
+      },
+      {
+        axis: 'ldm',
+        total: curLdm,
+        max: sub?.max_ldm != null ? Number(sub.max_ldm) : null,
+      },
+    ];
+    const exceeded = checks.filter(
+      (c) => c.max != null && c.total > (c.max as number),
+    );
+    if (exceeded.length > 0) {
+      throw new ConflictException({
+        code: 'CAPACITY_EXCEEDED',
+        would_exceed: exceeded,
+      });
+    }
+
+    // Determine starting position for new stops
+    const maxPosRow = await this.prisma.nv_tour_stops.aggregate({
+      where: { nv_tour_id: tourId },
+      _max: { position: true },
+    });
+    let nextPos = (maxPosRow._max.position ?? -1) + 1;
+
+    await this.prisma.$transaction(async (tx) => {
+      if (removes.length > 0) {
+        await tx.nv_tour_stops.deleteMany({
+          where: { id: { in: removes } },
+        });
+      }
+      for (const shipmentId of adds) {
+        await tx.nv_tour_stops.create({
+          data: {
+            nv_tour_id: tourId,
+            shipment_id: shipmentId,
+            position: nextPos,
+            stop_type: stopType,
+          },
+        });
+        nextPos += 1;
+      }
+    });
+
+    setImmediate(() => {
+      void this.safeRecalc(tourId);
+      void this.safeOptimizeTour(tourId);
+    });
+    return {
+      ok: true,
+      added: adds.length,
+      removed: removes.length,
+    };
+  }
+
   async reorderStops(tourId: string, items: ReorderItemDto[]) {
     await this.prisma.$transaction(
       items.map((it) =>

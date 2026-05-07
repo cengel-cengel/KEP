@@ -924,40 +924,144 @@ export default function NvDispositionPage() {
       },
     );
 
+  // Pending-State pro Tour: lokale Änderungen werden 1s gesammelt
+  // und dann als Batch zum Server geschickt.
+  const pendingByTourRef = useRef<
+    Map<string, { adds: Set<string>; removes: Set<string> }>
+  >(new Map());
+  const syncTimersRef = useRef<Map<string, number>>(new Map());
+  const [pendingVersion, setPendingVersion] = useState(0);
+  const SYNC_DEBOUNCE_MS = 1000;
+
+  const getOrCreatePending = (tourId: string) => {
+    let p = pendingByTourRef.current.get(tourId);
+    if (!p) {
+      p = { adds: new Set(), removes: new Set() };
+      pendingByTourRef.current.set(tourId, p);
+    }
+    return p;
+  };
+
+  const flushSync = async (tourId: string) => {
+    const p = pendingByTourRef.current.get(tourId);
+    if (!p || (p.adds.size === 0 && p.removes.size === 0)) return;
+    const adds = Array.from(p.adds);
+    const removes = Array.from(p.removes);
+    // Pending optimistisch leeren — Rollback bei Error.
+    pendingByTourRef.current.set(tourId, {
+      adds: new Set(),
+      removes: new Set(),
+    });
+    syncTimersRef.current.delete(tourId);
+    setPendingVersion((v) => v + 1);
+    try {
+      await api.post(`/nv-touren/${tourId}/batch-stops`, {
+        adds,
+        removes,
+        stop_type: mode,
+      });
+      invalidate();
+      window.setTimeout(invalidate, 3000);
+    } catch (err: any) {
+      const cur = getOrCreatePending(tourId);
+      for (const a of adds) cur.adds.add(a);
+      for (const r of removes) cur.removes.add(r);
+      setPendingVersion((v) => v + 1);
+      const status = err?.response?.status;
+      const code = err?.response?.data?.code;
+      if (status === 409 && code === 'CAPACITY_EXCEEDED') {
+        const axes = (err.response.data?.would_exceed ?? [])
+          .map((w: any) => `${w.axis} (${w.total}/${w.max})`)
+          .join(', ');
+        setBanner({
+          kind: 'err',
+          msg: `Kapazität überschritten: ${axes || 'unbekannt'}`,
+        });
+      } else {
+        setBanner({
+          kind: 'err',
+          msg: `Batch-Sync fehlgeschlagen (${status ?? '?'}). Pending erhalten — erneut klicken zum Retry.`,
+        });
+      }
+    }
+  };
+
+  const scheduleSync = (tourId: string) => {
+    const existing = syncTimersRef.current.get(tourId);
+    if (existing) window.clearTimeout(existing);
+    const timer = window.setTimeout(
+      () => flushSync(tourId),
+      SYNC_DEBOUNCE_MS,
+    );
+    syncTimersRef.current.set(tourId, timer);
+  };
+
+  const clearAllPending = () => {
+    pendingByTourRef.current.clear();
+    for (const t of syncTimersRef.current.values()) window.clearTimeout(t);
+    syncTimersRef.current.clear();
+    setPendingVersion((v) => v + 1);
+  };
+
+  // Esc-Key: Pending verwerfen
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && pendingByTourRef.current.size > 0) {
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName ?? '';
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        clearAllPending();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
+  // Aggregate-Set über alle Touren für UI-Highlight
+  const pendingAddIds = useMemo(() => {
+    void pendingVersion;
+    const out = new Set<string>();
+    for (const p of pendingByTourRef.current.values()) {
+      for (const a of p.adds) out.add(a);
+    }
+    return out;
+  }, [pendingVersion]);
+
+  const pendingRemoveStopIds = useMemo(() => {
+    void pendingVersion;
+    const out = new Set<string>();
+    for (const p of pendingByTourRef.current.values()) {
+      for (const r of p.removes) out.add(r);
+    }
+    return out;
+  }, [pendingVersion]);
+
   const onPinClick = (shipmentId: string) => {
-    // Bevorzuge aktive Tour-View; sonst Ziel-Tour aus Header-Dropdown
     const targetTourId = activeTourViewId ?? selectedTourId;
     if (!targetTourId) {
-      // Keine Tour aktiv UND keine Ziel-Tour: Picker öffnen
       setPinAddShipmentId(shipmentId);
       return;
     }
-    addStopMut.mutate(
-      { tourId: targetTourId, shipmentId },
-      {
-        onSuccess: () => {
-          setClickedSequence((seq) =>
-            seq.includes(shipmentId) ? seq : [...seq, shipmentId],
-          );
-          invalidate();
-          // Background-Reorder/KM in 1-2s fertig — zweites invalidate
-          window.setTimeout(invalidate, 3000);
-        },
-      },
-    );
+    const p = getOrCreatePending(targetTourId);
+    if (p.adds.has(shipmentId)) {
+      p.adds.delete(shipmentId);
+    } else {
+      p.adds.add(shipmentId);
+    }
+    setPendingVersion((v) => v + 1);
+    scheduleSync(targetTourId);
   };
 
   const handleTourStopClick = (stopId: string) => {
     if (!activeTourViewId) return;
-    deleteStopMut.mutate(
-      { tourId: activeTourViewId, stopId },
-      {
-        onSuccess: () => {
-          invalidate();
-          window.setTimeout(invalidate, 3000);
-        },
-      },
-    );
+    const p = getOrCreatePending(activeTourViewId);
+    if (p.removes.has(stopId)) {
+      p.removes.delete(stopId);
+    } else {
+      p.removes.add(stopId);
+    }
+    setPendingVersion((v) => v + 1);
+    scheduleSync(activeTourViewId);
   };
 
   const moveStop = (tour: NvTour, idx: number, dir: -1 | 1) => {
@@ -1483,8 +1587,16 @@ export default function NvDispositionPage() {
                       undefined,
                     tour_gebiet_code: s.matched_tour_gebiet_code,
                   }))}
-                tourStops={activeTour ? activeTourStopPins : undefined}
+                tourStops={
+                  activeTour
+                    ? activeTourStopPins.filter(
+                        (s) => !pendingRemoveStopIds.has(s.id),
+                      )
+                    : undefined
+                }
                 onTourStopClick={handleTourStopClick}
+                pendingAddIds={pendingAddIds}
+                pendingRemoveStopIds={pendingRemoveStopIds}
                 clickedSequence={clickedSequence}
                 onPinClick={onPinClick}
                 onReset={() => setClickedSequence([])}

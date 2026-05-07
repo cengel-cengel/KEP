@@ -102,6 +102,7 @@ export default function NvDispoMap({
   onRouteError,
   tourStops,
   onTourStopClick,
+  pendingAddIds,
 }: {
   shipments: MapShipment[];
   clickedSequence: string[];
@@ -110,6 +111,11 @@ export default function NvDispoMap({
   onRouteError?: (msg: string) => void;
   tourStops?: TourStopPin[];
   onTourStopClick?: (stopId: string) => void;
+  pendingAddIds?: Set<string>;
+  /** unbenutzt im Component selbst — Filter passiert im Parent.
+   *  Prop bleibt für API-Kompatibilität / spätere setIcon-Refactor.
+   */
+  pendingRemoveStopIds?: Set<string>;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -171,7 +177,11 @@ export default function NvDispoMap({
       const ll = toLatLng(s.loading_address);
       if (!ll) continue;
       const seqNumber = clickedIndex.get(s.id);
-      const icon = makeIcon(seqNumber != null, seqNumber, s.color);
+      const isPending = pendingAddIds?.has(s.id) ?? false;
+      // Pending-Add: orange Marker mit "?" Label (sync-pending)
+      const icon = isPending
+        ? makeIcon(true, '?', '#f59e0b')
+        : makeIcon(seqNumber != null, seqNumber, s.color);
       const existing = markersRef.current.get(s.id);
       if (existing) {
         existing.setIcon(icon);
@@ -220,7 +230,7 @@ export default function NvDispoMap({
       }
     }
     // Auto-Fit übernimmt zentrale useEffect (shipments + tourStops).
-  }, [shipments, clickedIndex, onPinClick]);
+  }, [shipments, clickedIndex, onPinClick, pendingAddIds]);
 
   // Zentraler Auto-Fit: alle Shipments + Tour-Stops (inkl. Lager-Pins).
   useEffect(() => {

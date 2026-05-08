@@ -104,6 +104,12 @@ const TOUR_INCLUDE = {
 @Injectable()
 export class NvTourenService {
   private readonly logger = new Logger(NvTourenService.name);
+  /** 60s-TTL Cache für NV-PLZ-Patterns (alle aktiven Tour-Gebiete). */
+  private nvPlzCache: {
+    exact: Set<string>;
+    prefixes: string[];
+    ts: number;
+  } | null = null;
   constructor(private readonly prisma: PrismaService) {}
 
   /** Wraps recalcVorlaufCosts ohne Mutation zu blockieren. */
@@ -137,6 +143,63 @@ export class NvTourenService {
         `optimizeTourRoute(${tourId}) failed: ${err?.message ?? err}`,
       );
     }
+  }
+
+  /**
+   * Liefert das aggregierte PLZ-Set ALLER aktiven nv_tour_gebiete.
+   * Cache-TTL 60s — bei Pattern-Updates greift die neue Definition
+   * mit max. 1 Minute Verzögerung.
+   *
+   * Patterns:
+   *   "70499"   → exact match
+   *   "70%"     → prefix match (alle PLZ beginnend mit "70")
+   * Wert-Format Json: Array<string> oder String "p1,p2,..."
+   */
+  private async getOwnNvPlzSet(): Promise<{
+    exact: Set<string>;
+    prefixes: string[];
+  }> {
+    const now = Date.now();
+    if (this.nvPlzCache && now - this.nvPlzCache.ts < 60_000) {
+      return {
+        exact: this.nvPlzCache.exact,
+        prefixes: this.nvPlzCache.prefixes,
+      };
+    }
+    const tourGebiete = await this.prisma.nv_tour_gebiete.findMany({
+      where: { aktiv: true },
+      select: { plz_pattern: true },
+    });
+    const exact = new Set<string>();
+    const prefixSet = new Set<string>();
+    const collect = (raw: string) => {
+      const p = raw.trim();
+      if (!p) return;
+      if (p.endsWith('%')) prefixSet.add(p.slice(0, -1));
+      else exact.add(p);
+    };
+    for (const g of tourGebiete) {
+      const pp: unknown = g.plz_pattern;
+      if (Array.isArray(pp)) {
+        for (const x of pp) if (typeof x === 'string') collect(x);
+      } else if (typeof pp === 'string') {
+        for (const part of pp.split(',')) collect(part);
+      }
+    }
+    const prefixes = Array.from(prefixSet);
+    this.nvPlzCache = { exact, prefixes, ts: now };
+    return { exact, prefixes };
+  }
+
+  /** Match-Helper: exact + Prefix-Wildcard. */
+  private plzMatchesNv(
+    zip: string,
+    set: { exact: Set<string>; prefixes: string[] },
+  ): boolean {
+    if (!zip) return false;
+    if (set.exact.has(zip)) return true;
+    for (const pre of set.prefixes) if (zip.startsWith(pre)) return true;
+    return false;
   }
 
   async optimizeTourRoute(tourId: string) {
@@ -1063,23 +1126,40 @@ export class NvTourenService {
       select: { id: true, code: true, name: true, plz_pattern: true },
     });
 
-    type TG = { id: string; code: string; name: string; plzSet: Set<string> };
+    type TG = {
+      id: string;
+      code: string;
+      name: string;
+      exact: Set<string>;
+      prefixes: string[];
+    };
+    const parsePattern = (raw: string, exact: Set<string>, prefixes: Set<string>) => {
+      const p = raw.trim();
+      if (!p) return;
+      if (p.endsWith('%')) prefixes.add(p.slice(0, -1));
+      else exact.add(p);
+    };
     const gebiete: TG[] = tourGebiete.map((g) => {
-      const plz = Array.isArray(g.plz_pattern)
-        ? (g.plz_pattern as unknown[]).filter(
-            (x): x is string => typeof x === 'string',
-          )
-        : [];
+      const exact = new Set<string>();
+      const prefixSet = new Set<string>();
+      const pp: unknown = g.plz_pattern;
+      if (Array.isArray(pp)) {
+        for (const x of pp) if (typeof x === 'string') parsePattern(x, exact, prefixSet);
+      } else if (typeof pp === 'string') {
+        for (const part of pp.split(',')) parsePattern(part, exact, prefixSet);
+      }
       return {
         id: g.id,
         code: g.code,
         name: g.name,
-        plzSet: new Set(plz),
+        exact,
+        prefixes: Array.from(prefixSet),
       };
     });
 
-    const allPlz = new Set<string>();
-    for (const g of gebiete) for (const p of g.plzSet) allPlz.add(p);
+    const hasAnyPattern = gebiete.some(
+      (g) => g.exact.size > 0 || g.prefixes.length > 0,
+    );
 
     const stoppedShipmentIds = new Set(
       (
@@ -1174,11 +1254,18 @@ export class NvTourenService {
         const zip = pin_address?.zip ?? '';
         let matched_tour_gebiet_id: string | null = null;
         let matched_tour_gebiet_code: string | null = null;
-        for (const g of gebiete) {
-          if (zip && g.plzSet.has(zip)) {
-            matched_tour_gebiet_id = g.id;
-            matched_tour_gebiet_code = g.code;
-            break;
+        if (zip) {
+          for (const g of gebiete) {
+            if (
+              this.plzMatchesNv(zip, {
+                exact: g.exact,
+                prefixes: g.prefixes,
+              })
+            ) {
+              matched_tour_gebiet_id = g.id;
+              matched_tour_gebiet_code = g.code;
+              break;
+            }
           }
         }
         const {
@@ -1203,7 +1290,7 @@ export class NvTourenService {
       .filter((s) =>
         filter.nv_tour_gebiet_id
           ? s.matched_tour_gebiet_id === filter.nv_tour_gebiet_id
-          : allPlz.size === 0 || s.matched_tour_gebiet_id !== null,
+          : !hasAnyPattern || s.matched_tour_gebiet_id !== null,
       );
   }
 

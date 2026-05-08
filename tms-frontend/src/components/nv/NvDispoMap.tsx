@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { useNvPending } from '../../lib/useNvPendingStore';
 
 export type MapShipment = {
   id: string;
@@ -102,7 +103,7 @@ export default function NvDispoMap({
   onRouteError,
   tourStops,
   onTourStopClick,
-  pendingAddIds,
+  tourMode,
 }: {
   shipments: MapShipment[];
   clickedSequence: string[];
@@ -111,12 +112,14 @@ export default function NvDispoMap({
   onRouteError?: (msg: string) => void;
   tourStops?: TourStopPin[];
   onTourStopClick?: (stopId: string) => void;
-  pendingAddIds?: Set<string>;
-  /** unbenutzt im Component selbst — Filter passiert im Parent.
-   *  Prop bleibt für API-Kompatibilität / spätere setIcon-Refactor.
-   */
-  pendingRemoveStopIds?: Set<string>;
+  /** PICKUP/DELIVERY für Tour-Polyline-Cache-Key.
+   *  Verhindert Cache-Kollision bei identischen Adressen
+   *  in beiden Modi. */
+  tourMode?: 'PICKUP' | 'DELIVERY';
 }) {
+  // Subscribe to external pending store — re-rendert NUR diesen
+  // Component bei Pending-Mutation (kein Page-Wide-Re-Render).
+  const { pendingAddIds, pendingRemoveStopIds } = useNvPending();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
@@ -139,6 +142,12 @@ export default function NvDispoMap({
   const cacheRef = useRef<
     Map<string, { coords: [number, number][]; distance: number; duration: number }>
   >(new Map());
+  // Tour-Polyline-Cache: keyed auf coords-string der visibleStops.
+  // Verhindert Re-Fetch der OSRM-Route wenn Stops/Reihenfolge gleich.
+  const tourPolylineCacheRef = useRef<Map<string, [number, number][]>>(
+    new Map(),
+  );
+  const lastTourCoordsKeyRef = useRef<string | null>(null);
   const [routeInfo, setRouteInfo] = useState<
     { distance: number; duration: number; fallback: boolean } | null
   >(null);
@@ -406,54 +415,97 @@ export default function NvDispoMap({
     };
   }, []);
 
-  // Tour-Stops als gruene nummerierte Marker + OSRM-Polyline
+  // Tour-Stops: Diff-Update statt Rebuild — Marker-Instanzen bleiben am Leben.
+  // Polyline: coords-key-Cache; Re-Fetch nur bei tatsächlicher Coord-Änderung.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    // Marker neu aufbauen
-    for (const m of tourMarkersRef.current.values()) {
-      map.removeLayer(m);
-    }
-    tourMarkersRef.current.clear();
-    if (!tourStops || tourStops.length === 0) {
-      if (tourPolylineRef.current) {
-        map.removeLayer(tourPolylineRef.current);
-        tourPolylineRef.current = null;
-      }
-      return;
-    }
-    // Reihenfolge im Input bleibt (Lager-Pins prepend/append
-    // bauen die korrekte Sequenz; Stops sind bereits sortiert).
-    const sorted = tourStops;
-    for (const s of sorted) {
+
+    const visibleStops = (tourStops ?? []).filter(
+      (s) => !pendingRemoveStopIds.has(s.id),
+    );
+
+    // ───── DIFF-MARKER ─────
+    const seenIds = new Set<string>();
+    for (const s of visibleStops) {
+      seenIds.add(s.id);
       const icon = s.isWarehouse
         ? makeWarehouseIcon()
         : makeIcon(true, s.position, '#16a34a');
-      const m = L.marker([s.lat, s.lng], { icon }).addTo(map);
       const tip = s.isWarehouse
         ? s.label ?? 'Lager'
         : `Stop ${s.position}${
             s.shipment_number ? ' · ' + s.shipment_number : ''
           } · klick zum Entfernen`;
-      m.bindTooltip(tip, { direction: 'top', offset: [0, -34] });
-      if (!s.isWarehouse) {
-        m.on('click', () => {
-          onTourStopClickRef.current?.(s.id);
-        });
+      const existing = tourMarkersRef.current.get(s.id);
+      if (existing) {
+        existing.setIcon(icon);
+        existing.setLatLng([s.lat, s.lng]);
+        existing.unbindTooltip();
+        existing.bindTooltip(tip, { direction: 'top', offset: [0, -34] });
+      } else {
+        const m = L.marker([s.lat, s.lng], { icon }).addTo(map);
+        m.bindTooltip(tip, { direction: 'top', offset: [0, -34] });
+        if (!s.isWarehouse) {
+          m.on('click', () => {
+            onTourStopClickRef.current?.(s.id);
+          });
+        }
+        tourMarkersRef.current.set(s.id, m);
       }
-      tourMarkersRef.current.set(s.id, m);
     }
-    // OSRM-Polyline (separat von clickedSequence)
+    // Remove obsolete only
+    for (const [id, m] of tourMarkersRef.current) {
+      if (!seenIds.has(id)) {
+        map.removeLayer(m);
+        tourMarkersRef.current.delete(id);
+      }
+    }
+
+    // ───── POLYLINE COORDS-CACHE ─────
+    if (visibleStops.length < 2) {
+      if (tourPolylineRef.current) {
+        map.removeLayer(tourPolylineRef.current);
+        tourPolylineRef.current = null;
+      }
+      lastTourCoordsKeyRef.current = null;
+      return;
+    }
+    // Cache-Key inkl. tourMode-Prefix: PICKUP- und DELIVERY-Routen
+    // mit identischen Coords (Sonderfall) bekommen unterschiedliche
+    // Keys. Warehouse-Coords sind im visibleStops als first/last
+    // enthalten (parent prepend/append).
+    const coordsKey = [
+      tourMode ?? 'NA',
+      ...visibleStops.map(
+        (s) => `${s.lng.toFixed(5)},${s.lat.toFixed(5)}`,
+      ),
+    ].join('|');
+    if (coordsKey === lastTourCoordsKeyRef.current) {
+      // Coords identisch → kein Re-Fetch, kein Redraw.
+      return;
+    }
+    lastTourCoordsKeyRef.current = coordsKey;
+
+    // Cached?
+    const cached = tourPolylineCacheRef.current.get(coordsKey);
+    if (cached) {
+      if (tourPolylineRef.current)
+        map.removeLayer(tourPolylineRef.current);
+      tourPolylineRef.current = L.polyline(cached, {
+        color: '#1a73e8',
+        weight: 6,
+        opacity: 0.85,
+      }).addTo(map);
+      return;
+    }
+
+    // Fetch
     tourAbortRef.current?.abort();
-    if (tourPolylineRef.current) {
-      map.removeLayer(tourPolylineRef.current);
-      tourPolylineRef.current = null;
-    }
-    if (sorted.length < 2) return;
     const ctrl = new AbortController();
     tourAbortRef.current = ctrl;
     const timeoutId = window.setTimeout(() => ctrl.abort(), 5000);
-    const url = `https://router.project-osrm.org/route/v1/driving/${sorted
+    const url = `https://router.project-osrm.org/route/v1/driving/${visibleStops
       .map((s) => `${s.lng},${s.lat}`)
       .join(';')}?overview=full&geometries=geojson`;
     fetch(url, { signal: ctrl.signal })
@@ -470,6 +522,7 @@ export default function NvDispoMap({
           lat,
           lng,
         ]);
+        tourPolylineCacheRef.current.set(coordsKey, latlngs);
         if (tourPolylineRef.current && mapRef.current) {
           mapRef.current.removeLayer(tourPolylineRef.current);
         }
@@ -481,8 +534,10 @@ export default function NvDispoMap({
       })
       .catch((err) => {
         if (err?.name === 'AbortError') return;
-        // Fallback Luftlinie (kein OSRM-Erfolg) bleibt grau-gestrichelt
-        const latlngs: [number, number][] = sorted.map((s) => [s.lat, s.lng]);
+        const latlngs: [number, number][] = visibleStops.map((s) => [
+          s.lat,
+          s.lng,
+        ]);
         if (tourPolylineRef.current && mapRef.current) {
           mapRef.current.removeLayer(tourPolylineRef.current);
         }
@@ -494,7 +549,7 @@ export default function NvDispoMap({
         }).addTo(map);
       })
       .finally(() => window.clearTimeout(timeoutId));
-  }, [tourStops, onTourStopClick]);
+  }, [tourStops, onTourStopClick, pendingRemoveStopIds, tourMode]);
 
   return (
     <div className="relative w-full h-full">

@@ -1,6 +1,8 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -10,9 +12,23 @@ import { UpdateTourDto } from './dto/update-tour.dto';
 import { DocumentsService } from '../documents/documents.service';
 import { LockService } from '../status/lock.service';
 import { StatusService } from '../status/status.service';
+import { routeDistanceKm, routeTrip } from '../lib/osrm.lib';
+
+const FV_TRANSPORT_TYPES = [
+  'SAMMELGUT',
+  'TEILLADUNG',
+  'KOMPLETTLADUNG',
+  'DIREKT',
+  'DIREKT_UMSCHLAG',
+  'BEILADER',
+  'SONDER',
+];
 
 @Injectable()
 export class ToursService {
+  private readonly logger = new Logger(ToursService.name);
+  /** 60s-TTL Cache: aktive FV-Relations (= unsere FV). */
+  private fvRelationsCache: { ids: Set<string>; ts: number } | null = null;
   constructor(
     private readonly prisma: PrismaService,
     private readonly documents: DocumentsService,
@@ -549,5 +565,440 @@ export class ToursService {
     );
 
     return documents;
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // FV-1: Disposition-Layer
+  // ════════════════════════════════════════════════════════════════════
+
+  /** 60s-TTL Cache: aktive FV-Relations als Set<id>. */
+  private async getOwnFvRelationsSet(): Promise<Set<string>> {
+    const now = Date.now();
+    if (this.fvRelationsCache && now - this.fvRelationsCache.ts < 60_000) {
+      return this.fvRelationsCache.ids;
+    }
+    const rels = await this.prisma.relations.findMany({
+      where: { is_active: true },
+      select: { id: true },
+    });
+    const ids = new Set(rels.map((r) => r.id));
+    this.fvRelationsCache = { ids, ts: now };
+    return ids;
+  }
+
+  async eligibleShipmentsFv(filter: {
+    datum?: string;
+    search?: string;
+    tourId?: string;
+  }) {
+    const fvRelations = await this.getOwnFvRelationsSet();
+    if (fvRelations.size === 0) return [];
+
+    const where: any = {
+      status: 'new',
+      tour_id: null,
+      deleted_at: null,
+      transport_type: { in: FV_TRANSPORT_TYPES },
+      relation_id: { in: [...fvRelations] },
+    };
+    if (filter.datum) {
+      where.loading_date = { lte: new Date(filter.datum) };
+    }
+    if (filter.search) {
+      where.OR = [
+        { shipment_number: { contains: filter.search, mode: 'insensitive' } },
+        {
+          customers: {
+            name: { contains: filter.search, mode: 'insensitive' },
+          },
+        },
+      ];
+    }
+
+    const shipments = await this.prisma.shipments.findMany({
+      where,
+      orderBy: [{ loading_date: 'asc' }, { created_at: 'asc' }],
+      include: {
+        customers: { select: { id: true, customer_number: true, name: true } },
+        relation: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            direction: true,
+            country_from: true,
+            country_to: true,
+            zip_prefix_from: true,
+            zip_prefix_to: true,
+          },
+        },
+        addresses_shipments_loading_address_idToaddresses: {
+          select: {
+            id: true,
+            name: true,
+            street: true,
+            zip: true,
+            city: true,
+            country_code: true,
+            lat: true,
+            lng: true,
+          },
+        },
+        addresses_shipments_delivery_address_idToaddresses: {
+          select: {
+            id: true,
+            name: true,
+            street: true,
+            zip: true,
+            city: true,
+            country_code: true,
+            lat: true,
+            lng: true,
+          },
+        },
+      },
+      take: 500,
+    });
+
+    return shipments.map((s) => {
+      const loading_address =
+        s.addresses_shipments_loading_address_idToaddresses;
+      const delivery_address =
+        s.addresses_shipments_delivery_address_idToaddresses;
+      const {
+        addresses_shipments_loading_address_idToaddresses: _a,
+        addresses_shipments_delivery_address_idToaddresses: _b,
+        customers,
+        ...rest
+      } = s;
+      return {
+        ...rest,
+        customer: customers,
+        loading_address,
+        delivery_address,
+        pin_address: loading_address,
+        is_in_fv_relation: true,
+      };
+    });
+  }
+
+  async batchStopsFv(
+    tourId: string,
+    input: { adds: string[]; removes: string[] },
+  ) {
+    const adds = Array.from(new Set(input.adds ?? [])).filter(Boolean);
+    const removes = Array.from(new Set(input.removes ?? [])).filter(Boolean);
+    if (adds.length === 0 && removes.length === 0) {
+      return { ok: true, added: 0, removed: 0 };
+    }
+
+    const tour = await this.prisma.tours.findUnique({
+      where: { id: tourId },
+      include: {
+        subcontractors: {
+          select: { id: true, has_adr_license: true },
+        },
+        shipments: {
+          where: { deleted_at: null },
+          select: {
+            id: true,
+            ldm: true,
+            weight_kg: true,
+            tour_position: true,
+            is_hazmat: true,
+          },
+        },
+      },
+    });
+    if (!tour) throw new NotFoundException(`Tour ${tourId} nicht gefunden`);
+
+    const currentIds = new Set(tour.shipments.map((s) => s.id));
+    for (const r of removes) {
+      if (!currentIds.has(r)) {
+        throw new NotFoundException(`Sendung ${r} nicht auf Tour ${tourId}`);
+      }
+    }
+
+    const addsShipments =
+      adds.length > 0
+        ? await this.prisma.shipments.findMany({
+            where: { id: { in: adds }, deleted_at: null },
+            select: {
+              id: true,
+              status: true,
+              tour_id: true,
+              ldm: true,
+              weight_kg: true,
+              is_hazmat: true,
+              has_active_lock: true,
+              lock_types: true,
+            },
+          })
+        : [];
+    const foundAddIds = new Set(addsShipments.map((s) => s.id));
+    for (const a of adds) {
+      if (!foundAddIds.has(a)) {
+        throw new NotFoundException(`Sendung ${a} nicht gefunden`);
+      }
+    }
+    for (const s of addsShipments) {
+      if (s.has_active_lock) {
+        throw new BadRequestException(
+          `Sendung ${s.id} gesperrt (${s.lock_types ?? 'Sperre'}) — disponieren nicht möglich`,
+        );
+      }
+      if (s.status !== 'new') {
+        throw new BadRequestException(
+          `Sendung ${s.id} hat Status '${s.status}' (erwartet: 'new')`,
+        );
+      }
+      if (s.tour_id) {
+        throw new BadRequestException(
+          `Sendung ${s.id} ist bereits einer Tour zugeordnet`,
+        );
+      }
+    }
+
+    // Hazmat-Check kumulativ
+    const willBeHazmat =
+      tour.shipments.some(
+        (s) => !removes.includes(s.id) && s.is_hazmat === true,
+      ) || addsShipments.some((s) => s.is_hazmat === true);
+    if (willBeHazmat && !tour.subcontractors?.has_adr_license) {
+      throw new BadRequestException(
+        'Subunternehmer hat keine ADR-Zulassung für Gefahrgut-Sendungen',
+      );
+    }
+
+    // Cumulative Capacity
+    const removedSet = new Set(removes);
+    let curLdm = 0;
+    let curKg = 0;
+    for (const s of tour.shipments) {
+      if (removedSet.has(s.id)) continue;
+      curLdm += Number(s.ldm ?? 0);
+      curKg += Number(s.weight_kg ?? 0);
+    }
+    for (const s of addsShipments) {
+      curLdm += Number(s.ldm ?? 0);
+      curKg += Number(s.weight_kg ?? 0);
+    }
+    const exceeded: { axis: string; total: number; max: number }[] = [];
+    if (tour.max_ldm != null && curLdm > Number(tour.max_ldm)) {
+      exceeded.push({
+        axis: 'ldm',
+        total: curLdm,
+        max: Number(tour.max_ldm),
+      });
+    }
+    if (tour.max_weight_kg != null && curKg > Number(tour.max_weight_kg)) {
+      exceeded.push({
+        axis: 'weight_kg',
+        total: curKg,
+        max: Number(tour.max_weight_kg),
+      });
+    }
+    if (exceeded.length > 0) {
+      throw new ConflictException({
+        code: 'CAPACITY_EXCEEDED',
+        would_exceed: exceeded,
+      });
+    }
+
+    const maxPos = tour.shipments.reduce(
+      (m, s) => Math.max(m, Number(s.tour_position) || 0),
+      0,
+    );
+    let nextPos = maxPos + 1;
+
+    await this.prisma.$transaction(async (tx) => {
+      if (removes.length > 0) {
+        await tx.shipments.updateMany({
+          where: { id: { in: removes } },
+          data: {
+            tour_id: null,
+            tour_position: null,
+            status: 'new',
+          },
+        });
+      }
+      for (const shipmentId of adds) {
+        await tx.shipments.update({
+          where: { id: shipmentId },
+          data: {
+            tour_id: tourId,
+            tour_position: nextPos,
+            status: 'dispatched',
+          },
+        });
+        nextPos += 1;
+      }
+    });
+
+    setImmediate(() => {
+      void this.safeOptimizeFvTour(tourId);
+    });
+
+    return { ok: true, added: adds.length, removed: removes.length };
+  }
+
+  private async safeOptimizeFvTour(tourId: string) {
+    try {
+      await this.optimizeFvTour(tourId);
+    } catch (err: any) {
+      this.logger.warn(
+        `optimizeFvTour(${tourId}) failed: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /**
+   * Optimize FV-Tour:
+   * - Wenn hub_start_address + hub_end_address mit lat/lng vorhanden:
+   *     OSRM-Trip mit Hub-Pinning, Reorder + KM-Update
+   * - Sonst: nur recalc KM (Distance aus shipment-loading-Adressen)
+   */
+  async optimizeFvTour(tourId: string) {
+    const tour = await this.prisma.tours.findUnique({
+      where: { id: tourId },
+      include: {
+        hub_start_address: {
+          select: { id: true, lat: true, lng: true },
+        },
+        hub_end_address: {
+          select: { id: true, lat: true, lng: true },
+        },
+        shipments: {
+          where: { deleted_at: null },
+          orderBy: [{ tour_position: 'asc' }, { created_at: 'asc' }],
+          select: {
+            id: true,
+            tour_position: true,
+            addresses_shipments_loading_address_idToaddresses: {
+              select: { lat: true, lng: true },
+            },
+          },
+        },
+      },
+    });
+    if (!tour) throw new NotFoundException(`Tour ${tourId} nicht gefunden`);
+
+    const stopsWithCoords: Array<{ id: string; coord: [number, number] }> = [];
+    for (const s of tour.shipments) {
+      const addr = s.addresses_shipments_loading_address_idToaddresses;
+      if (!addr || addr.lat == null || addr.lng == null) continue;
+      const lat = Number(addr.lat);
+      const lng = Number(addr.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      stopsWithCoords.push({ id: s.id, coord: [lng, lat] });
+    }
+    if (stopsWithCoords.length === 0) {
+      this.logger.warn(
+        `optimizeFvTour(${tourId}): no shipment-coords — skip`,
+      );
+      return null;
+    }
+
+    const hubStart = tour.hub_start_address;
+    const hubEnd = tour.hub_end_address;
+    const hasHub =
+      hubStart?.lat != null &&
+      hubStart?.lng != null &&
+      hubEnd?.lat != null &&
+      hubEnd?.lng != null;
+
+    if (!hasHub || stopsWithCoords.length === 1) {
+      // Fallback: Distance aus shipment-coords ohne Reorder
+      const coords: Array<[number, number]> = stopsWithCoords.map(
+        (s) => s.coord,
+      );
+      if (coords.length < 2) {
+        await this.prisma.tours.update({
+          where: { id: tourId },
+          data: { km_calculated_at: new Date() },
+        });
+        return null;
+      }
+      const km = await routeDistanceKm(coords);
+      if (km == null) return null;
+      await this.prisma.tours.update({
+        where: { id: tourId },
+        data: {
+          geplante_km: km.toFixed(2),
+          km_calculated_at: new Date(),
+        },
+      });
+      return km;
+    }
+
+    // Hub-Pinning + Trip-Optimize
+    const whStartCoord: [number, number] = [
+      Number(hubStart!.lng),
+      Number(hubStart!.lat),
+    ];
+    const whEndCoord: [number, number] = [
+      Number(hubEnd!.lng),
+      Number(hubEnd!.lat),
+    ];
+    const coords: Array<[number, number]> = [
+      whStartCoord,
+      ...stopsWithCoords.map((s) => s.coord),
+      whEndCoord,
+    ];
+    const result = await routeTrip(coords);
+    if (!result) {
+      this.logger.warn(`optimizeFvTour(${tourId}): trip null — fallback km`);
+      const km = await routeDistanceKm(coords);
+      if (km != null) {
+        await this.prisma.tours.update({
+          where: { id: tourId },
+          data: {
+            geplante_km: km.toFixed(2),
+            km_calculated_at: new Date(),
+          },
+        });
+      }
+      return null;
+    }
+
+    const lastIdx = coords.length - 1;
+    const newOrderStopIds: string[] = [];
+    for (const inputIdx of result.optimizedOrder) {
+      if (inputIdx === 0 || inputIdx === lastIdx) continue;
+      const stopIdx = inputIdx - 1;
+      if (stopIdx >= 0 && stopIdx < stopsWithCoords.length) {
+        newOrderStopIds.push(stopsWithCoords[stopIdx].id);
+      }
+    }
+    if (newOrderStopIds.length !== stopsWithCoords.length) {
+      this.logger.warn(
+        `optimizeFvTour(${tourId}): order mismatch — fallback km only`,
+      );
+      await this.prisma.tours.update({
+        where: { id: tourId },
+        data: {
+          geplante_km: result.distanceKm.toFixed(2),
+          km_calculated_at: new Date(),
+        },
+      });
+      return result.distanceKm;
+    }
+
+    await this.prisma.$transaction([
+      ...newOrderStopIds.map((shipmentId, i) =>
+        this.prisma.shipments.update({
+          where: { id: shipmentId },
+          data: { tour_position: i + 1 },
+        }),
+      ),
+      this.prisma.tours.update({
+        where: { id: tourId },
+        data: {
+          geplante_km: result.distanceKm.toFixed(2),
+          km_calculated_at: new Date(),
+        },
+      }),
+    ]);
+    return result.distanceKm;
   }
 }

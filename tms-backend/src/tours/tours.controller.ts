@@ -106,4 +106,38 @@ export class ToursController {
   async getDocumentsForTour(@Param('id') id: string) {
     return this.toursService.getDocumentsForTour(id);
   }
+
+  // ─── FV-1: Disposition-Layer ────────────────────────────────────────
+
+  @Get('eligible-shipments-fv')
+  async eligibleShipmentsFv(
+    @Query('datum') datum?: string,
+    @Query('search') search?: string,
+    @Query('tourId') tourId?: string,
+  ) {
+    return this.toursService.eligibleShipmentsFv({ datum, search, tourId });
+  }
+
+  @Post(':id/batch-stops')
+  async batchStops(
+    @Param('id') tourId: string,
+    @Body() dto: { adds?: string[]; removes?: string[] },
+  ) {
+    return this.toursService.batchStopsFv(tourId, {
+      adds: dto.adds ?? [],
+      removes: dto.removes ?? [],
+    });
+  }
+
+  @Post(':id/recalc-km')
+  async recalcKm(@Param('id') tourId: string) {
+    const km = await this.toursService.optimizeFvTour(tourId);
+    return { ok: km != null, geplante_km: km };
+  }
+
+  @Post(':id/optimize')
+  async optimize(@Param('id') tourId: string) {
+    const km = await this.toursService.optimizeFvTour(tourId);
+    return { ok: km != null, geplante_km: km };
+  }
 }

@@ -6,7 +6,11 @@ import NvDispoMap from '../components/nv/NvDispoMap';
 import type { MapShipment, TourStopPin } from '../components/nv/NvDispoMap';
 import CreateTourModal from '../components/nv/CreateTourModal';
 import QuickAddBar from '../components/nv/QuickAddBar';
-import { nvPendingStore } from '../lib/useNvPendingStore';
+import {
+  nvPendingStore,
+  SYNC_DEBOUNCE_MS,
+  RE_INVALIDATE_DELAY_MS,
+} from '../lib/useNvPendingStore';
 import type {
   CreateTourPayload,
   CreateTourStammTour,
@@ -424,7 +428,23 @@ export default function NvDispoMapPopupPage() {
   // Pending-State LIVES in nvPendingStore (external) — KEIN Page-Re-Render
   // bei Pin-Klicks. Subscriber: NvDispoMap.
   const syncTimersRef = useRef<Map<string, number>>(new Map());
-  const SYNC_DEBOUNCE_MS = 1000;
+  // 2s-Catch-Up-Timer pro Tour: holt Background-Optimize-Result.
+  const reInvalidateTimersRef = useRef<Map<string, number>>(new Map());
+
+  const scheduleReInvalidateTouren = (tourId: string) => {
+    const existing = reInvalidateTimersRef.current.get(tourId);
+    if (existing) window.clearTimeout(existing);
+    const t = window.setTimeout(() => {
+      qc.invalidateQueries({ queryKey: ['nv-touren'] });
+      try {
+        channelRef.current?.postMessage({ type: 'invalidate-touren' });
+      } catch {
+        /* ignore */
+      }
+      reInvalidateTimersRef.current.delete(tourId);
+    }, RE_INVALIDATE_DELAY_MS);
+    reInvalidateTimersRef.current.set(tourId, t);
+  };
 
   const flushSync = async (tourId: string) => {
     const snapshot = nvPendingStore.flushPending(tourId);
@@ -443,6 +463,8 @@ export default function NvDispoMapPopupPage() {
       } catch {
         /* ignore */
       }
+      // Catch-Up nach 2s für Background-Optimize.
+      scheduleReInvalidateTouren(tourId);
     } catch (err: any) {
       nvPendingStore.restorePending(tourId, snapshot);
       const status = err?.response?.status;
@@ -493,10 +515,25 @@ export default function NvDispoMapPopupPage() {
         nvPendingStore.clearAll();
         for (const t of syncTimersRef.current.values()) window.clearTimeout(t);
         syncTimersRef.current.clear();
+        for (const t of reInvalidateTimersRef.current.values())
+          window.clearTimeout(t);
+        reInvalidateTimersRef.current.clear();
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
+  }, []);
+
+  // Unmount: alle pending Timer abräumen.
+  useEffect(() => {
+    const syncTimers = syncTimersRef.current;
+    const reInvalidateTimers = reInvalidateTimersRef.current;
+    return () => {
+      for (const t of syncTimers.values()) window.clearTimeout(t);
+      syncTimers.clear();
+      for (const t of reInvalidateTimers.values()) window.clearTimeout(t);
+      reInvalidateTimers.clear();
+    };
   }, []);
 
   const onPinClick = (shipmentId: string) => {

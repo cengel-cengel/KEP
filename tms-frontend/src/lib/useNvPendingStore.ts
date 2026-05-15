@@ -1,5 +1,15 @@
 import { useMemo, useSyncExternalStore } from 'react';
 
+/** Debounce-Delay zwischen Pin-Klick und Batch-Sync-API-Call.
+ *  500ms balanciert schnelles UI-Feedback bei Single-Klick vs.
+ *  Batch-Effekt bei Multi-Klick. */
+export const SYNC_DEBOUNCE_MS = 500;
+
+/** Delay zwischen initialer Invalidation und Catch-Up-Invalidation,
+ *  die das Background-Optimize-Ergebnis (neue Stop-Order + km +
+ *  Polyline) einholt. Backend setImmediate(optimize) braucht ~1-2s. */
+export const RE_INVALIDATE_DELAY_MS = 2000;
+
 /**
  * External UI-Store für Pending-Pin-Klicks.
  *

@@ -8,7 +8,11 @@ import BulkTourPicker from '../components/nv/BulkTourPicker';
 import CreateTourModal from '../components/nv/CreateTourModal';
 import QuickAddBar from '../components/nv/QuickAddBar';
 import { haversineKm } from '../lib/distance';
-import { nvPendingStore } from '../lib/useNvPendingStore';
+import {
+  nvPendingStore,
+  SYNC_DEBOUNCE_MS,
+  RE_INVALIDATE_DELAY_MS,
+} from '../lib/useNvPendingStore';
 import type { Shipment } from '../types/shipment';
 import NvDispoMap from '../components/nv/NvDispoMap';
 import type { MapShipment, TourStopPin } from '../components/nv/NvDispoMap';
@@ -930,7 +934,24 @@ export default function NvDispositionPage() {
   // Pending-State LIVES in nvPendingStore (external) — KEIN Page-Re-Render
   // bei Pin-Klicks. Subscriber: NvDispoMap, evtl. TourCard.
   const syncTimersRef = useRef<Map<string, number>>(new Map());
-  const SYNC_DEBOUNCE_MS = 1000;
+  // 2s-Catch-Up-Timer pro Tour: holt Background-Optimize-Result
+  // (neue Stop-Order + geplante_km) nach setImmediate-Optimize.
+  const reInvalidateTimersRef = useRef<Map<string, number>>(new Map());
+
+  const scheduleReInvalidateTouren = (tourId: string) => {
+    const existing = reInvalidateTimersRef.current.get(tourId);
+    if (existing) window.clearTimeout(existing);
+    const t = window.setTimeout(() => {
+      qc.invalidateQueries({ queryKey: ['nv-touren'] });
+      try {
+        popupChannelRef.current?.postMessage({ type: 'invalidate-touren' });
+      } catch {
+        /* ignore */
+      }
+      reInvalidateTimersRef.current.delete(tourId);
+    }, RE_INVALIDATE_DELAY_MS);
+    reInvalidateTimersRef.current.set(tourId, t);
+  };
 
   const flushSync = async (tourId: string) => {
     const snapshot = nvPendingStore.flushPending(tourId);
@@ -949,6 +970,9 @@ export default function NvDispositionPage() {
       } catch {
         /* ignore */
       }
+      // Catch-Up: Background-Optimize läuft 1-2s, holt neue Stop-Order +
+      // geplante_km + Polyline-Coords.
+      scheduleReInvalidateTouren(tourId);
     } catch (err: any) {
       nvPendingStore.restorePending(tourId, snapshot);
       const status = err?.response?.status;
@@ -1007,10 +1031,26 @@ export default function NvDispositionPage() {
         nvPendingStore.clearAll();
         for (const t of syncTimersRef.current.values()) window.clearTimeout(t);
         syncTimersRef.current.clear();
+        for (const t of reInvalidateTimersRef.current.values())
+          window.clearTimeout(t);
+        reInvalidateTimersRef.current.clear();
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
+  }, []);
+
+  // Unmount: alle pending Timer abräumen (verhindert späte
+  // qc.invalidateQueries auf unmounted Component).
+  useEffect(() => {
+    const syncTimers = syncTimersRef.current;
+    const reInvalidateTimers = reInvalidateTimersRef.current;
+    return () => {
+      for (const t of syncTimers.values()) window.clearTimeout(t);
+      syncTimers.clear();
+      for (const t of reInvalidateTimers.values()) window.clearTimeout(t);
+      reInvalidateTimers.clear();
+    };
   }, []);
 
   const onPinClick = (shipmentId: string) => {

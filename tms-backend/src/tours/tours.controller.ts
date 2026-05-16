@@ -38,6 +38,17 @@ export class ToursController {
     return this.toursService.findCompletedArchive();
   }
 
+  // ─── FV-1: statische Route VOR @Get(':id') — Express matched
+  // sonst parameterized first und wirft P2007 (uuid-Bug). ──────────
+  @Get('eligible-shipments-fv')
+  async eligibleShipmentsFv(
+    @Query('datum') datum?: string,
+    @Query('search') search?: string,
+    @Query('tourId') tourId?: string,
+  ) {
+    return this.toursService.eligibleShipmentsFv({ datum, search, tourId });
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.toursService.findOne(id);
@@ -108,15 +119,6 @@ export class ToursController {
   }
 
   // ─── FV-1: Disposition-Layer ────────────────────────────────────────
-
-  @Get('eligible-shipments-fv')
-  async eligibleShipmentsFv(
-    @Query('datum') datum?: string,
-    @Query('search') search?: string,
-    @Query('tourId') tourId?: string,
-  ) {
-    return this.toursService.eligibleShipmentsFv({ datum, search, tourId });
-  }
 
   @Post(':id/batch-stops')
   async batchStops(

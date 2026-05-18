@@ -37,7 +37,7 @@ const NAV: NavItem[] = [
   },
   { to: '/shipments', label: 'Sendungen', icon: Package },
   { to: '/nv-disposition', label: 'NV-Dispo', icon: Map },
-  { to: '/disposition', label: 'FV-Dispo', icon: Workflow },
+  { to: '/fv-disposition', label: 'FV-Dispo', icon: Workflow },
   { to: '/clearance', label: 'Abfertigung', icon: FileText },
   { to: '/hall', label: 'Halle', icon: Warehouse },
   { to: '/tours', label: 'Touren', icon: Truck },

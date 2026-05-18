@@ -1,4 +1,10 @@
-import { IsDateString, IsNumber, IsOptional, IsString } from 'class-validator';
+import {
+  IsDateString,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 
 export class CreateTourDto {
   @IsDateString()
@@ -23,4 +29,16 @@ export class CreateTourDto {
   @IsOptional()
   @IsString()
   comment?: string;
+
+  @IsOptional()
+  @IsUUID()
+  hubStartAddressId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  hubEndAddressId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  subcontractorId?: string;
 }

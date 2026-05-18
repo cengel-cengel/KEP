@@ -136,6 +136,8 @@ export class ToursService {
       where: { id },
       include: {
         subcontractors: true,
+        hub_start_address: true,
+        hub_end_address: true,
         shipments: {
           where: { deleted_at: null },
           include: {
@@ -143,6 +145,7 @@ export class ToursService {
             addresses_shipments_loading_address_idToaddresses: true,
             addresses_shipments_delivery_address_idToaddresses: true,
           },
+          orderBy: [{ tour_position: 'asc' }, { created_at: 'asc' }],
         },
       },
     });
@@ -168,6 +171,9 @@ export class ToursService {
         status: 'planned',
         notes: dto.comment ?? null,
         created_by: createdBy,
+        hub_start_address_id: dto.hubStartAddressId ?? null,
+        hub_end_address_id: dto.hubEndAddressId ?? null,
+        subcontractor_id: dto.subcontractorId ?? null,
       },
     });
   }

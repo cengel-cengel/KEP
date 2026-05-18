@@ -8,6 +8,7 @@ import BeladeplanPage from './pages/BeladeplanPage';
 import DispositionPage from './pages/DispositionPage';
 import NvDispositionPage from './pages/NvDispositionPage';
 import NvDispoMapPopupPage from './pages/NvDispoMapPopupPage';
+import FvDispositionPage from './pages/FvDispositionPage';
 import MapDispositionPage from './pages/MapDispositionPage';
 import MapPage from './pages/MapPage';
 import ClearancePage from './pages/ClearancePage';
@@ -61,6 +62,7 @@ export default function App() {
         <Route path="/beladeplan" element={<BeladeplanPage />} />
         <Route path="/disposition" element={<DispositionPage />} />
         <Route path="/nv-disposition" element={<NvDispositionPage />} />
+        <Route path="/fv-disposition" element={<FvDispositionPage />} />
         <Route path="/disposition/map" element={<MapDispositionPage />} />
         <Route path="/disposition/map-old" element={<MapPage />} />
         <Route path="/tours" element={<CompletedToursPage />} />

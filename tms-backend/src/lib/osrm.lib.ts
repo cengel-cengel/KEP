@@ -56,6 +56,12 @@ export async function routeDistanceKm(
   }
 }
 
+/** GeoJSON LineString — selbst-beschreibend, leaflet-kompatibel. */
+export interface PolylineGeometry {
+  type: 'LineString';
+  coordinates: Array<[number, number]>;
+}
+
 export interface TripResult {
   distanceKm: number;
   /**
@@ -63,6 +69,8 @@ export interface TripResult {
    * optimizedOrder[optPos] = originalIndex
    */
   optimizedOrder: number[];
+  /** GeoJSON LineString der gesamten Route (full overview). */
+  geometry: PolylineGeometry | null;
 }
 
 /**
@@ -82,7 +90,7 @@ export async function routeTrip(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const path = coords.map(([lng, lat]) => `${lng},${lat}`).join(';');
-  const url = `${OSRM_TRIP_URL}/${path}?source=first&destination=last&roundtrip=false&overview=false`;
+  const url = `${OSRM_TRIP_URL}/${path}?source=first&destination=last&roundtrip=false&overview=full&geometries=geojson`;
   logger.log(`trip request ${coords.length} coords`);
   try {
     const res = await fetch(url, { signal: ctrl.signal });
@@ -91,7 +99,13 @@ export async function routeTrip(
       return null;
     }
     const j = (await res.json()) as {
-      trips?: Array<{ distance?: number }>;
+      trips?: Array<{
+        distance?: number;
+        geometry?: {
+          type?: string;
+          coordinates?: Array<[number, number]>;
+        };
+      }>;
       waypoints?: Array<{ waypoint_index?: number }>;
     };
     const trip = j?.trips?.[0];
@@ -118,8 +132,17 @@ export async function routeTrip(
       return null;
     }
     const km = meters / 1000;
-    logger.log(`trip -> ${km.toFixed(2)} km, order=${order.join(',')}`);
-    return { distanceKm: km, optimizedOrder: order };
+    const geomCoords = trip.geometry?.coordinates;
+    const geometry: PolylineGeometry | null =
+      Array.isArray(geomCoords) && geomCoords.length >= 2
+        ? { type: 'LineString', coordinates: geomCoords }
+        : null;
+    logger.log(
+      `trip -> ${km.toFixed(2)} km, order=${order.join(',')}, geom=${
+        geometry?.coordinates.length ?? 0
+      }pts`,
+    );
+    return { distanceKm: km, optimizedOrder: order, geometry };
   } catch (e: unknown) {
     const name = (e as { name?: string })?.name;
     const msg = e instanceof Error ? e.message : String(e);

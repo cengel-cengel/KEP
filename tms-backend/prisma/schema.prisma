@@ -554,6 +554,7 @@ model tours {
   driver_token_expires_at DateTime?            @db.Timestamptz(6)
   geplante_km             Decimal?             @db.Decimal(8, 2)
   km_calculated_at        DateTime?            @db.Timestamptz(6)
+  polyline_geometry       Json?
   hub_start_address_id    String?              @db.Uuid
   hub_end_address_id      String?              @db.Uuid
   hub_start_address       addresses?           @relation("tours_hub_start_address", fields: [hub_start_address_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
@@ -1425,6 +1426,7 @@ model nv_touren {
   stunden_geleistet        Decimal?            @db.Decimal(10, 2)
   geplante_km              Decimal?            @db.Decimal(10, 2)
   km_calculated_at         DateTime?           @db.Timestamptz(6)
+  polyline_geometry        Json?
   created_at               DateTime            @default(now()) @db.Timestamptz(6)
   updated_at               DateTime            @default(now()) @db.Timestamptz(6)
   nv_stamm_tour            nv_stamm_touren?    @relation("nv_touren_stamm_tour", fields: [nv_stamm_tour_id], references: [id], onDelete: SetNull, onUpdate: NoAction)

@@ -104,6 +104,7 @@ export default function NvDispoMap({
   tourStops,
   onTourStopClick,
   tourMode,
+  tourPolyline,
 }: {
   shipments: MapShipment[];
   clickedSequence: string[];
@@ -116,6 +117,13 @@ export default function NvDispoMap({
    *  Verhindert Cache-Kollision bei identischen Adressen
    *  in beiden Modi. */
   tourMode?: 'PICKUP' | 'DELIVERY';
+  /** Backend-persisted GeoJSON LineString (overview=full).
+   *  IF gesetzt → kein OSRM-Fetch im Frontend.
+   *  ELSE → existing Fetch-Fallback (alte Touren + post-reorder). */
+  tourPolyline?: {
+    type: 'LineString';
+    coordinates: Array<[number, number]>;
+  } | null;
 }) {
   // Subscribe to external pending store — re-rendert NUR diesen
   // Component bei Pending-Mutation (kein Page-Wide-Re-Render).
@@ -471,11 +479,12 @@ export default function NvDispoMap({
       lastTourCoordsKeyRef.current = null;
       return;
     }
-    // Cache-Key inkl. tourMode-Prefix: PICKUP- und DELIVERY-Routen
-    // mit identischen Coords (Sonderfall) bekommen unterschiedliche
-    // Keys. Warehouse-Coords sind im visibleStops als first/last
-    // enthalten (parent prepend/append).
+    // Cache-Key inkl. tourMode-Prefix + Source-Prefix:
+    // 'payload|' (Backend-Geometry) vs 'fetch|' (FE-OSRM) verhindert
+    // stale-Cache-Treffer wenn Backend polyline_geometry=null setzt
+    // (z.B. nach reorder ohne optimize).
     const coordsKey = [
+      tourPolyline ? 'payload' : 'fetch',
       tourMode ?? 'NA',
       ...visibleStops.map(
         (s) => `${s.lng.toFixed(5)},${s.lat.toFixed(5)}`,
@@ -486,6 +495,23 @@ export default function NvDispoMap({
       return;
     }
     lastTourCoordsKeyRef.current = coordsKey;
+
+    // BACKEND-PAYLOAD: GeoJSON direkt rendern, kein Fetch.
+    // BIG-WIN: 0ms Frontend-Wait + keine OSRM-Rate-Limit-Risiko.
+    if (tourPolyline?.coordinates && tourPolyline.coordinates.length >= 2) {
+      const latlngs: [number, number][] = tourPolyline.coordinates.map(
+        ([lng, lat]) => [lat, lng],
+      );
+      tourPolylineCacheRef.current.set(coordsKey, latlngs);
+      if (tourPolylineRef.current)
+        map.removeLayer(tourPolylineRef.current);
+      tourPolylineRef.current = L.polyline(latlngs, {
+        color: '#1a73e8',
+        weight: 6,
+        opacity: 0.85,
+      }).addTo(map);
+      return;
+    }
 
     // Cached?
     const cached = tourPolylineCacheRef.current.get(coordsKey);
@@ -549,7 +575,7 @@ export default function NvDispoMap({
         }).addTo(map);
       })
       .finally(() => window.clearTimeout(timeoutId));
-  }, [tourStops, onTourStopClick, pendingRemoveStopIds, tourMode]);
+  }, [tourStops, onTourStopClick, pendingRemoveStopIds, tourMode, tourPolyline]);
 
   return (
     <div className="relative w-full h-full">

@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { Prisma } from '../../generated/prisma';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTourDto } from './dto/create-tour.dto';
 import { UpdateTourDto } from './dto/update-tour.dto';
@@ -493,6 +494,12 @@ export class ToursService {
           data: { tour_position: idx + 1 },
         });
       }
+      // Polyline invalidieren — Reorder ändert Route. FE-Fallback
+      // (eigener OSRM-Fetch) übernimmt bis nächstes optimize.
+      await tx.tours.update({
+        where: { id: tourId },
+        data: { polyline_geometry: Prisma.JsonNull },
+      });
     });
 
     return this.findOne(tourId);
@@ -1002,6 +1009,9 @@ export class ToursService {
         data: {
           geplante_km: result.distanceKm.toFixed(2),
           km_calculated_at: new Date(),
+          polyline_geometry: result.geometry
+            ? (result.geometry as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
         },
       }),
     ]);

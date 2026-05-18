@@ -127,6 +127,10 @@ type NvTour = {
   kosten_modus?: string | null;
   angefahrene_km: string | number | null;
   geplante_km: string | number | null;
+  polyline_geometry?: {
+    type: 'LineString';
+    coordinates: Array<[number, number]>;
+  } | null;
   stunden_geleistet: string | number | null;
   notizen: string | null;
   subunternehmer_id: string | null;
@@ -1598,6 +1602,7 @@ export default function NvDispositionPage() {
               <NvDispoMap
                 shipments={mapShipments}
                 tourStops={activeTour ? activeTourStopPins : undefined}
+                tourPolyline={activeTour?.polyline_geometry ?? null}
                 onTourStopClick={handleTourStopClick}
                 tourMode={mode}
                 clickedSequence={clickedSequence}

@@ -69,6 +69,10 @@ type NvTour = {
     } | null;
   } | null;
   stops: NvTourStop[];
+  polyline_geometry?: {
+    type: 'LineString';
+    coordinates: Array<[number, number]>;
+  } | null;
 };
 
 const NV_INVALIDATE_KEYS = [
@@ -664,6 +668,7 @@ export default function NvDispoMapPopupPage() {
         <NvDispoMap
           shipments={mapShipments}
           tourStops={activeTour ? activeTourStopPins : undefined}
+          tourPolyline={activeTour?.polyline_geometry ?? null}
           onTourStopClick={handleTourStopClick}
           tourMode={mode}
           clickedSequence={clickedSequence}

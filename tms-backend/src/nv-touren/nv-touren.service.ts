@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '../../generated/prisma';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateNvTourDto } from './dto/create-nv-tour.dto';
 import { UpdateNvTourDto } from './dto/update-nv-tour.dto';
@@ -315,6 +316,9 @@ export class NvTourenService {
         data: {
           geplante_km: result.distanceKm.toFixed(2),
           km_calculated_at: new Date(),
+          polyline_geometry: result.geometry
+            ? (result.geometry as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
         },
       }),
     ]);
@@ -1097,14 +1101,20 @@ export class NvTourenService {
   }
 
   async reorderStops(tourId: string, items: ReorderItemDto[]) {
-    await this.prisma.$transaction(
-      items.map((it) =>
+    await this.prisma.$transaction([
+      ...items.map((it) =>
         this.prisma.nv_tour_stops.update({
           where: { id: it.id },
           data: { position: it.position },
         }),
       ),
-    );
+      // Polyline invalidieren — Reorder ändert Route. FE-Fallback
+      // (eigener OSRM-Fetch) übernimmt bis nächstes optimize.
+      this.prisma.nv_touren.update({
+        where: { id: tourId },
+        data: { polyline_geometry: Prisma.JsonNull },
+      }),
+    ]);
     await this.safeRecalc(tourId);
     await this.safeRecalcKm(tourId);
     return { count: items.length };

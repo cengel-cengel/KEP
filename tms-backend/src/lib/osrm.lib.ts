@@ -62,6 +62,76 @@ export interface PolylineGeometry {
   coordinates: Array<[number, number]>;
 }
 
+export interface RouteOnlyResult {
+  distanceKm: number;
+  geometry: PolylineGeometry | null;
+}
+
+/**
+ * OSRM /route mit full geometry. KEIN Reorder (anders als /trip).
+ * Verwendet die Input-Coord-Sequenz exakt — für manual-reorder
+ * Polyline-Refresh nach User-Drag, ohne TSP-Ergebnis zu trampeln.
+ */
+export async function routeOnly(
+  coords: Array<[number, number]>,
+  timeoutMs = 8000,
+): Promise<RouteOnlyResult | null> {
+  if (!Array.isArray(coords) || coords.length < 2) {
+    logger.warn(`routeOnly skip: <2 coords (got ${coords?.length ?? 0})`);
+    return null;
+  }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const path = coords.map(([lng, lat]) => `${lng},${lat}`).join(';');
+  const url = `${OSRM_URL}/${path}?overview=full&geometries=geojson`;
+  logger.log(`routeOnly request ${coords.length} coords`);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) {
+      logger.warn(`routeOnly HTTP ${res.status} for ${coords.length} coords`);
+      return null;
+    }
+    const j = (await res.json()) as {
+      routes?: Array<{
+        distance?: number;
+        geometry?: {
+          type?: string;
+          coordinates?: Array<[number, number]>;
+        };
+      }>;
+    };
+    const route = j?.routes?.[0];
+    const meters = route?.distance;
+    if (typeof meters !== 'number' || !Number.isFinite(meters)) {
+      logger.warn(`routeOnly no route in response`);
+      return null;
+    }
+    const km = meters / 1000;
+    const geomCoords = route!.geometry?.coordinates;
+    const geometry: PolylineGeometry | null =
+      Array.isArray(geomCoords) && geomCoords.length >= 2
+        ? { type: 'LineString', coordinates: geomCoords }
+        : null;
+    logger.log(
+      `routeOnly -> ${km.toFixed(2)} km, geom=${
+        geometry?.coordinates.length ?? 0
+      }pts`,
+    );
+    return { distanceKm: km, geometry };
+  } catch (e: unknown) {
+    const name = (e as { name?: string })?.name;
+    const msg = e instanceof Error ? e.message : String(e);
+    if (name === 'AbortError') {
+      logger.warn(`routeOnly timeout (${timeoutMs}ms)`);
+    } else {
+      logger.warn(`routeOnly fetch error: ${msg}`);
+    }
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface TripResult {
   distanceKm: number;
   /**

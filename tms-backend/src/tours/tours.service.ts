@@ -13,7 +13,7 @@ import { UpdateTourDto } from './dto/update-tour.dto';
 import { DocumentsService } from '../documents/documents.service';
 import { LockService } from '../status/lock.service';
 import { StatusService } from '../status/status.service';
-import { routeDistanceKm, routeTrip } from '../lib/osrm.lib';
+import { routeDistanceKm, routeOnly, routeTrip } from '../lib/osrm.lib';
 
 const FV_TRANSPORT_TYPES = [
   'SAMMELGUT',
@@ -494,12 +494,17 @@ export class ToursService {
           data: { tour_position: idx + 1 },
         });
       }
-      // Polyline invalidieren — Reorder ändert Route. FE-Fallback
-      // (eigener OSRM-Fetch) übernimmt bis nächstes optimize.
+      // Transient: Polyline invalidieren — FE-Fallback rendert bis
+      // safeRouteOnlyFv (Background) die echte Geometry persistiert.
       await tx.tours.update({
         where: { id: tourId },
         data: { polyline_geometry: Prisma.JsonNull },
       });
+    });
+
+    // AFTER commit: background-route für USER-Order (kein TSP).
+    setImmediate(() => {
+      void this.safeRouteOnlyFv(tourId);
     });
 
     return this.findOne(tourId);
@@ -863,6 +868,104 @@ export class ToursService {
         `optimizeFvTour(${tourId}) failed: ${err?.message ?? err}`,
       );
     }
+  }
+
+  /** Wraps routeOnlyForFvTour. Background-Pfad nach manual reorder. */
+  private async safeRouteOnlyFv(tourId: string) {
+    try {
+      await this.routeOnlyForFvTour(tourId);
+    } catch (err: any) {
+      this.logger.warn(
+        `routeOnlyForFvTour(${tourId}) failed: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /**
+   * FV: Polyline für USER-Order (kein TSP-Reorder).
+   * Coord-Sequenz: hub_start → shipments(in tour_position) → hub_end
+   * Falls Hub-Adressen fehlen: nur shipments-coords.
+   * Persistiert polyline_geometry + geplante_km.
+   */
+  async routeOnlyForFvTour(tourId: string) {
+    const tour = await this.prisma.tours.findUnique({
+      where: { id: tourId },
+      include: {
+        hub_start_address: { select: { lat: true, lng: true } },
+        hub_end_address: { select: { lat: true, lng: true } },
+        shipments: {
+          where: { deleted_at: null },
+          orderBy: [{ tour_position: 'asc' }, { created_at: 'asc' }],
+          select: {
+            id: true,
+            addresses_shipments_loading_address_idToaddresses: {
+              select: { lat: true, lng: true },
+            },
+          },
+        },
+      },
+    });
+    if (!tour) {
+      this.logger.warn(`routeOnlyForFvTour(${tourId}): tour nicht gefunden`);
+      return null;
+    }
+
+    const stopCoords: Array<[number, number]> = [];
+    for (const s of tour.shipments) {
+      const addr = s.addresses_shipments_loading_address_idToaddresses;
+      if (!addr || addr.lat == null || addr.lng == null) continue;
+      const lat = Number(addr.lat);
+      const lng = Number(addr.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      stopCoords.push([lng, lat]);
+    }
+    if (stopCoords.length === 0) {
+      this.logger.warn(
+        `routeOnlyForFvTour(${tourId}): no shipment coords — skip`,
+      );
+      return null;
+    }
+
+    const hubStart = tour.hub_start_address;
+    const hubEnd = tour.hub_end_address;
+    const hasHub =
+      hubStart?.lat != null &&
+      hubStart?.lng != null &&
+      hubEnd?.lat != null &&
+      hubEnd?.lng != null;
+
+    const coords: Array<[number, number]> = hasHub
+      ? [
+          [Number(hubStart!.lng), Number(hubStart!.lat)],
+          ...stopCoords,
+          [Number(hubEnd!.lng), Number(hubEnd!.lat)],
+        ]
+      : stopCoords;
+    if (coords.length < 2) {
+      this.logger.warn(
+        `routeOnlyForFvTour(${tourId}): <2 coords — skip`,
+      );
+      return null;
+    }
+
+    const result = await routeOnly(coords);
+    if (!result) {
+      this.logger.warn(
+        `routeOnlyForFvTour(${tourId}): OSRM null — polyline bleibt JsonNull`,
+      );
+      return null;
+    }
+    await this.prisma.tours.update({
+      where: { id: tourId },
+      data: {
+        geplante_km: result.distanceKm.toFixed(2),
+        km_calculated_at: new Date(),
+        polyline_geometry: result.geometry
+          ? (result.geometry as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
+      },
+    });
+    return result.distanceKm;
   }
 
   /**

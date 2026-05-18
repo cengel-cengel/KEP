@@ -20,8 +20,7 @@ import {
   type ShipmentRoutingKlasse,
   type VorlaufCostInput,
 } from '../lib/vorlauf-costs.lib';
-import { routeDistanceKm } from '../lib/osrm.lib';
-import { routeTrip } from '../lib/osrm.lib';
+import { routeDistanceKm, routeOnly, routeTrip } from '../lib/osrm.lib';
 
 function timeToDate(hhmm?: string | null): Date | null | undefined {
   if (hhmm === undefined) return undefined;
@@ -144,6 +143,91 @@ export class NvTourenService {
         `optimizeTourRoute(${tourId}) failed: ${err?.message ?? err}`,
       );
     }
+  }
+
+  /** Wraps routeOnlyForTour. Background-Pfad nach manual reorder. */
+  private async safeRouteOnly(tourId: string) {
+    try {
+      await this.routeOnlyForTour(tourId);
+    } catch (err: any) {
+      this.logger.warn(
+        `routeOnlyForTour(${tourId}) failed: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /**
+   * Berechnet Polyline für USER-Order (kein TSP-Reorder).
+   * Persistiert polyline_geometry + geplante_km. Aufruf NACH
+   * manual reorderStops via setImmediate.
+   */
+  async routeOnlyForTour(tourId: string) {
+    const tour = await this.prisma.nv_touren.findUnique({
+      where: { id: tourId },
+      include: TOUR_INCLUDE,
+    });
+    if (!tour) {
+      this.logger.warn(`routeOnlyForTour(${tourId}): tour nicht gefunden`);
+      return null;
+    }
+
+    const wh = await this.prisma.warehouses.findFirst({
+      where: { is_default: true, active: true },
+    });
+    if (!wh || wh.lat == null || wh.lng == null) {
+      this.logger.warn(
+        `routeOnlyForTour(${tourId}): default warehouse missing — skip`,
+      );
+      return null;
+    }
+    const whLat = Number(wh.lat);
+    const whLng = Number(wh.lng);
+    if (!Number.isFinite(whLat) || !Number.isFinite(whLng)) return null;
+
+    const sortedStops = [...tour.stops].sort((a, b) => a.position - b.position);
+    const stopCoords: Array<[number, number]> = [];
+    for (const s of sortedStops) {
+      const sh: any = s.shipment;
+      const addr =
+        s.stop_type === 'DELIVERY'
+          ? sh?.addresses_shipments_delivery_address_idToaddresses
+          : sh?.addresses_shipments_loading_address_idToaddresses;
+      if (!addr || addr.lat == null || addr.lng == null) continue;
+      const lat = Number(addr.lat);
+      const lng = Number(addr.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      stopCoords.push([lng, lat]);
+    }
+    if (stopCoords.length === 0) {
+      this.logger.warn(
+        `routeOnlyForTour(${tourId}): no stop coords — skip`,
+      );
+      return null;
+    }
+
+    const coords: Array<[number, number]> = [
+      [whLng, whLat],
+      ...stopCoords,
+      [whLng, whLat],
+    ];
+    const result = await routeOnly(coords);
+    if (!result) {
+      this.logger.warn(
+        `routeOnlyForTour(${tourId}): OSRM returned null — polyline bleibt JsonNull`,
+      );
+      return null;
+    }
+    await this.prisma.nv_touren.update({
+      where: { id: tourId },
+      data: {
+        geplante_km: result.distanceKm.toFixed(2),
+        km_calculated_at: new Date(),
+        polyline_geometry: result.geometry
+          ? (result.geometry as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
+      },
+    });
+    return result.distanceKm;
   }
 
   /**
@@ -1108,13 +1192,18 @@ export class NvTourenService {
           data: { position: it.position },
         }),
       ),
-      // Polyline invalidieren — Reorder ändert Route. FE-Fallback
-      // (eigener OSRM-Fetch) übernimmt bis nächstes optimize.
+      // Transient: Polyline invalidieren — FE-Fallback rendert bis
+      // safeRouteOnly (Background) die echte Geometry persistiert.
       this.prisma.nv_touren.update({
         where: { id: tourId },
         data: { polyline_geometry: Prisma.JsonNull },
       }),
     ]);
+    // AFTER commit: background-recalc + polyline für USER-Order
+    // (kein TSP-Reorder — User-Sequenz bleibt erhalten).
+    setImmediate(() => {
+      void this.safeRouteOnly(tourId);
+    });
     await this.safeRecalc(tourId);
     await this.safeRecalcKm(tourId);
     return { count: items.length };

@@ -1201,11 +1201,11 @@ export class NvTourenService {
     ]);
     // AFTER commit: background-recalc + polyline für USER-Order
     // (kein TSP-Reorder — User-Sequenz bleibt erhalten).
+    // safeRouteOnly setzt geplante_km mit → kein extra safeRecalcKm.
     setImmediate(() => {
       void this.safeRouteOnly(tourId);
     });
     await this.safeRecalc(tourId);
-    await this.safeRecalcKm(tourId);
     return { count: items.length };
   }
 

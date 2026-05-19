@@ -1,7 +1,11 @@
 import { useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Trash2, Warehouse, MapPin, ExternalLink } from 'lucide-react';
 import { api } from '../../lib/api';
+import {
+  prefetchFvTourDetail,
+  useHoverPrefetch,
+} from '../../lib/prefetchHelpers';
 import OverloadBar, {
   type OverloadInfo,
 } from '../shared/OverloadBar';
@@ -74,6 +78,10 @@ export default function FvTourCard({
 }) {
   const [dragOver, setDragOver] = useState(false);
   const popupWindowRef = useRef<Window | null>(null);
+  const qc = useQueryClient();
+  const hoverHandlers = useHoverPrefetch(() =>
+    prefetchFvTourDetail(qc, tourId),
+  );
 
   const tourQ = useQuery<FvTourDetail>({
     queryKey: ['fv-tour-detail', tourId],
@@ -113,6 +121,7 @@ export default function FvTourCard({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      {...hoverHandlers}
       className={`bg-white border rounded-md shadow-sm transition-colors ${
         dragOver ? 'border-blue-500 bg-blue-50/40' : 'border-gray-200'
       }`}

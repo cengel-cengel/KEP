@@ -21,6 +21,7 @@ import type { CostComponent } from '../components/nv/CostDrillDownModal';
 import ResponsiveTable from '../components/table/ResponsiveTable';
 import type { Column } from '../components/table/ResponsiveTable';
 import { api } from '../lib/api';
+import { prefetchNvLoadingTour } from '../lib/prefetchHelpers';
 
 type TourGebiet = {
   id: string;
@@ -1745,6 +1746,7 @@ function TourCard({
   onToggleTourView: () => void;
   isActive: boolean;
 }) {
+  const qc = useQueryClient();
   const costsQ = useQuery<CostComponent[]>({
     queryKey: ['nv-tour-cost-comp', tour.id],
     queryFn: async () =>
@@ -2016,6 +2018,8 @@ function TourCard({
               );
               if (w) w.focus();
             }}
+            onMouseEnter={() => prefetchNvLoadingTour(qc, tour.id)}
+            onFocus={() => prefetchNvLoadingTour(qc, tour.id)}
             className="text-gray-500 hover:text-gray-800 inline-flex items-center gap-0.5"
             title="Beladeplan in neuem Fenster"
           >

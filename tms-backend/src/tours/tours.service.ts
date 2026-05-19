@@ -16,6 +16,10 @@ import { StatusService } from '../status/status.service';
 import { routeDistanceKm, routeOnly, routeTrip } from '../lib/osrm.lib';
 import { getNvPlzSet } from '../lib/nv-plz.lib';
 import { computeOverload, formatOverloadMessage } from '../lib/capacity.lib';
+import {
+  computeEffectiveLdm,
+  isShipmentFullyStackable,
+} from '../lib/stackable.lib';
 
 const FV_TRANSPORT_TYPES = [
   'SAMMELGUT',
@@ -147,6 +151,7 @@ export class ToursService {
             customers: { select: { id: true, name: true } },
             addresses_shipments_loading_address_idToaddresses: true,
             addresses_shipments_delivery_address_idToaddresses: true,
+            shipment_package_items: { select: { stackable: true } },
           },
           orderBy: [{ tour_position: 'asc' }, { created_at: 'asc' }],
         },
@@ -157,13 +162,17 @@ export class ToursService {
       throw new NotFoundException(`Tour ${id} nicht gefunden`);
     }
 
-    // B-4: Overload on-the-fly aus shipments-include.
-    let totalLdm = 0;
+    // B-4 + B-4.5: Overload on-the-fly. LDM via effective-pairing
+    // aus shipments-include. Weight = naive Σ.
+    const stackShips = tour.shipments.map((s) => ({
+      ldm: Number(s.ldm ?? 0),
+      height_cm: Number(s.height_cm ?? 0),
+      weight_kg: Number(s.weight_kg ?? 0),
+      stackable: isShipmentFullyStackable(s.shipment_package_items),
+    }));
+    const totalLdm = computeEffectiveLdm(stackShips);
     let totalKg = 0;
-    for (const s of tour.shipments) {
-      totalLdm += Number(s.ldm ?? 0);
-      totalKg += Number(s.weight_kg ?? 0);
-    }
+    for (const s of tour.shipments) totalKg += Number(s.weight_kg ?? 0);
     const overload = computeOverload(
       totalLdm,
       totalKg,
@@ -245,7 +254,11 @@ export class ToursService {
     }
   }
 
-  /** B-4: Aggregat aus shipments + max_* → Overload-Ratio (2 Achsen). */
+  /**
+   * B-4 + B-4.5: Aggregat aus shipments → Overload-Ratio (2 Achsen).
+   * LDM via computeEffectiveLdm (cross-shipment Greedy-Pairing).
+   * Weight bleibt naive Σ (Stapeln spart kein Gewicht).
+   */
   private async computeTourOverload(tourId: string) {
     const tour = await this.prisma.tours.findUnique({
       where: { id: tourId },
@@ -254,17 +267,25 @@ export class ToursService {
         max_weight_kg: true,
         shipments: {
           where: { deleted_at: null },
-          select: { ldm: true, weight_kg: true },
+          select: {
+            ldm: true,
+            weight_kg: true,
+            height_cm: true,
+            shipment_package_items: { select: { stackable: true } },
+          },
         },
       },
     });
     if (!tour) return null;
-    let totalLdm = 0;
+    const stackShips = tour.shipments.map((s) => ({
+      ldm: Number(s.ldm ?? 0),
+      height_cm: Number(s.height_cm ?? 0),
+      weight_kg: Number(s.weight_kg ?? 0),
+      stackable: isShipmentFullyStackable(s.shipment_package_items),
+    }));
+    const totalLdm = computeEffectiveLdm(stackShips);
     let totalKg = 0;
-    for (const s of tour.shipments) {
-      totalLdm += Number(s.ldm ?? 0);
-      totalKg += Number(s.weight_kg ?? 0);
-    }
+    for (const s of tour.shipments) totalKg += Number(s.weight_kg ?? 0);
     return computeOverload(
       totalLdm,
       totalKg,

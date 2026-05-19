@@ -27,6 +27,10 @@ import {
   type NvPlzSet,
 } from '../lib/nv-plz.lib';
 import { computeOverload, formatOverloadMessage } from '../lib/capacity.lib';
+import {
+  computeEffectiveLdm,
+  isShipmentFullyStackable,
+} from '../lib/stackable.lib';
 
 function timeToDate(hhmm?: string | null): Date | null | undefined {
   if (hhmm === undefined) return undefined;
@@ -103,6 +107,7 @@ const TOUR_INCLUDE = {
               lng: true,
             },
           },
+          shipment_package_items: { select: { stackable: true } },
         },
       },
     },
@@ -137,8 +142,9 @@ export class NvTourenService {
   }
 
   /**
-   * B-4: Aggregat aus tour.stops.shipment + sub.max_* → Overload.
-   * 2-Achsen (ldm + gewicht_kg). null wenn Tour nicht existiert.
+   * B-4 + B-4.5: Aggregat aus tour.stops.shipment + sub.max_* →
+   * Overload. LDM via Cross-Shipment Effective-Pairing (Stapeln
+   * spart Boden-LDM). Weight = naive Σ.
    */
   private async computeNvTourOverload(tourId: string) {
     const tour = await this.prisma.nv_touren.findUnique({
@@ -150,19 +156,27 @@ export class NvTourenService {
         stops: {
           select: {
             shipment: {
-              select: { ldm: true, weight_kg: true },
+              select: {
+                ldm: true,
+                weight_kg: true,
+                height_cm: true,
+                shipment_package_items: { select: { stackable: true } },
+              },
             },
           },
         },
       },
     });
     if (!tour) return null;
-    let totalLdm = 0;
+    const stackShips = tour.stops.map((s) => ({
+      ldm: Number(s.shipment.ldm ?? 0),
+      height_cm: Number(s.shipment.height_cm ?? 0),
+      weight_kg: Number(s.shipment.weight_kg ?? 0),
+      stackable: isShipmentFullyStackable(s.shipment.shipment_package_items),
+    }));
+    const totalLdm = computeEffectiveLdm(stackShips);
     let totalKg = 0;
-    for (const s of tour.stops) {
-      totalLdm += Number(s.shipment.ldm ?? 0);
-      totalKg += Number(s.shipment.weight_kg ?? 0);
-    }
+    for (const s of tour.stops) totalKg += Number(s.shipment.weight_kg ?? 0);
     const sub = tour.subunternehmer;
     return computeOverload(
       totalLdm,
@@ -621,11 +635,19 @@ export class NvTourenService {
       const set = t.nv_stamm_tour_id
         ? byStamm.get(t.nv_stamm_tour_id) ?? null
         : null;
-      // B-4: Overload on-the-fly aus TOUR_INCLUDE (stops + sub).
-      let totalLdm = 0;
+      // B-4 + B-4.5: Overload on-the-fly. LDM = Effective-Pairing
+      // aus TOUR_INCLUDE (stops.shipment + package_items).
+      const stackShips = (t.stops as any[]).map((s) => ({
+        ldm: Number(s.shipment?.ldm ?? 0),
+        height_cm: Number(s.shipment?.height_cm ?? 0),
+        weight_kg: Number(s.shipment?.weight_kg ?? 0),
+        stackable: isShipmentFullyStackable(
+          s.shipment?.shipment_package_items ?? [],
+        ),
+      }));
+      const totalLdm = computeEffectiveLdm(stackShips);
       let totalKg = 0;
       for (const s of t.stops as any[]) {
-        totalLdm += Number(s.shipment?.ldm ?? 0);
         totalKg += Number(s.shipment?.weight_kg ?? 0);
       }
       const sub: any = (t as any).subunternehmer;

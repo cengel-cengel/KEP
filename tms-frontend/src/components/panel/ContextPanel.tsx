@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Pin, PinOff, X } from 'lucide-react';
 import { usePanel } from '../../state/panel';
+import { registerHotkey } from '../../lib/hotkeys';
 import ShipmentDetailsTab from './ShipmentDetailsTab';
 import TourDetailsTab from './TourDetailsTab';
 import HistoryTab from './HistoryTab';
@@ -32,21 +33,18 @@ export default function ContextPanel() {
   } = usePanel();
   const [tab, setTab] = useState<TabKey>('details');
 
-  // Esc → close (außer wenn pinned und im Edit-Modus —
-  // Edit-Modus selbst captured Esc innerhalb InlineEdit)
+  // W-2: Hotkeys via lib/hotkeys (skip-in-input + scope).
+  // Esc → close (außer pinned). p → toggle pin.
   useEffect(() => {
     if (!entity) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      const tag = (e.target as HTMLElement | null)?.tagName ?? '';
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (pinned) return;
-      e.preventDefault();
-      close();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [entity, pinned, close]);
+    const unsubs = [
+      registerHotkey('escape', () => {
+        if (!pinned) close();
+      }),
+      registerHotkey('p', () => togglePin()),
+    ];
+    return () => unsubs.forEach((u) => u());
+  }, [entity, pinned, close, togglePin]);
 
   if (!entity) return null;
 

@@ -3,6 +3,8 @@ import { Warehouse } from 'lucide-react';
 import { api } from '../../lib/api';
 import InlineEdit from './InlineEdit';
 import { nvStatusLabel, type NvTourMutableStatus } from '../../lib/nvTourStatus';
+import TourTimeline from '../timeline/TourTimeline';
+import { usePanel } from '../../state/panel';
 
 interface TourDetail {
   id: string;
@@ -40,7 +42,17 @@ interface NvTourDetail {
     id: string;
     position: number;
     stop_type?: string;
-    shipment?: { id: string; shipment_number?: string | null };
+    servicezeit_min?: number | null;
+    planned_arrival?: string | null;
+    planned_departure?: string | null;
+    shipment?: {
+      id: string;
+      shipment_number?: string | null;
+      loading_time_from?: string | null;
+      loading_time_to?: string | null;
+      delivery_time_from?: string | null;
+      delivery_time_to?: string | null;
+    };
   }>;
 }
 
@@ -258,6 +270,13 @@ function NvTourBody({ tourId }: { tourId: string }) {
 
       <section>
         <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1">
+          Timeline
+        </h3>
+        <NvTourTimelineSection stops={t.stops ?? []} />
+      </section>
+
+      <section>
+        <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1">
           Stops ({t.stops?.length ?? 0})
         </h3>
         {(t.stops ?? []).map((s) => (
@@ -271,5 +290,35 @@ function NvTourBody({ tourId }: { tourId: string }) {
         ))}
       </section>
     </div>
+  );
+}
+
+function NvTourTimelineSection({
+  stops,
+}: {
+  stops: NonNullable<NvTourDetail['stops']>;
+}) {
+  const panel = usePanel();
+  const tlStops = stops.map((s) => ({
+    id: s.id,
+    position: s.position,
+    stop_type: s.stop_type,
+    shipment_number: s.shipment?.shipment_number ?? undefined,
+    servicezeit_min: s.servicezeit_min,
+    planned_arrival: s.planned_arrival ?? null,
+    planned_departure: s.planned_departure ?? null,
+    loading_time_from: s.shipment?.loading_time_from ?? null,
+    loading_time_to: s.shipment?.loading_time_to ?? null,
+    delivery_time_from: s.shipment?.delivery_time_from ?? null,
+    delivery_time_to: s.shipment?.delivery_time_to ?? null,
+  }));
+  return (
+    <TourTimeline
+      stops={tlStops}
+      onStopClick={(stopId) => {
+        const found = stops.find((s) => s.id === stopId);
+        if (found?.shipment?.id) panel.selectShipment(found.shipment.id);
+      }}
+    />
   );
 }

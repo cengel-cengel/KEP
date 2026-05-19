@@ -21,6 +21,7 @@ import {
   type VorlaufCostInput,
 } from '../lib/vorlauf-costs.lib';
 import { routeDistanceKm, routeOnly, routeTrip } from '../lib/osrm.lib';
+import { computeStopSchedule } from './scheduler.lib';
 import {
   getNvPlzSet,
   plzMatchesNv,
@@ -139,6 +140,92 @@ export class NvTourenService {
         `recalcTourKm(${tourId}) failed: ${err?.message ?? err}`,
       );
     }
+  }
+
+  /** W-2: recompute planned_arrival/departure pro Stop. */
+  private async safeRecomputeSchedule(tourId: string) {
+    try {
+      await this.recomputeSchedule(tourId);
+    } catch (err: any) {
+      this.logger.warn(
+        `recomputeSchedule(${tourId}) failed: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  async recomputeSchedule(tourId: string) {
+    const tour = await this.prisma.nv_touren.findUnique({
+      where: { id: tourId },
+      select: {
+        id: true,
+        datum: true,
+        start_zeit: true,
+        stops: {
+          select: {
+            id: true,
+            position: true,
+            servicezeit_min: true,
+            stop_type: true,
+            shipment: {
+              select: {
+                addresses_shipments_loading_address_idToaddresses: {
+                  select: { lat: true, lng: true },
+                },
+                addresses_shipments_delivery_address_idToaddresses: {
+                  select: { lat: true, lng: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!tour || tour.stops.length === 0) return null;
+    const startHHMM = tour.start_zeit
+      ? `${tour.start_zeit.getUTCHours().toString().padStart(2, '0')}:${tour.start_zeit
+          .getUTCMinutes()
+          .toString()
+          .padStart(2, '0')}`
+      : null;
+    const wh = await this.prisma.warehouses.findFirst({
+      where: { is_default: true, active: true },
+      select: { lat: true, lng: true },
+    });
+    const startCoord =
+      wh && wh.lat != null && wh.lng != null
+        ? { lat: Number(wh.lat), lng: Number(wh.lng) }
+        : null;
+    const stopsInput = tour.stops.map((s: any) => {
+      const addr =
+        s.stop_type === 'DELIVERY'
+          ? s.shipment?.addresses_shipments_delivery_address_idToaddresses
+          : s.shipment?.addresses_shipments_loading_address_idToaddresses;
+      return {
+        id: s.id,
+        position: s.position,
+        servicezeit_min: s.servicezeit_min,
+        lat: addr?.lat != null ? Number(addr.lat) : null,
+        lng: addr?.lng != null ? Number(addr.lng) : null,
+      };
+    });
+    const sched = computeStopSchedule({
+      datum: tour.datum,
+      startZeit: startHHMM,
+      startCoord,
+      stops: stopsInput,
+    });
+    await this.prisma.$transaction(
+      sched.map((s) =>
+        this.prisma.nv_tour_stops.update({
+          where: { id: s.id },
+          data: {
+            planned_arrival: s.planned_arrival,
+            planned_departure: s.planned_departure,
+          },
+        }),
+      ),
+    );
+    return sched.length;
   }
 
   /**
@@ -1026,6 +1113,7 @@ export class NvTourenService {
     setImmediate(() => {
       void this.safeRecalc(tourId);
       void this.safeOptimizeTour(tourId);
+      void this.safeRecomputeSchedule(tourId);
     });
     return created;
   }
@@ -1107,6 +1195,7 @@ export class NvTourenService {
     setImmediate(() => {
       void this.safeRecalc(existing.nv_tour_id);
       void this.safeOptimizeTour(existing.nv_tour_id);
+      void this.safeRecomputeSchedule(existing.nv_tour_id);
     });
     return { ok: true };
   }
@@ -1288,6 +1377,7 @@ export class NvTourenService {
     setImmediate(() => {
       void this.safeRecalc(tourId);
       void this.safeOptimizeTour(tourId);
+      void this.safeRecomputeSchedule(tourId);
     });
     return {
       ok: true,
@@ -1316,6 +1406,7 @@ export class NvTourenService {
     // safeRouteOnly setzt geplante_km mit → kein extra safeRecalcKm.
     setImmediate(() => {
       void this.safeRouteOnly(tourId);
+      void this.safeRecomputeSchedule(tourId);
     });
     await this.safeRecalc(tourId);
     return { count: items.length };

@@ -1476,6 +1476,8 @@ model nv_tour_stops {
   status                 String      @default("PLANNED") @db.VarChar(20)
   ankunft_zeit           DateTime?   @db.Timestamptz(6)
   abfahrt_zeit           DateTime?   @db.Timestamptz(6)
+  planned_arrival        DateTime?   @db.Timestamptz(6)
+  planned_departure      DateTime?   @db.Timestamptz(6)
   notizen                String?
   created_at             DateTime    @default(now()) @db.Timestamptz(6)
   updated_at             DateTime    @default(now()) @db.Timestamptz(6)

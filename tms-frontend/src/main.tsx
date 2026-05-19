@@ -14,6 +14,7 @@ import {
   onRealtimeEvent,
 } from './realtime/realtimeClient'
 import { invalidateForEvent } from './realtime/queryInvalidator'
+import { PanelProvider } from './state/panel'
 
 // PERF-2: Cache-first Defaults für instant-Feel.
 // staleTime 30s → kein Auto-Refetch in dieser Zeit.
@@ -49,7 +50,9 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
-          <App />
+          <PanelProvider>
+            <App />
+          </PanelProvider>
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>

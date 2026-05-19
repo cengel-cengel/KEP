@@ -7,6 +7,7 @@ import {
   UNKNOWN_CC,
   type FvHierarchyShipment,
 } from '../../hooks/useFvHierarchy';
+import { usePanel } from '../../state/panel';
 
 const STORAGE_KEY = 'fv.expanded.tree';
 
@@ -93,6 +94,7 @@ export default function FvShipmentTree({
   const tree = useFvHierarchy(shipments);
   const [expanded, setExpanded] = useState<Set<string>>(loadExpanded);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const { selectShipment } = usePanel();
 
   // Default: erste Loading-Country expanded falls noch nichts persistiert.
   useEffect(() => {
@@ -254,8 +256,9 @@ export default function FvShipmentTree({
                     );
                     e.dataTransfer.effectAllowed = 'move';
                   }}
+                  onClick={() => selectShipment(r.s.id)}
                   className="pl-10 pr-3 py-1.5 bg-white hover:bg-blue-50 cursor-grab active:cursor-grabbing border-t border-gray-100"
-                  title="Auf Tour ziehen"
+                  title="Klick: Detail-Panel · Ziehen: auf Tour"
                 >
                   <div className="flex items-center gap-2">
                     <span className="font-mono font-semibold text-gray-800">

@@ -23,6 +23,7 @@ import type { Column } from '../components/table/ResponsiveTable';
 import { api } from '../lib/api';
 import { prefetchNvLoadingTour } from '../lib/prefetchHelpers';
 import type { NvTourMutableStatus } from '../lib/nvTourStatus';
+import { usePanel } from '../state/panel';
 
 type TourGebiet = {
   id: string;
@@ -253,6 +254,7 @@ function eligColumns(
 
 export default function NvDispositionPage() {
   const qc = useQueryClient();
+  const panel = usePanel();
   const [mode, setModeState] = useState<'PICKUP' | 'DELIVERY'>(() => {
     if (typeof window === 'undefined') return 'PICKUP';
     try {
@@ -1466,7 +1468,7 @@ export default function NvDispositionPage() {
               {!collapsed && (
               <ResponsiveTable<EligibleShipment>
                 storageKey={`nv-dispo-elig-${groupKey}`}
-                columns={eligColumns((id) => setDetailShipmentId(id))}
+                columns={eligColumns((id) => panel.selectShipment(id))}
                 data={items}
                 rowKey={(s) => s.id}
                 density="compact"
@@ -1546,9 +1548,7 @@ export default function NvDispositionPage() {
                   if (confirm(`Tour löschen?`)) deleteTourMut.mutate(tour.id);
                 }}
                 onOpenKosten={() => setKostenTourId(tour.id)}
-                onOpenDetail={(shipmentId) =>
-                  setDetailShipmentId(shipmentId)
-                }
+                onOpenDetail={(shipmentId) => panel.selectShipment(shipmentId)}
                 onToggleTourView={() =>
                   setActiveTourViewId((prev) =>
                     prev === tour.id ? null : tour.id,

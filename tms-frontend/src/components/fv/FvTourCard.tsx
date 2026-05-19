@@ -9,6 +9,7 @@ import {
 import OverloadBar, {
   type OverloadInfo,
 } from '../shared/OverloadBar';
+import { usePanel } from '../../state/panel';
 
 /** Pop-out-Window-Ref pro Tour (singleton per FvTourCard-Instance). */
 function openFvMapPopup(tourId: string, ref: { current: Window | null }) {
@@ -79,6 +80,7 @@ export default function FvTourCard({
   const [dragOver, setDragOver] = useState(false);
   const popupWindowRef = useRef<Window | null>(null);
   const qc = useQueryClient();
+  const { selectTour } = usePanel();
   const hoverHandlers = useHoverPrefetch(() =>
     prefetchFvTourDetail(qc, tourId),
   );
@@ -126,7 +128,15 @@ export default function FvTourCard({
         dragOver ? 'border-blue-500 bg-blue-50/40' : 'border-gray-200'
       }`}
     >
-      <div className="px-3 py-2 border-b bg-gray-50">
+      <div
+        className="px-3 py-2 border-b bg-gray-50 cursor-pointer"
+        onClick={(e) => {
+          // Klick auf Header → Panel (außer Btn-Klicks bubblen nicht)
+          const tag = (e.target as HTMLElement).closest('button');
+          if (tag) return;
+          selectTour(tourId);
+        }}
+      >
         <OverloadBar overload={tour?.overload} className="mb-1" />
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-mono font-semibold text-sm text-gray-800">

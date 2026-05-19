@@ -223,7 +223,7 @@ export default function FvDispositionPage() {
           <div className="px-3 py-2 border-b bg-gray-50 font-medium text-sm text-gray-700">
             FV-Sendungen offen
           </div>
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 min-h-0">
             {eligibleQ.isLoading && (
               <div className="p-3 text-xs text-gray-400">Lädt...</div>
             )}

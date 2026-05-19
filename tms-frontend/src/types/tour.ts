@@ -42,4 +42,11 @@ export interface Tour {
   sub_condition_id?: string | null;
   calculated_sub_cost?: number | string | null;
   sub_condition?: { id: string; condition_type?: string | null } | null;
+
+  /** B-4: Soft-Capacity Overload (ratio + flag). */
+  overload?: {
+    ldm: number;
+    weight: number;
+    isOverloaded: boolean;
+  } | null;
 }

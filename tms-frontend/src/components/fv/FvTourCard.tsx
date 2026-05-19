@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Trash2, Warehouse, MapPin } from 'lucide-react';
 import { api } from '../../lib/api';
+import OverloadBar, {
+  type OverloadInfo,
+} from '../shared/OverloadBar';
 
 interface ShipmentAddress {
   id: string;
@@ -31,6 +34,7 @@ interface FvTourDetail {
   hub_end_address?: ShipmentAddress | null;
   subcontractors?: { id: string; name: string } | null;
   shipments?: ShipmentRow[];
+  overload?: OverloadInfo | null;
 }
 
 function fmtAddr(a?: ShipmentAddress | null): string {
@@ -97,6 +101,7 @@ export default function FvTourCard({
       }`}
     >
       <div className="px-3 py-2 border-b bg-gray-50">
+        <OverloadBar overload={tour?.overload} className="mb-1" />
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-mono font-semibold text-sm text-gray-800">
             {tourNumber ?? tour?.tour_number ?? '—'}

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { MoreVertical } from 'lucide-react';
 import type { Tour } from '../types/tour';
 import type { StackingLdmMetrics } from '../lib/loadingLdm';
+import OverloadBar from './shared/OverloadBar';
 
 export interface SubcontractorOption {
   id: string;
@@ -179,6 +180,7 @@ export default function TourCard({
           {tourStatusBadge().label}
         </span>
       </div>
+      <OverloadBar overload={tour.overload} className="mt-1" />
       <div className="mt-0.5 text-sm text-gray-600">
         {subId ? (
           <>SUB: {subName}</>

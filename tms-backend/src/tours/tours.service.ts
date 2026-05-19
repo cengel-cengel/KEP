@@ -15,6 +15,7 @@ import { LockService } from '../status/lock.service';
 import { StatusService } from '../status/status.service';
 import { routeDistanceKm, routeOnly, routeTrip } from '../lib/osrm.lib';
 import { getNvPlzSet } from '../lib/nv-plz.lib';
+import { computeOverload, formatOverloadMessage } from '../lib/capacity.lib';
 
 const FV_TRANSPORT_TYPES = [
   'SAMMELGUT',
@@ -156,7 +157,20 @@ export class ToursService {
       throw new NotFoundException(`Tour ${id} nicht gefunden`);
     }
 
-    return tour;
+    // B-4: Overload on-the-fly aus shipments-include.
+    let totalLdm = 0;
+    let totalKg = 0;
+    for (const s of tour.shipments) {
+      totalLdm += Number(s.ldm ?? 0);
+      totalKg += Number(s.weight_kg ?? 0);
+    }
+    const overload = computeOverload(
+      totalLdm,
+      totalKg,
+      tour.max_ldm != null ? Number(tour.max_ldm) : null,
+      tour.max_weight_kg != null ? Number(tour.max_weight_kg) : null,
+    );
+    return { ...tour, overload };
   }
 
   async create(dto: CreateTourDto, userId?: string) {
@@ -231,8 +245,49 @@ export class ToursService {
     }
   }
 
+  /** B-4: Aggregat aus shipments + max_* → Overload-Ratio (2 Achsen). */
+  private async computeTourOverload(tourId: string) {
+    const tour = await this.prisma.tours.findUnique({
+      where: { id: tourId },
+      select: {
+        max_ldm: true,
+        max_weight_kg: true,
+        shipments: {
+          where: { deleted_at: null },
+          select: { ldm: true, weight_kg: true },
+        },
+      },
+    });
+    if (!tour) return null;
+    let totalLdm = 0;
+    let totalKg = 0;
+    for (const s of tour.shipments) {
+      totalLdm += Number(s.ldm ?? 0);
+      totalKg += Number(s.weight_kg ?? 0);
+    }
+    return computeOverload(
+      totalLdm,
+      totalKg,
+      tour.max_ldm != null ? Number(tour.max_ldm) : null,
+      tour.max_weight_kg != null ? Number(tour.max_weight_kg) : null,
+    );
+  }
+
+  /** B-4: Pre-Check für dispatch/release. Throwt 409 bei Overload. */
+  private async assertNotOverloaded(tourId: string) {
+    const o = await this.computeTourOverload(tourId);
+    if (o && o.isOverloaded) {
+      throw new ConflictException({
+        code: 'CAPACITY_EXCEEDED',
+        message: formatOverloadMessage(o),
+        overload: o,
+      });
+    }
+  }
+
   async dispatchTour(id: string) {
     await this.ensureExists(id);
+    await this.assertNotOverloaded(id);
 
     const now = new Date();
 
@@ -274,6 +329,7 @@ export class ToursService {
 
   async releaseTour(id: string) {
     await this.ensureExists(id);
+    await this.assertNotOverloaded(id);
 
     const blocking = await this.locks.countReleaseBlockingLocksOnTour(id);
     if (blocking > 0) {
@@ -411,12 +467,8 @@ export class ToursService {
       0,
     );
     const newLdm = currentLdm + (Number(shipment.ldm) || 0);
-
-    if (tour.max_ldm != null && newLdm > Number(tour.max_ldm)) {
-      throw new BadRequestException(
-        `Tour überladen: ${newLdm.toFixed(2)} ldm > Max ${tour.max_ldm} ldm`,
-      );
-    }
+    void newLdm; // B-4: Overload nicht mehr blockend, nur Hinweis in
+    // findOne-Response. Pre-Check in dispatchTour/releaseTour.
 
     if (shipment.is_hazmat && !tour.subcontractors?.has_adr_license) {
       throw new BadRequestException(
@@ -859,26 +911,19 @@ export class ToursService {
       curLdm += Number(s.ldm ?? 0);
       curKg += Number(s.weight_kg ?? 0);
     }
-    const exceeded: { axis: string; total: number; max: number }[] = [];
-    if (tour.max_ldm != null && curLdm > Number(tour.max_ldm)) {
-      exceeded.push({
-        axis: 'ldm',
-        total: curLdm,
-        max: Number(tour.max_ldm),
-      });
-    }
-    if (tour.max_weight_kg != null && curKg > Number(tour.max_weight_kg)) {
-      exceeded.push({
-        axis: 'weight_kg',
-        total: curKg,
-        max: Number(tour.max_weight_kg),
-      });
-    }
-    if (exceeded.length > 0) {
-      throw new ConflictException({
-        code: 'CAPACITY_EXCEEDED',
-        would_exceed: exceeded,
-      });
+    // B-4: Overload NICHT blockend. Capacity-Ratio wird in
+    // findOne-Response zurückgegeben. dispatchTour/releaseTour
+    // prüft Overload und throwt bei isOverloaded.
+    const overload = computeOverload(
+      curLdm,
+      curKg,
+      tour.max_ldm != null ? Number(tour.max_ldm) : null,
+      tour.max_weight_kg != null ? Number(tour.max_weight_kg) : null,
+    );
+    if (overload.isOverloaded) {
+      this.logger.warn(
+        `batchStopsFv(${tourId}): ${formatOverloadMessage(overload)}`,
+      );
     }
 
     const maxPos = tour.shipments.reduce(

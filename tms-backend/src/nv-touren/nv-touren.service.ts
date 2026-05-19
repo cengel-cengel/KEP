@@ -26,6 +26,7 @@ import {
   plzMatchesNv,
   type NvPlzSet,
 } from '../lib/nv-plz.lib';
+import { computeOverload, formatOverloadMessage } from '../lib/capacity.lib';
 
 function timeToDate(hhmm?: string | null): Date | null | undefined {
   if (hhmm === undefined) return undefined;
@@ -54,6 +55,8 @@ const TOUR_INCLUDE = {
     select: {
       id: true,
       name: true,
+      max_ldm: true,
+      max_gewicht_kg: true,
       business_partner: {
         select: { id: true, partner_number: true, name: true },
       },
@@ -130,6 +133,54 @@ export class NvTourenService {
       this.logger.warn(
         `recalcTourKm(${tourId}) failed: ${err?.message ?? err}`,
       );
+    }
+  }
+
+  /**
+   * B-4: Aggregat aus tour.stops.shipment + sub.max_* → Overload.
+   * 2-Achsen (ldm + gewicht_kg). null wenn Tour nicht existiert.
+   */
+  private async computeNvTourOverload(tourId: string) {
+    const tour = await this.prisma.nv_touren.findUnique({
+      where: { id: tourId },
+      include: {
+        subunternehmer: {
+          select: { max_ldm: true, max_gewicht_kg: true },
+        },
+        stops: {
+          select: {
+            shipment: {
+              select: { ldm: true, weight_kg: true },
+            },
+          },
+        },
+      },
+    });
+    if (!tour) return null;
+    let totalLdm = 0;
+    let totalKg = 0;
+    for (const s of tour.stops) {
+      totalLdm += Number(s.shipment.ldm ?? 0);
+      totalKg += Number(s.shipment.weight_kg ?? 0);
+    }
+    const sub = tour.subunternehmer;
+    return computeOverload(
+      totalLdm,
+      totalKg,
+      sub?.max_ldm != null ? Number(sub.max_ldm) : null,
+      sub?.max_gewicht_kg != null ? Number(sub.max_gewicht_kg) : null,
+    );
+  }
+
+  /** B-4: Pre-Check für status→DISPATCHED. Throwt 409 bei Overload. */
+  private async assertReadyForDispatchNv(tourId: string) {
+    const o = await this.computeNvTourOverload(tourId);
+    if (o && o.isOverloaded) {
+      throw new ConflictException({
+        code: 'CAPACITY_EXCEEDED',
+        message: formatOverloadMessage(o),
+        overload: o,
+      });
     }
   }
 
@@ -570,8 +621,23 @@ export class NvTourenService {
       const set = t.nv_stamm_tour_id
         ? byStamm.get(t.nv_stamm_tour_id) ?? null
         : null;
+      // B-4: Overload on-the-fly aus TOUR_INCLUDE (stops + sub).
+      let totalLdm = 0;
+      let totalKg = 0;
+      for (const s of t.stops as any[]) {
+        totalLdm += Number(s.shipment?.ldm ?? 0);
+        totalKg += Number(s.shipment?.weight_kg ?? 0);
+      }
+      const sub: any = (t as any).subunternehmer;
+      const overload = computeOverload(
+        totalLdm,
+        totalKg,
+        sub?.max_ldm != null ? Number(sub.max_ldm) : null,
+        sub?.max_gewicht_kg != null ? Number(sub.max_gewicht_kg) : null,
+      );
       return {
         ...t,
+        overload,
         stops: t.stops.map((s: any) => ({
           ...s,
           is_stamm_kunde:
@@ -634,6 +700,15 @@ export class NvTourenService {
   async update(id: string, dto: UpdateNvTourDto) {
     const existing = await this.prisma.nv_touren.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('NV-Tour nicht gefunden');
+
+    // B-4: Pre-Check Overload bei Status-Wechsel auf DISPATCHED.
+    // assertCapacityOk (createStop) bleibt für add-pfade.
+    if (
+      dto.status === 'DISPATCHED' &&
+      existing.status !== 'DISPATCHED'
+    ) {
+      await this.assertReadyForDispatchNv(id);
+    }
 
     const result = await this.prisma.nv_touren.update({
       where: { id },
@@ -1084,14 +1159,19 @@ export class NvTourenService {
         max: sub?.max_ldm != null ? Number(sub.max_ldm) : null,
       },
     ];
-    const exceeded = checks.filter(
-      (c) => c.max != null && c.total > (c.max as number),
+    // B-4: Overload NICHT blockend in batch-stops. Soft-Warnung
+    // im Log; assertReadyForDispatchNv (in update()) throwt
+    // bei Status-Wechsel auf DISPATCHED.
+    const overload = computeOverload(
+      curLdm,
+      curKg,
+      sub?.max_ldm != null ? Number(sub.max_ldm) : null,
+      sub?.max_gewicht_kg != null ? Number(sub.max_gewicht_kg) : null,
     );
-    if (exceeded.length > 0) {
-      throw new ConflictException({
-        code: 'CAPACITY_EXCEEDED',
-        would_exceed: exceeded,
-      });
+    if (overload.isOverloaded) {
+      this.logger.warn(
+        `batchStops(${tourId}): ${formatOverloadMessage(overload)}`,
+      );
     }
 
     // Determine starting position for new stops

@@ -631,13 +631,16 @@ export default function LoadingPlanPage() {
       posXCm: number;
       posYCm: number;
       posZCm: number;
+      rotationDeg?: number;
     }) => {
-      const { itemId, posXCm, posYCm, posZCm } = vars;
-      await api.patch(`/loading/package-item/${itemId}/position`, {
+      const { itemId, posXCm, posYCm, posZCm, rotationDeg } = vars;
+      const body: Record<string, number> = {
         posXCm: Math.round(posXCm),
         posYCm: Math.round(posYCm),
         posZCm: Math.round(posZCm),
-      });
+      };
+      if (rotationDeg !== undefined) body.rotationDeg = Math.round(rotationDeg);
+      await api.patch(`/loading/package-item/${itemId}/position`, body);
     },
     onSuccess: () => {
       showToast('Position gespeichert');
@@ -673,6 +676,7 @@ export default function LoadingPlanPage() {
     posXCm: number,
     posYCm: number,
     posZCm: number,
+    rotationDeg?: number,
   ) => {
     // Heuristik: synth-IDs enthalten ":pkg:" — die koennen wir nicht persistieren.
     if (!id || id.includes(':pkg:')) {
@@ -685,6 +689,7 @@ export default function LoadingPlanPage() {
       posXCm,
       posYCm,
       posZCm,
+      rotationDeg,
     });
   };
 
@@ -1002,6 +1007,7 @@ export default function LoadingPlanPage() {
                               (shipIdx.get(p.shipmentId) ?? 0) % SHIPMENT_COLORS.length
                             ],
                           isStackable: p.isStackable,
+                          rotationDeg: p.rotationDeg,
                         }))}
                       />
                       <AxleLoadPanel

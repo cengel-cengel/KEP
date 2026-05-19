@@ -22,17 +22,15 @@ export interface StackCheck {
   reason?: string;
 }
 
-export function canStackOn(below: StackablePackage, above: StackablePackage): StackCheck {
+/**
+ * B-3-Konvention (LP-1 Alignment): nur below.isStackable zählt.
+ * top.isStackable spielt KEINE Rolle — auf top kommt nichts mehr.
+ */
+export function canStackOn(below: StackablePackage, _above: StackablePackage): StackCheck {
   if (!below.isStackable) {
     return {
       allowed: false,
       reason: 'Basis-Palette ist nicht stapelbar',
-    };
-  }
-  if (!above.isStackable) {
-    return {
-      allowed: false,
-      reason: 'Obere Palette ist nicht stapelbar',
     };
   }
   return { allowed: true };

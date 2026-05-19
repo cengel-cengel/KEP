@@ -8,6 +8,14 @@ import {
   type AxleLoadEntry,
 } from '../lib/axleLoad';
 import { canStackOn } from '../lib/stackingRules';
+import {
+  snapToWall,
+  smartRotateSuggestion,
+  findAdjacentSlot,
+  loadAutoRotateSetting,
+  saveAutoRotateSetting,
+  type SnapItem,
+} from '../lib/loadingSnap';
 
 const SNAP_CM = 10;
 const TOL = 1e-6;
@@ -42,6 +50,8 @@ export type Plan3DPackage = {
   weightKg?: number;
   color?: string;
   isStackable?: boolean;
+  /** LP-1: 0 oder 90 (Y-axis rotation, swap length↔width). */
+  rotationDeg?: number;
 };
 
 interface Props {
@@ -54,9 +64,16 @@ interface Props {
   /**
    * Wird nach erfolgreichem Drag mit gueltiger Position aufgerufen.
    * id ist die DB-uuid wenn vorhanden — sonst die synth-id.
+   * LP-1: optionaler 4. Parameter rotationDeg (0 oder 90).
    * Caller entscheidet ob persistiert wird.
    */
-  onPositionChange?: (id: string, posXCm: number, posYCm: number, posZCm: number) => void;
+  onPositionChange?: (
+    id: string,
+    posXCm: number,
+    posYCm: number,
+    posZCm: number,
+    rotationDeg?: number,
+  ) => void;
 }
 
 const AXLE_COLOR: Record<AxleStatus, string> = {
@@ -88,11 +105,43 @@ export default function LoadingPlan3D({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const offsetRef = useRef<{ x: number; z: number }>({ x: 0, z: 0 });
   const originalPosRef = useRef<{ posX: number; posY: number; posZ: number } | null>(null);
+  // LP-1: Live-Rotation während Drag (Y-axis 0|90).
+  const [dragRotation, setDragRotation] = useState<0 | 90>(0);
+  const originalRotRef = useRef<number>(0);
+  const [autoRotate, setAutoRotate] = useState<boolean>(loadAutoRotateSetting);
+  function toggleAutoRotate() {
+    setAutoRotate((cur) => {
+      const next = !cur;
+      saveAutoRotateSetting(next);
+      return next;
+    });
+  }
+  /** Liefert ein Package mit nach Rotation getauschten Dimensionen. */
+  function effPkg(p: Plan3DPackage, rot?: number): Plan3DPackage {
+    const r = rot ?? p.rotationDeg ?? 0;
+    if (r === 90) {
+      return { ...p, lengthCm: p.widthCm, widthCm: p.lengthCm };
+    }
+    return p;
+  }
   // OrbitControls-Ref fuer synchrones enable/disable beim Drag
   const orbitRef = useRef<any>(null);
   function setOrbit(enabled: boolean) {
     if (orbitRef.current) orbitRef.current.enabled = enabled;
   }
+
+  // LP-1: 'r' (lowercase) während Drag toggelt 90°-Rotation.
+  useEffect(() => {
+    if (!dragActive) return;
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key !== 'r' && ev.key !== 'R') return;
+      if (ev.repeat) return;
+      ev.preventDefault();
+      setDragRotation((cur) => (cur === 0 ? 90 : 0));
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [dragActive]);
 
   // Stack-Alignment-Panel-State (nur bei Overhang sichtbar)
   type AlignmentMode = 'centered' | 'front' | 'back' | 'left' | 'right';
@@ -131,10 +180,11 @@ export default function LoadingPlan3D({
     for (const o of packages) {
       if (o.id === p.id) continue;
       const oc = effectivePos(o);
+      const oEff = effPkg(o);
       const bx1 = oc.posX;
-      const bx2 = oc.posX + o.widthCm;
+      const bx2 = oc.posX + oEff.widthCm;
       const by1 = oc.posY;
-      const by2 = oc.posY + o.lengthCm;
+      const by2 = oc.posY + oEff.lengthCm;
       const ix = Math.max(0, Math.min(ax2, bx2) - Math.max(ax1, bx1));
       const iy = Math.max(0, Math.min(ay2, by2) - Math.max(ay1, by1));
       const pct = (ix * iy) / candArea;
@@ -317,11 +367,12 @@ export default function LoadingPlan3D({
         if (other.id === p.id) continue;
         const op = effectivePos(other);
         if (Math.abs(op.posZ - posZ) > TOL) continue;
+        const oEff = effPkg(other);
         const oth = {
           x1: op.posX,
-          x2: op.posX + other.widthCm,
+          x2: op.posX + oEff.widthCm,
           y1: op.posY,
-          y2: op.posY + other.lengthCm,
+          y2: op.posY + oEff.lengthCm,
         };
         if (rectsOverlap(cand, oth)) overlaps.push(other);
       }
@@ -346,7 +397,7 @@ export default function LoadingPlan3D({
         }
       }
       const top = Math.max(
-        ...overlaps.map((o) => effectivePos(o).posZ + o.heightCm),
+        ...overlaps.map((o) => effectivePos(o).posZ + effPkg(o).heightCm),
       );
       posZ = top;
     }
@@ -483,7 +534,22 @@ export default function LoadingPlan3D({
         <span className="block sm:inline sm:ml-2 text-gray-500">
           📱 Mobile: 1 Finger drehen · 2 Finger pan
         </span>
+        <span className="block sm:inline sm:ml-2 text-gray-500">
+          ⌨️ R: 90°-Rotation während Drag
+        </span>
       </div>
+      <label
+        className="absolute bottom-2 right-2 z-10 inline-flex items-center gap-1.5 rounded bg-white/95 border border-gray-300 px-2 py-1 text-[11px] text-gray-700 shadow-sm cursor-pointer"
+        title="Beim Wand-Snap automatisch in besser passende Orientation drehen"
+      >
+        <input
+          type="checkbox"
+          checked={autoRotate}
+          onChange={toggleAutoRotate}
+          className="cursor-pointer"
+        />
+        <span>Auto-Rotate</span>
+      </label>
       {alignmentTarget && (
         <div className="absolute top-2 right-2 z-20 rounded-lg border border-gray-300 bg-white/95 shadow-lg p-2 text-xs">
           <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -563,13 +629,16 @@ export default function LoadingPlan3D({
         */}
         {packages.map((p) => {
           const eff = effectivePos(p);
-          const lx = p.lengthCm / 100;
-          const ly = p.heightCm / 100;
-          const lz = p.widthCm / 100;
+          // LP-1: bei aktiv-dragged Item dragRotation, sonst pkg.rotationDeg.
+          const isDragging = dragActive === p.id;
+          const activeRot = isDragging ? dragRotation : p.rotationDeg ?? 0;
+          const ePkg = effPkg(p, activeRot);
+          const lx = ePkg.lengthCm / 100;
+          const ly = ePkg.heightCm / 100;
+          const lz = ePkg.widthCm / 100;
           const cx = eff.posY / 100 + lx / 2;
           const cy = eff.posZ / 100 + ly / 2;
           const cz = eff.posX / 100 - trailer.W / 2 + lz / 2;
-          const isDragging = dragActive === p.id;
           const isHover = hoveredId === p.id && !dragActive;
           const dragInvalid = isDragging && !dragValid;
           return (
@@ -603,6 +672,8 @@ export default function LoadingPlan3D({
                   posY: eff.posY,
                   posZ: eff.posZ,
                 };
+                originalRotRef.current = p.rotationDeg ?? 0;
+                setDragRotation((p.rotationDeg ?? 0) === 90 ? 90 : 0);
                 setDragValid(true);
                 setDragActive(p.id);
                 document.body.style.cursor = 'grabbing';
@@ -646,12 +717,57 @@ export default function LoadingPlan3D({
             onPointerMove={(e) => {
               const pkg = packages.find((p) => p.id === dragActive);
               if (!pkg) return;
-              const lx = pkg.lengthCm / 100;
-              const lz = pkg.widthCm / 100;
+              // LP-1: effektive Dimensionen nach aktueller Drag-Rotation.
+              const ePkg = effPkg(pkg, dragRotation);
+              const lx = ePkg.lengthCm / 100;
+              const lz = ePkg.widthCm / 100;
               const newCx = e.point.x - offsetRef.current.x;
               const newCz = e.point.z - offsetRef.current.z;
-              const newPosY = (newCx - lx / 2) * 100;
-              const newPosX = (newCz + trailer.W / 2 - lz / 2) * 100;
+              let newPosY = (newCx - lx / 2) * 100;
+              let newPosX = (newCz + trailer.W / 2 - lz / 2) * 100;
+
+              // LP-1: Wand-Magnet (20cm Threshold)
+              const others: SnapItem[] = packages
+                .filter((o) => o.id !== pkg.id)
+                .map((o) => {
+                  const op = effectivePos(o);
+                  const oe = effPkg(o);
+                  return {
+                    id: o.id,
+                    posX: op.posX,
+                    posY: op.posY,
+                    posZ: op.posZ,
+                    widthCm: oe.widthCm,
+                    lengthCm: oe.lengthCm,
+                  };
+                });
+              const trailerBounds = {
+                widthCm: trailer.W * 100,
+                lengthCm: trailer.L * 100,
+              };
+              const magnet = snapToWall(
+                { widthCm: ePkg.widthCm, lengthCm: ePkg.lengthCm },
+                newPosX,
+                newPosY,
+                trailerBounds,
+                others,
+              );
+              if (magnet.snapped) {
+                newPosX = magnet.posX;
+                newPosY = magnet.posY;
+              } else if (autoRotate) {
+                // LP-1: Smart-Rotate Vorschlag wenn rotated besser snapped.
+                const suggest = smartRotateSuggestion(
+                  { widthCm: ePkg.widthCm, lengthCm: ePkg.lengthCm },
+                  newPosX,
+                  newPosY,
+                  trailerBounds,
+                  others,
+                );
+                if (suggest === 90 && dragRotation === 0) {
+                  setDragRotation(90);
+                }
+              }
               const cur = dragOverrides.get(dragActive);
               setDragOverrides((prev) => {
                 const m = new Map(prev);
@@ -662,12 +778,14 @@ export default function LoadingPlan3D({
                 });
                 return m;
               });
-              setDragValid(resolveDrop(pkg, newPosX, newPosY).valid);
+              setDragValid(resolveDrop(ePkg, newPosX, newPosY).valid);
             }}
             onPointerUp={() => {
               const pkg = packages.find((p) => p.id === dragActive);
               const orig = originalPosRef.current;
+              const origRot = originalRotRef.current;
               if (pkg) {
+                const ePkg = effPkg(pkg, dragRotation);
                 const cur = dragOverrides.get(pkg.id);
                 if (!cur) {
                   // Nichts bewegt; revert für Sauberkeit
@@ -677,15 +795,16 @@ export default function LoadingPlan3D({
                     else m.delete(pkg.id);
                     return m;
                   });
+                  setDragRotation(origRot === 90 ? 90 : 0);
                 } else {
-                  let snap = snapXY(pkg, cur.posX, cur.posY);
+                  let snap = snapXY(ePkg, cur.posX, cur.posY);
                   // Overhang-Detection: Wenn auf groesserer Stack-Basis,
                   // Standard centered-Alignment + Panel triggern.
                   if (snap.viaStack && snap.belowId) {
                     const belowId: string = snap.belowId;
                     const below = packages.find((x) => x.id === belowId);
-                    if (below && isOverhang(below, pkg)) {
-                      const aligned = computeAlignment(below, pkg, 'centered');
+                    if (below && isOverhang(effPkg(below), ePkg)) {
+                      const aligned = computeAlignment(effPkg(below), ePkg, 'centered');
                       snap = {
                         posX: aligned.posX,
                         posY: aligned.posY,
@@ -699,7 +818,59 @@ export default function LoadingPlan3D({
                       });
                     }
                   }
-                  const r = resolveDrop(pkg, snap.posX, snap.posY);
+                  let r = resolveDrop(ePkg, snap.posX, snap.posY);
+
+                  // LP-1: SAME-Z side-by-side wenn snap-target
+                  // non-stackable und dragged stackable.
+                  if (!r.valid && snap.viaStack && snap.belowId) {
+                    const target = packages.find((x) => x.id === snap.belowId);
+                    if (
+                      target &&
+                      target.isStackable === false &&
+                      ePkg.isStackable !== false
+                    ) {
+                      const targetPos = effectivePos(target);
+                      const targetEff = effPkg(target);
+                      const trailerB = {
+                        widthCm: trailer.W * 100,
+                        lengthCm: trailer.L * 100,
+                      };
+                      const others: SnapItem[] = packages.map((o) => {
+                        const op = effectivePos(o);
+                        const oe = effPkg(o);
+                        return {
+                          id: o.id,
+                          posX: op.posX,
+                          posY: op.posY,
+                          posZ: op.posZ,
+                          widthCm: oe.widthCm,
+                          lengthCm: oe.lengthCm,
+                        };
+                      });
+                      const adj = findAdjacentSlot(
+                        { widthCm: ePkg.widthCm, lengthCm: ePkg.lengthCm },
+                        {
+                          id: target.id,
+                          posX: targetPos.posX,
+                          posY: targetPos.posY,
+                          posZ: targetPos.posZ,
+                          widthCm: targetEff.widthCm,
+                          lengthCm: targetEff.lengthCm,
+                        },
+                        others,
+                        trailerB,
+                      );
+                      if (adj) {
+                        snap = {
+                          posX: adj.posX,
+                          posY: adj.posY,
+                          viaStack: false,
+                        };
+                        r = { valid: true, suggestedZ: adj.posZ };
+                      }
+                    }
+                  }
+
                   if (r.valid) {
                     setDragOverrides((prev) => {
                       const m = new Map(prev);
@@ -711,7 +882,13 @@ export default function LoadingPlan3D({
                       return applyGravity(m);
                     });
                     if (onPositionChange) {
-                      onPositionChange(pkg.id, snap.posX, snap.posY, r.suggestedZ);
+                      onPositionChange(
+                        pkg.id,
+                        snap.posX,
+                        snap.posY,
+                        r.suggestedZ,
+                        dragRotation,
+                      );
                     }
                   } else if (orig) {
                     setDragOverrides((prev) => {
@@ -719,6 +896,7 @@ export default function LoadingPlan3D({
                       m.set(pkg.id, orig);
                       return applyGravity(m);
                     });
+                    setDragRotation(origRot === 90 ? 90 : 0);
                   }
                 }
               }
@@ -732,12 +910,14 @@ export default function LoadingPlan3D({
               // Raus aus Plane = Cancel = Revert
               const pkg = packages.find((p) => p.id === dragActive);
               const orig = originalPosRef.current;
+              const origRot = originalRotRef.current;
               if (pkg && orig) {
                 setDragOverrides((prev) => {
                   const m = new Map(prev);
                   m.set(pkg.id, orig);
                   return m;
                 });
+                setDragRotation(origRot === 90 ? 90 : 0);
               }
               originalPosRef.current = null;
               setDragActive(null);

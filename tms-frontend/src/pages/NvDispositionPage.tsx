@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, ExternalLink, Eye, Package, Pencil, Plus, Sparkles, Trash2, Truck } from 'lucide-react';
+import { ArrowDown, ArrowUp, Box, ExternalLink, Eye, Package, Pencil, Plus, Sparkles, Trash2, Truck } from 'lucide-react';
 import NvTourKostenModal from '../components/NvTourKostenModal';
 import ShipmentDetailModal from '../components/ShipmentDetailModal';
 import ShipmentEditModal from '../components/ShipmentEditModal';
@@ -2007,6 +2007,20 @@ function TourCard({
               Abschließen
             </button>
           )}
+          <button
+            onClick={() => {
+              const w = window.open(
+                `/nv-loading/${tour.id}`,
+                `tms-loading-plan-${tour.id}`,
+                'width=1200,height=900,noopener=no',
+              );
+              if (w) w.focus();
+            }}
+            className="text-gray-500 hover:text-gray-800 inline-flex items-center gap-0.5"
+            title="Beladeplan in neuem Fenster"
+          >
+            <Box size={16} />
+          </button>
           <button
             onClick={onOpenKosten}
             className="text-blue-600 hover:text-blue-800"

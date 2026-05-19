@@ -56,6 +56,12 @@ export class NvTourenController {
     return this.svc.getOne(id);
   }
 
+  // P0-8: NV-Beladeplan-Daten (full package_items pro shipment).
+  @Get(':id/loading')
+  getLoadingDetail(@Param('id') id: string) {
+    return this.svc.getLoadingDetail(id);
+  }
+
   @Post()
   create(@Body() dto: CreateNvTourDto) {
     return this.svc.create(dto);

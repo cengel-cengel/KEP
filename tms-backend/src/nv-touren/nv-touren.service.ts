@@ -698,6 +698,68 @@ export class NvTourenService {
     return augmented;
   }
 
+  /**
+   * P0-8: NV-Beladeplan-Daten. Liefert tour + shipments mit
+   * FULL shipment_package_items für LoadingPlan3D-Rendering.
+   * Eigener Endpoint (statt TOUR_INCLUDE erweitern) damit
+   * list-Endpoints nicht teurer werden.
+   */
+  async getLoadingDetail(id: string) {
+    const tour = await this.prisma.nv_touren.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        datum: true,
+        status: true,
+        fahrzeug_typ: true,
+        nv_stamm_tour: {
+          select: { code: true, name: true },
+        },
+        subunternehmer: {
+          select: { id: true, name: true, fahrzeug_typ: true },
+        },
+        stops: {
+          orderBy: [{ position: 'asc' }, { created_at: 'asc' }],
+          select: {
+            id: true,
+            position: true,
+            shipment: {
+              select: {
+                id: true,
+                shipment_number: true,
+                weight_kg: true,
+                ldm: true,
+                length_cm: true,
+                width_cm: true,
+                height_cm: true,
+                shipment_package_items: {
+                  orderBy: [{ line_index: 'asc' }],
+                  select: {
+                    id: true,
+                    line_index: true,
+                    package_type: true,
+                    quantity: true,
+                    length_cm: true,
+                    width_cm: true,
+                    height_cm: true,
+                    weight_kg: true,
+                    stackable: true,
+                    pos_x_cm: true,
+                    pos_y_cm: true,
+                    pos_z_cm: true,
+                    rotation_deg: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as any,
+    });
+    if (!tour) throw new NotFoundException('NV-Tour nicht gefunden');
+    return tour;
+  }
+
   async create(dto: CreateNvTourDto) {
     const stamm = await this.prisma.nv_stamm_touren.findUnique({
       where: { id: dto.nv_stamm_tour_id },

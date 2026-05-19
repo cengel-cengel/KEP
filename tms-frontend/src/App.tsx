@@ -10,6 +10,7 @@ import NvDispositionPage from './pages/NvDispositionPage';
 import NvDispoMapPopupPage from './pages/NvDispoMapPopupPage';
 import FvDispositionPage from './pages/FvDispositionPage';
 import FvDispoMapPopupPage from './pages/FvDispoMapPopupPage';
+import NvLoadingPlanPage from './pages/NvLoadingPlanPage';
 import MapDispositionPage from './pages/MapDispositionPage';
 import MapPage from './pages/MapPage';
 import ClearancePage from './pages/ClearancePage';
@@ -54,6 +55,14 @@ export default function App() {
         element={
           <PrivateRoute>
             <FvDispoMapPopupPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/nv-loading/:tourId"
+        element={
+          <PrivateRoute>
+            <NvLoadingPlanPage />
           </PrivateRoute>
         }
       />

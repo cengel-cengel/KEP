@@ -54,6 +54,13 @@ export class ToursController {
     return this.toursService.eligibleShipmentsFv({ datum, search, tourId });
   }
 
+  // P0-6.7 TEMP: Diagnose-Endpoint für FV-Eligibility-Counts.
+  // Cleanup-Backlog P0-6.8.
+  @Get('eligible-shipments-fv/debug')
+  async eligibleShipmentsFvDebug() {
+    return this.toursService.eligibleShipmentsFvDebug();
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.toursService.findOne(id);

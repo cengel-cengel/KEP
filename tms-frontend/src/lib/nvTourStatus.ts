@@ -50,7 +50,7 @@ export function nvStatusLabel(
     case 'IN_PROGRESS':
       return mode === 'DELIVERY' ? 'In Zustellung' : 'In Abholung';
     case 'COMPLETED':
-      return mode === 'DELIVERY' ? 'Zugestellt' : 'Im Lager';
+      return mode === 'DELIVERY' ? 'Zugestellt' : 'Abgeholt';
     case 'CANCELLED':
       return 'Storniert';
     default:

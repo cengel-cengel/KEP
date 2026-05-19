@@ -17,7 +17,7 @@ const baseEvt = {
 };
 
 describe('invalidateForEvent', () => {
-  it('tour.updated invalidiert 4 query-keys', () => {
+  it('tour.updated invalidiert 6 query-keys (incl. eligible-listen)', () => {
     const qc = mockQc();
     invalidateForEvent(qc, {
       ...baseEvt,
@@ -32,6 +32,8 @@ describe('invalidateForEvent', () => {
         ['nv-touren'],
         ['fv-tour-detail', 'tour-1'],
         ['nv-loading', 'tour-1'],
+        ['fv-eligible'],
+        ['nv-elig'],
       ]),
     );
   });

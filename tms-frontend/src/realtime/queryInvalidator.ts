@@ -23,6 +23,11 @@ export function invalidateForEvent(
     qc.invalidateQueries({ queryKey: ['nv-touren'] });
     qc.invalidateQueries({ queryKey: ['fv-tour-detail', evt.entityId] });
     qc.invalidateQueries({ queryKey: ['nv-loading', evt.entityId] });
+    // P0-6.3 BUG 2: COMPLETED-Übergang macht shipments
+    // FV-eligible (PICKUP-completed). Eligible-Listen mit-
+    // invalidieren, sonst F5-Bedarf.
+    qc.invalidateQueries({ queryKey: ['fv-eligible'] });
+    qc.invalidateQueries({ queryKey: ['nv-elig'] });
     return;
   }
   if (evt.event === 'shipment.assigned') {

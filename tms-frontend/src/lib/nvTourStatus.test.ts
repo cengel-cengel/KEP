@@ -14,8 +14,8 @@ describe('nvStatusLabel', () => {
   it('PICKUP IN_PROGRESS → "In Abholung"', () => {
     expect(nvStatusLabel('IN_PROGRESS', 'PICKUP')).toBe('In Abholung');
   });
-  it('PICKUP COMPLETED → "Im Lager"', () => {
-    expect(nvStatusLabel('COMPLETED', 'PICKUP')).toBe('Im Lager');
+  it('PICKUP COMPLETED → "Abgeholt"', () => {
+    expect(nvStatusLabel('COMPLETED', 'PICKUP')).toBe('Abgeholt');
   });
   it('DELIVERY IN_PROGRESS → "In Zustellung"', () => {
     expect(nvStatusLabel('IN_PROGRESS', 'DELIVERY')).toBe('In Zustellung');
@@ -29,7 +29,7 @@ describe('nvStatusLabel', () => {
   });
   it('mode=undefined fällt zurück auf PICKUP-Labels', () => {
     expect(nvStatusLabel('IN_PROGRESS', undefined)).toBe('In Abholung');
-    expect(nvStatusLabel('COMPLETED', undefined)).toBe('Im Lager');
+    expect(nvStatusLabel('COMPLETED', undefined)).toBe('Abgeholt');
   });
   it('unbekannter Status → raw Wert', () => {
     expect(nvStatusLabel('FOO', 'PICKUP')).toBe('FOO');

@@ -62,35 +62,57 @@ const SHIPMENT_COLORS = [
 function flattenPackages(tour: NvLoadingDetail | null): Plan3DPackage[] {
   if (!tour) return [];
   const out: Plan3DPackage[] = [];
+  // Auto-Layout-Cursor: entlang Trailer-Länge (posY) je Sendung,
+  // entlang Trailer-Breite (posX) je qty-Clone. Greift nur wenn
+  // DB-Position fehlt (pos_*_cm null → Auto-Placer noch nicht
+  // gelaufen).
+  let cursorY = 0;
   let shipIdx = 0;
   for (const stop of tour.stops) {
     const ship = stop.shipment;
     const color = SHIPMENT_COLORS[shipIdx % SHIPMENT_COLORS.length];
     shipIdx++;
     const items = ship.shipment_package_items ?? [];
-    // Sendung als 1 fully-stackable wenn alle items stackable!==false
     const shipFullyStackable = items.every((it) => it.stackable !== false);
+    let shipMaxLength = 0;
+    let cursorX = 0;
     for (const it of items) {
       const qty = Math.max(1, Number(it.quantity ?? 1));
-      // Pro item-quantity ein synth-Eintrag (id = item-id wenn qty=1,
-      // sonst synth-id mit ":pkg:N"-Suffix — LoadingPlanPage-konsistent).
+      const w = Number(it.width_cm) || 0;
+      const l = Number(it.length_cm) || 0;
+      const dbPosX = it.pos_x_cm == null ? null : Number(it.pos_x_cm);
+      const dbPosY = it.pos_y_cm == null ? null : Number(it.pos_y_cm);
+      const dbPosZ = it.pos_z_cm == null ? null : Number(it.pos_z_cm);
+      const hasDbPos = dbPosX != null && dbPosY != null;
       for (let q = 0; q < qty; q++) {
+        // q=0 nutzt DB-Position falls vorhanden, sonst Auto-Cursor.
+        // q>0 (synth-Clones) IMMER auto-spread (DB hat nur 1 Row).
+        const useDb = q === 0 && hasDbPos;
+        const posX = useDb ? (dbPosX as number) : cursorX;
+        const posY = useDb ? (dbPosY as number) : cursorY;
+        const posZ = useDb && dbPosZ != null ? dbPosZ : 0;
         const synthSuffix = qty === 1 ? '' : `:pkg:${q}`;
         out.push({
           id: it.id + synthSuffix,
-          lengthCm: Number(it.length_cm) || 0,
-          widthCm: Number(it.width_cm) || 0,
+          lengthCm: l,
+          widthCm: w,
           heightCm: Number(it.height_cm) || 0,
-          posX: Number(it.pos_x_cm ?? 0) || 0,
-          posY: Number(it.pos_y_cm ?? 0) || 0,
-          posZ: Number(it.pos_z_cm ?? 0) || 0,
+          posX,
+          posY,
+          posZ,
           weightKg: Number(it.weight_kg) || 0,
           color,
           isStackable: shipFullyStackable && it.stackable !== false,
           rotationDeg: Number(it.rotation_deg ?? 0) || 0,
         });
+        if (!useDb) {
+          cursorX += w + 5;
+        }
       }
+      if (l > shipMaxLength) shipMaxLength = l;
     }
+    // Nächste Sendung in neuer Reihe (entlang Trailer-Länge).
+    cursorY += shipMaxLength + 5;
   }
   return out;
 }

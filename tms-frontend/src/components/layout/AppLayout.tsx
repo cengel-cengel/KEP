@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import ContextPanel from '../panel/ContextPanel';
+import CommandPalette from '../CommandPalette';
 import { usePanel } from '../../state/panel';
 
 export default function AppLayout() {
@@ -26,6 +27,7 @@ export default function AppLayout() {
         </main>
       </div>
       <ContextPanel />
+      <CommandPalette />
     </div>
   );
 }

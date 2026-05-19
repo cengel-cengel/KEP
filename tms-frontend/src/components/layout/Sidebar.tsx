@@ -11,7 +11,6 @@ import {
   PanelLeftOpen,
   Truck,
   Warehouse,
-  Workflow,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -36,8 +35,7 @@ const NAV: NavItem[] = [
     badgeKey: 'workstack',
   },
   { to: '/shipments', label: 'Sendungen', icon: Package },
-  { to: '/nv-disposition', label: 'NV-Dispo', icon: Map },
-  { to: '/fv-disposition', label: 'FV-Dispo', icon: Workflow },
+  { to: '/workspace', label: 'Disposition', icon: Map, matchPrefix: true },
   { to: '/clearance', label: 'Abfertigung', icon: FileText },
   { to: '/hall', label: 'Halle', icon: Warehouse },
   { to: '/tours', label: 'Touren', icon: Truck },

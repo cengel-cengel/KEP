@@ -11,6 +11,7 @@ import NvDispoMapPopupPage from './pages/NvDispoMapPopupPage';
 import FvDispositionPage from './pages/FvDispositionPage';
 import FvDispoMapPopupPage from './pages/FvDispoMapPopupPage';
 import NvLoadingPlanPage from './pages/NvLoadingPlanPage';
+import WorkspacePage from './pages/WorkspacePage';
 import MapDispositionPage from './pages/MapDispositionPage';
 import MapPage from './pages/MapPage';
 import ClearancePage from './pages/ClearancePage';
@@ -79,8 +80,15 @@ export default function App() {
         <Route path="/shipments/new" element={<NewShipmentPage />} />
         <Route path="/beladeplan" element={<BeladeplanPage />} />
         <Route path="/disposition" element={<DispositionPage />} />
-        <Route path="/nv-disposition" element={<NvDispositionPage />} />
-        <Route path="/fv-disposition" element={<FvDispositionPage />} />
+        <Route path="/workspace" element={<WorkspacePage />} />
+        <Route
+          path="/nv-disposition"
+          element={<Navigate to="/workspace?mode=nv" replace />}
+        />
+        <Route
+          path="/fv-disposition"
+          element={<Navigate to="/workspace?mode=fv" replace />}
+        />
         <Route path="/disposition/map" element={<MapDispositionPage />} />
         <Route path="/disposition/map-old" element={<MapPage />} />
         <Route path="/tours" element={<CompletedToursPage />} />

@@ -69,7 +69,38 @@ function makeDedup(capacity = DEDUP_CAPACITY) {
 
 let socket: Socket | null = null;
 let handlers: Set<RealtimeHandler> = new Set();
+let statusListeners: Set<(s: RealtimeStatus) => void> = new Set();
+let currentStatus: RealtimeStatus = 'disconnected';
 const dedup = makeDedup();
+
+export type RealtimeStatus = 'connected' | 'connecting' | 'disconnected';
+
+function setStatus(s: RealtimeStatus) {
+  if (s === currentStatus) return;
+  currentStatus = s;
+  for (const l of statusListeners) {
+    try {
+      l(s);
+    } catch {
+      /* noop */
+    }
+  }
+}
+
+export function getRealtimeStatus(): RealtimeStatus {
+  return currentStatus;
+}
+
+export function onRealtimeStatus(
+  cb: (s: RealtimeStatus) => void,
+): () => void {
+  statusListeners.add(cb);
+  // emit current state immediate (caller bekommt initialen Wert)
+  cb(currentStatus);
+  return () => {
+    statusListeners.delete(cb);
+  };
+}
 
 /**
  * Connect (idempotent). Wird beim Auth-State 'authenticated'
@@ -80,6 +111,7 @@ export function connectRealtime(): void {
   if (socket?.connected) return;
   const token = localStorage.getItem(TOKEN_KEY);
   if (!token) return;
+  setStatus('connecting');
   // baseURL aus VITE_API_URL ableiten — wenn /api am Ende,
   // wird es zu Socket-URL ohne /api transformiert.
   const apiUrl =
@@ -116,13 +148,18 @@ export function connectRealtime(): void {
   socket.on('connect_error', (err) => {
     // eslint-disable-next-line no-console
     console.warn('[realtime] connect_error', err.message);
+    setStatus('disconnected');
   });
+  socket.on('connect', () => setStatus('connected'));
+  socket.on('disconnect', () => setStatus('disconnected'));
+  socket.on('reconnect_attempt', () => setStatus('connecting'));
 }
 
 export function disconnectRealtime(): void {
   if (!socket) return;
   socket.disconnect();
   socket = null;
+  setStatus('disconnected');
 }
 
 /** Handler-Subscribe. Liefert unsubscribe-Funktion. */
@@ -144,4 +181,6 @@ export function _resetRealtimeClient(): void {
   }
   socket = null;
   handlers = new Set();
+  statusListeners = new Set();
+  currentStatus = 'disconnected';
 }

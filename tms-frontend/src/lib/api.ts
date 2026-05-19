@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getClientId } from '../realtime/realtimeClient';
 
 const AUTH_TOKEN_KEY = 'tms_token';
 
@@ -24,6 +25,8 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // PERF-1: X-Client-Id für No-Self-Event Filter im Realtime-Layer.
+  config.headers['X-Client-Id'] = getClientId();
   return config;
 });
 

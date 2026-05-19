@@ -1,0 +1,147 @@
+/**
+ * PERF-1: Socket.IO-Singleton mit Reconnect + Dedup.
+ *
+ * Auth: handshake.auth.token (JWT aus localStorage).
+ * Reconnect-Backoff: 1s → 16s, max.
+ * Dedup: LRU-Set der letzten 100 event_ids.
+ * No-Self-Event: skipt msg wenn origin_client_id === eigene clientId.
+ *
+ * clientId: persistiert in sessionStorage 'tms_client_id'.
+ * Wird auch via api.ts axios-interceptor als X-Client-Id-
+ * Header an jede HTTP-Mutation gehängt.
+ */
+import { io, Socket } from 'socket.io-client';
+
+const TOKEN_KEY = 'tms_token';
+const CLIENT_ID_KEY = 'tms_client_id';
+const DEDUP_CAPACITY = 100;
+
+export type RealtimeEventType = 'tour.updated' | 'shipment.assigned';
+
+export interface RealtimeEvent {
+  event: RealtimeEventType;
+  event_id: string;
+  origin_client_id: string | null;
+  entityType: 'tour' | 'shipment';
+  entityId: string;
+  timestamp: string;
+  payload?: Record<string, unknown>;
+}
+
+export type RealtimeHandler = (evt: RealtimeEvent) => void;
+
+/** Generiert oder holt eine stabile clientId pro Browser-Tab. */
+export function getClientId(): string {
+  if (typeof window === 'undefined') return 'ssr';
+  try {
+    const existing = sessionStorage.getItem(CLIENT_ID_KEY);
+    if (existing) return existing;
+    const fresh =
+      (typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `cid-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    sessionStorage.setItem(CLIENT_ID_KEY, fresh);
+    return fresh;
+  } catch {
+    return `cid-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+/** LRU-Dedup-Set, gibt true zurück wenn id schon gesehen. */
+function makeDedup(capacity = DEDUP_CAPACITY) {
+  const seen = new Set<string>();
+  const order: string[] = [];
+  return {
+    has(id: string): boolean {
+      return seen.has(id);
+    },
+    add(id: string): void {
+      if (seen.has(id)) return;
+      seen.add(id);
+      order.push(id);
+      while (order.length > capacity) {
+        const old = order.shift();
+        if (old) seen.delete(old);
+      }
+    },
+  };
+}
+
+let socket: Socket | null = null;
+let handlers: Set<RealtimeHandler> = new Set();
+const dedup = makeDedup();
+
+/**
+ * Connect (idempotent). Wird beim Auth-State 'authenticated'
+ * aus AuthProvider gerufen.
+ */
+export function connectRealtime(): void {
+  if (typeof window === 'undefined') return;
+  if (socket?.connected) return;
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) return;
+  // baseURL aus VITE_API_URL ableiten — wenn /api am Ende,
+  // wird es zu Socket-URL ohne /api transformiert.
+  const apiUrl =
+    (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
+  const base = apiUrl.replace(/\/api\/?$/, '');
+  const wsUrl = base || window.location.origin;
+  socket = io(wsUrl, {
+    path: '/ws/realtime',
+    transports: ['websocket', 'polling'],
+    auth: { token },
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 16000,
+    randomizationFactor: 0.3,
+  });
+  const myId = getClientId();
+  socket.on('event', (msg: RealtimeEvent) => {
+    if (!msg || !msg.event_id) return;
+    if (dedup.has(msg.event_id)) return;
+    if (msg.origin_client_id && msg.origin_client_id === myId) {
+      dedup.add(msg.event_id);
+      return;
+    }
+    dedup.add(msg.event_id);
+    for (const h of handlers) {
+      try {
+        h(msg);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[realtime] handler error', err);
+      }
+    }
+  });
+  socket.on('connect_error', (err) => {
+    // eslint-disable-next-line no-console
+    console.warn('[realtime] connect_error', err.message);
+  });
+}
+
+export function disconnectRealtime(): void {
+  if (!socket) return;
+  socket.disconnect();
+  socket = null;
+}
+
+/** Handler-Subscribe. Liefert unsubscribe-Funktion. */
+export function onRealtimeEvent(handler: RealtimeHandler): () => void {
+  handlers.add(handler);
+  return () => {
+    handlers.delete(handler);
+  };
+}
+
+// Test-Hook: erlaubt Reset zwischen Tests.
+export function _resetRealtimeClient(): void {
+  if (socket) {
+    try {
+      socket.disconnect();
+    } catch {
+      /* noop */
+    }
+  }
+  socket = null;
+  handlers = new Set();
+}

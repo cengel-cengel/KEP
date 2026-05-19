@@ -41,6 +41,7 @@ import { NvSubunternehmerModule } from './nv-subunternehmer/nv-subunternehmer.mo
 import { NvStammTourenModule } from './nv-stamm-touren/nv-stamm-touren.module';
 import { NvStammKundenModule } from './nv-stamm-kunden/nv-stamm-kunden.module';
 import { NvTourenModule } from './nv-touren/nv-touren.module';
+import { RealtimeModule } from './realtime/realtime.module';
 import { WarehousesModule } from './warehouses/warehouses.module';
 
 @Module({
@@ -114,6 +115,7 @@ import { WarehousesModule } from './warehouses/warehouses.module';
     NvStammKundenModule,
     NvTourenModule,
     WarehousesModule,
+    RealtimeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

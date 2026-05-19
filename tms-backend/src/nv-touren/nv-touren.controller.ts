@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   Param,
   Patch,
   Post,
@@ -19,13 +20,17 @@ import {
   ReorderNvTourStopsDto,
   UpdateNvTourStopDto,
 } from './dto/create-stop.dto';
+import { RealtimeService } from '../realtime/realtime.service';
 
 @ApiTags('nv-touren')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('nv-touren')
 export class NvTourenController {
-  constructor(private readonly svc: NvTourenService) {}
+  constructor(
+    private readonly svc: NvTourenService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   @Get()
   list(
@@ -68,8 +73,14 @@ export class NvTourenController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateNvTourDto) {
-    return this.svc.update(id, dto);
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateNvTourDto,
+    @Headers('x-client-id') clientId?: string,
+  ) {
+    const r = await this.svc.update(id, dto);
+    this.realtime.emit('tour.updated', 'tour', id, clientId);
+    return r;
   }
 
   @Delete(':id')
@@ -78,30 +89,48 @@ export class NvTourenController {
   }
 
   @Post(':id/stops')
-  createStop(@Param('id') tourId: string, @Body() dto: CreateNvTourStopDto) {
-    return this.svc.createStop(tourId, dto);
+  async createStop(
+    @Param('id') tourId: string,
+    @Body() dto: CreateNvTourStopDto,
+    @Headers('x-client-id') clientId?: string,
+  ) {
+    const r = await this.svc.createStop(tourId, dto);
+    this.realtime.emit('shipment.assigned', 'tour', tourId, clientId);
+    return r;
   }
 
   @Post(':id/stops/reorder')
-  reorderStops(
+  async reorderStops(
     @Param('id') tourId: string,
     @Body() dto: ReorderNvTourStopsDto,
+    @Headers('x-client-id') clientId?: string,
   ) {
-    return this.svc.reorderStops(tourId, dto.items);
+    const r = await this.svc.reorderStops(tourId, dto.items);
+    this.realtime.emit('shipment.assigned', 'tour', tourId, clientId);
+    return r;
   }
 
   @Patch(':id/stops/:stopId')
-  updateStop(
-    @Param('id') _tourId: string,
+  async updateStop(
+    @Param('id') tourId: string,
     @Param('stopId') stopId: string,
     @Body() dto: UpdateNvTourStopDto,
+    @Headers('x-client-id') clientId?: string,
   ) {
-    return this.svc.updateStop(stopId, dto);
+    const r = await this.svc.updateStop(stopId, dto);
+    this.realtime.emit('shipment.assigned', 'tour', tourId, clientId);
+    return r;
   }
 
   @Delete(':id/stops/:stopId')
-  removeStop(@Param('id') _tourId: string, @Param('stopId') stopId: string) {
-    return this.svc.removeStop(stopId);
+  async removeStop(
+    @Param('id') tourId: string,
+    @Param('stopId') stopId: string,
+    @Headers('x-client-id') clientId?: string,
+  ) {
+    const r = await this.svc.removeStop(stopId);
+    this.realtime.emit('shipment.assigned', 'tour', tourId, clientId);
+    return r;
   }
 
   @Post(':id/copy-stamm-kunden')
@@ -128,16 +157,19 @@ export class NvTourenController {
   }
 
   @Post(':id/batch-stops')
-  batchStops(
+  async batchStops(
     @Param('id') tourId: string,
     @Body()
     dto: { adds?: string[]; removes?: string[]; stop_type?: string },
+    @Headers('x-client-id') clientId?: string,
   ) {
-    return this.svc.batchStops(tourId, {
+    const r = await this.svc.batchStops(tourId, {
       adds: dto.adds ?? [],
       removes: dto.removes ?? [],
       stop_type: dto.stop_type,
     });
+    this.realtime.emit('shipment.assigned', 'tour', tourId, clientId);
+    return r;
   }
 
   @Post(':id/recalc-km')

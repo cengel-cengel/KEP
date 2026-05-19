@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   Patch,
   Post,
@@ -17,13 +18,17 @@ import { ListToursQueryDto } from './dto/list-tours-query.dto';
 import { AddShipmentDto } from './dto/add-shipment.dto';
 import { RemoveShipmentDto } from './dto/remove-shipment.dto';
 import { UpdateShipmentOrderDto } from './dto/update-shipment-order.dto';
+import { RealtimeService } from '../realtime/realtime.service';
 
 @ApiTags('tours')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('tours')
 export class ToursController {
-  constructor(private readonly toursService: ToursService) {}
+  constructor(
+    private readonly toursService: ToursService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   @Get()
   async findAll(@Query() query: ListToursQueryDto) {
@@ -60,8 +65,14 @@ export class ToursController {
   }
 
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: UpdateTourDto) {
-    return this.toursService.update(id, dto);
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateTourDto,
+    @Headers('x-client-id') clientId?: string,
+  ) {
+    const r = await this.toursService.update(id, dto);
+    this.realtime.emit('tour.updated', 'tour', id, clientId);
+    return r;
   }
 
   @Get(':id/db-status')
@@ -70,47 +81,82 @@ export class ToursController {
   }
 
   @Post(':id/dispatch')
-  async dispatchTour(@Param('id') id: string) {
-    return this.toursService.dispatchTour(id);
+  async dispatchTour(
+    @Param('id') id: string,
+    @Headers('x-client-id') clientId?: string,
+  ) {
+    const r = await this.toursService.dispatchTour(id);
+    this.realtime.emit('tour.updated', 'tour', id, clientId);
+    return r;
   }
 
   @Post(':id/release')
-  async releaseTour(@Param('id') id: string) {
-    return this.toursService.releaseTour(id);
+  async releaseTour(
+    @Param('id') id: string,
+    @Headers('x-client-id') clientId?: string,
+  ) {
+    const r = await this.toursService.releaseTour(id);
+    this.realtime.emit('tour.updated', 'tour', id, clientId);
+    return r;
   }
 
   @Post(':id/close')
-  async closeTour(@Param('id') id: string) {
-    return this.toursService.closeTour(id);
+  async closeTour(
+    @Param('id') id: string,
+    @Headers('x-client-id') clientId?: string,
+  ) {
+    const r = await this.toursService.closeTour(id);
+    this.realtime.emit('tour.updated', 'tour', id, clientId);
+    return r;
   }
 
   @Post(':id/complete')
-  async completeTour(@Param('id') id: string) {
-    return this.toursService.completeTour(id);
+  async completeTour(
+    @Param('id') id: string,
+    @Headers('x-client-id') clientId?: string,
+  ) {
+    const r = await this.toursService.completeTour(id);
+    this.realtime.emit('tour.updated', 'tour', id, clientId);
+    return r;
   }
 
   @Post(':id/add-shipment')
   async addShipmentToTour(
     @Param('id') tourId: string,
     @Body() dto: AddShipmentDto,
+    @Headers('x-client-id') clientId?: string,
   ) {
-    return this.toursService.addShipmentToTour(tourId, dto.shipmentId);
+    const r = await this.toursService.addShipmentToTour(tourId, dto.shipmentId);
+    this.realtime.emit('shipment.assigned', 'tour', tourId, clientId);
+    return r;
   }
 
   @Post(':id/remove-shipment')
   async removeShipmentFromTour(
     @Param('id') tourId: string,
     @Body() dto: RemoveShipmentDto,
+    @Headers('x-client-id') clientId?: string,
   ) {
-    return this.toursService.removeShipmentFromTour(tourId, dto.shipmentId);
+    const r = await this.toursService.removeShipmentFromTour(
+      tourId,
+      dto.shipmentId,
+    );
+    this.realtime.emit('shipment.assigned', 'tour', tourId, clientId);
+    return r;
   }
 
   @Patch(':id/shipment-order')
   async updateShipmentOrder(
     @Param('id') tourId: string,
     @Body() dto: UpdateShipmentOrderDto,
+    @Headers('x-client-id') clientId?: string,
   ) {
-    return this.toursService.updateShipmentOrder(tourId, dto.shipmentIds);
+    const r = await this.toursService.updateShipmentOrder(
+      tourId,
+      dto.shipmentIds,
+    );
+    this.realtime.emit('shipment.assigned', 'tour', tourId, clientId);
+    return r;
   }
 
   @Get(':id/documents')
@@ -124,11 +170,14 @@ export class ToursController {
   async batchStops(
     @Param('id') tourId: string,
     @Body() dto: { adds?: string[]; removes?: string[] },
+    @Headers('x-client-id') clientId?: string,
   ) {
-    return this.toursService.batchStopsFv(tourId, {
+    const r = await this.toursService.batchStopsFv(tourId, {
       adds: dto.adds ?? [],
       removes: dto.removes ?? [],
     });
+    this.realtime.emit('shipment.assigned', 'tour', tourId, clientId);
+    return r;
   }
 
   @Post(':id/recalc-km')

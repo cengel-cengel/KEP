@@ -9,6 +9,11 @@ import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from './store/auth'
 import './index.css'
 import App from './App.tsx'
+import {
+  connectRealtime,
+  onRealtimeEvent,
+} from './realtime/realtimeClient'
+import { invalidateForEvent } from './realtime/queryInvalidator'
 
 // PERF-2: Cache-first Defaults für instant-Feel.
 // staleTime 30s → kein Auto-Refetch in dieser Zeit.
@@ -19,7 +24,7 @@ import App from './App.tsx'
 //   ohne leere Zwischenstände (alte Daten bleiben sichtbar).
 // Pro-Endpoint-Overrides bleiben respektiert (z.B. Stammdaten
 // mit Infinity oder 5min staleTime).
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
@@ -31,6 +36,13 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+// PERF-1: Realtime-Subscription bei App-Start.
+// Connect ist token-aware (skipped wenn no-token);
+// AuthProvider re-triggert connect nach Login via
+// connectRealtime() (idempotent).
+onRealtimeEvent((evt) => invalidateForEvent(queryClient, evt))
+connectRealtime()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

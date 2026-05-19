@@ -7,6 +7,10 @@ import {
   type ReactNode,
 } from 'react';
 import { AUTH_TOKEN_KEY } from '../lib/api';
+import {
+  connectRealtime,
+  disconnectRealtime,
+} from '../realtime/realtimeClient';
 
 interface AuthContextValue {
   isAuthenticated: boolean;
@@ -27,11 +31,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback((newToken: string) => {
     localStorage.setItem(AUTH_TOKEN_KEY, newToken);
     setToken(newToken);
+    // PERF-1: Realtime-Connect nach Login (token jetzt da).
+    connectRealtime();
   }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem(AUTH_TOKEN_KEY);
     setToken(null);
+    disconnectRealtime();
   }, []);
 
   const value = useMemo<AuthContextValue>(

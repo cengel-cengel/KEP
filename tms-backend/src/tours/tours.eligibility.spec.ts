@@ -154,10 +154,14 @@ describe('eligibleShipmentsFv WHERE-Struktur', () => {
     const { prisma, calls } = makeMockPrisma();
     prisma.relations.findMany.mockResolvedValueOnce([]);
     _clearNvPlzCache();
-    // fvRelationsCache lives on service-instance, fresh service:
+    // P0-6.6: KEIN early-return mehr — Charter-Branch braucht
+    // keine FV-Relations. findMany läuft, Branch 1+2 matchen
+    // niemanden, Branch 3 (Charter) matcht outside-NV-shipments.
     const svc = makeService(prisma);
-    const out = await svc.eligibleShipmentsFv({});
-    expect(out).toEqual([]);
-    expect(calls.shipmentsFindMany).toHaveLength(0);
+    await svc.eligibleShipmentsFv({});
+    expect(calls.shipmentsFindMany).toHaveLength(1);
+    const where = calls.shipmentsFindMany[0].where;
+    // Top-level KEIN relation_id mehr (war P0-6.4)
+    expect(where.relation_id).toBeUndefined();
   });
 });

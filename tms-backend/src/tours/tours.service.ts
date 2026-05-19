@@ -690,8 +690,12 @@ export class ToursService {
     search?: string;
     tourId?: string;
   }) {
+    // P0-6.6: KEIN early-return mehr bei fvRelations.size === 0.
+    // Branch 3 (Charter, outside-NV) braucht KEIN relation_id —
+    // Charter wären sonst auch ohne Stammdaten-Relations unsichtbar.
+    // Branch 1+2 nutzen fvRelations weiter (NV-Gebiet-Pfade brauchen
+    // pre-defined FV-Route).
     const fvRelations = await this.getOwnFvRelationsSet();
-    if (fvRelations.size === 0) return [];
 
     // NV-Gebiet-PLZ-Set (60s-Cache, geteilt mit nv-touren).
     // exact + prefixes — Application-Side-Match via Prisma
@@ -763,11 +767,12 @@ export class ToursService {
       transport_type: { in: FV_TRANSPORT_TYPES },
       AND: [{ OR: eligibilityOr }],
     };
-    if (filter.datum) {
-      // P0-6.5: gte statt lte — FV plant FORWARD-looking.
-      // Sendungen die heute oder später geladen werden sollen.
-      where.loading_date = { gte: new Date(filter.datum) };
-    }
+    // P0-6.6: KEIN loading_date-Filter mehr.
+    // PICKUP-completed Sendungen haben loading_date PAST,
+    // Charter haben loading_date FUTURE — keine einheitliche
+    // Richtung. FE darf zukünftig optional Range-Filter
+    // hinzufügen, BE liefert ALLE eligible Sendungen.
+    void filter.datum;
     if (filter.search) {
       where.AND.push({
         OR: [

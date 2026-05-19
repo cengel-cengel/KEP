@@ -20,6 +20,17 @@ export type NvTourStatus =
   | 'COMPLETED'
   | 'CANCELLED';
 
+/**
+ * P0-6.1 Hotfix: Mutable subset für Status-Writes (PATCH).
+ * Explizit OHNE 'DISPATCHED' (alter Status entfernt in P0-6).
+ * TSC-Bruch wenn jemand DISPATCHED reinpackt → Regression-Anchor.
+ */
+export type NvTourMutableStatus =
+  | 'PLANNING'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'CANCELLED';
+
 export type NvMode = 'PICKUP' | 'DELIVERY';
 
 /** Filter-Selector zeigt nur Workflow-States (CANCELLED ist Sub-Filter). */

@@ -22,6 +22,7 @@ import ResponsiveTable from '../components/table/ResponsiveTable';
 import type { Column } from '../components/table/ResponsiveTable';
 import { api } from '../lib/api';
 import { prefetchNvLoadingTour } from '../lib/prefetchHelpers';
+import type { NvTourMutableStatus } from '../lib/nvTourStatus';
 
 type TourGebiet = {
   id: string;
@@ -808,7 +809,7 @@ export default function NvDispositionPage() {
   const updateTourStatusMut = useMutation({
     mutationFn: async (input: {
       tourId: string;
-      status: 'IN_PROGRESS' | 'COMPLETED';
+      status: NvTourMutableStatus;
     }) =>
       (
         await api.patch(`/nv-touren/${input.tourId}`, {
@@ -1739,7 +1740,7 @@ function TourCard({
   onOpenDrillDown: (shipmentId: string, shipmentNumber: string) => void;
   onOpenDetail: (shipmentId: string) => void;
   onSetTourStatus: (
-    status: 'IN_PROGRESS' | 'COMPLETED',
+    status: NvTourMutableStatus,
     openCount: number,
     shipmentCount: number,
   ) => void;

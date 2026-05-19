@@ -96,11 +96,13 @@ describe('eligibleShipmentsFv WHERE-Struktur', () => {
     });
   });
 
-  it('verlangt status=new + tour_id=null + deleted_at=null', async () => {
+  it('verlangt status ∈ {new, in_warehouse} + tour_id=null + deleted_at=null', async () => {
     const { prisma, calls } = makeMockPrisma();
     await makeService(prisma).eligibleShipmentsFv({});
     const where = calls.shipmentsFindMany[0].where;
-    expect(where.status).toBe('new');
+    // P0-6.5: status sowohl 'new' (Charter direkt) als auch
+    // 'in_warehouse' (NV-PICKUP-completed)
+    expect(where.status).toEqual({ in: ['new', 'in_warehouse'] });
     expect(where.tour_id).toBeNull();
     expect(where.deleted_at).toBeNull();
   });

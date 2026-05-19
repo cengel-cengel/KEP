@@ -754,14 +754,19 @@ export class ToursService {
     ];
 
     const where: any = {
-      status: 'new',
+      // P0-6.5: status sowohl 'new' (Charter direkt) als auch
+      // 'in_warehouse' (NV-PICKUP-completed liegt im Depot).
+      // 'new'-only schloss alle vorgeholten Sendungen aus.
+      status: { in: ['new', 'in_warehouse'] },
       tour_id: null,
       deleted_at: null,
       transport_type: { in: FV_TRANSPORT_TYPES },
       AND: [{ OR: eligibilityOr }],
     };
     if (filter.datum) {
-      where.loading_date = { lte: new Date(filter.datum) };
+      // P0-6.5: gte statt lte — FV plant FORWARD-looking.
+      // Sendungen die heute oder später geladen werden sollen.
+      where.loading_date = { gte: new Date(filter.datum) };
     }
     if (filter.search) {
       where.AND.push({

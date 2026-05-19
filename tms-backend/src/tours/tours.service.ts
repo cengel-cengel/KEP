@@ -21,7 +21,14 @@ import {
   isShipmentFullyStackable,
 } from '../lib/stackable.lib';
 
-const FV_TRANSPORT_TYPES = [
+/**
+ * Transport-Types die in /tours/eligible-shipments-fv landen.
+ * P0-7: DIREKT + DIREKT_UMSCHLAG + BEILADER + SONDER sind FV-fähig
+ * sofern PICKUP-completed (in NV-Gebiet) ODER Charter (outside).
+ * EXPLIZIT NICHT-FV: ABHOLUNG_UMSCHLAG, SELBST.
+ * Export für Regression-Tests (eligibility-coverage).
+ */
+export const FV_TRANSPORT_TYPES = [
   'SAMMELGUT',
   'TEILLADUNG',
   'KOMPLETTLADUNG',
@@ -29,7 +36,7 @@ const FV_TRANSPORT_TYPES = [
   'DIREKT_UMSCHLAG',
   'BEILADER',
   'SONDER',
-];
+] as const;
 
 @Injectable()
 export class ToursService {

@@ -21,6 +21,11 @@ import {
   type VorlaufCostInput,
 } from '../lib/vorlauf-costs.lib';
 import { routeDistanceKm, routeOnly, routeTrip } from '../lib/osrm.lib';
+import {
+  getNvPlzSet,
+  plzMatchesNv,
+  type NvPlzSet,
+} from '../lib/nv-plz.lib';
 
 function timeToDate(hhmm?: string | null): Date | null | undefined {
   if (hhmm === undefined) return undefined;
@@ -104,12 +109,6 @@ const TOUR_INCLUDE = {
 @Injectable()
 export class NvTourenService {
   private readonly logger = new Logger(NvTourenService.name);
-  /** 60s-TTL Cache für NV-PLZ-Patterns (alle aktiven Tour-Gebiete). */
-  private nvPlzCache: {
-    exact: Set<string>;
-    prefixes: string[];
-    ts: number;
-  } | null = null;
   constructor(private readonly prisma: PrismaService) {}
 
   /** Wraps recalcVorlaufCosts ohne Mutation zu blockieren. */
@@ -230,61 +229,9 @@ export class NvTourenService {
     return result.distanceKm;
   }
 
-  /**
-   * Liefert das aggregierte PLZ-Set ALLER aktiven nv_tour_gebiete.
-   * Cache-TTL 60s — bei Pattern-Updates greift die neue Definition
-   * mit max. 1 Minute Verzögerung.
-   *
-   * Patterns:
-   *   "70499"   → exact match
-   *   "70%"     → prefix match (alle PLZ beginnend mit "70")
-   * Wert-Format Json: Array<string> oder String "p1,p2,..."
-   */
-  private async getOwnNvPlzSet(): Promise<{
-    exact: Set<string>;
-    prefixes: string[];
-  }> {
-    const now = Date.now();
-    if (this.nvPlzCache && now - this.nvPlzCache.ts < 60_000) {
-      return {
-        exact: this.nvPlzCache.exact,
-        prefixes: this.nvPlzCache.prefixes,
-      };
-    }
-    const tourGebiete = await this.prisma.nv_tour_gebiete.findMany({
-      where: { aktiv: true },
-      select: { plz_pattern: true },
-    });
-    const exact = new Set<string>();
-    const prefixSet = new Set<string>();
-    const collect = (raw: string) => {
-      const p = raw.trim();
-      if (!p) return;
-      if (p.endsWith('%')) prefixSet.add(p.slice(0, -1));
-      else exact.add(p);
-    };
-    for (const g of tourGebiete) {
-      const pp: unknown = g.plz_pattern;
-      if (Array.isArray(pp)) {
-        for (const x of pp) if (typeof x === 'string') collect(x);
-      } else if (typeof pp === 'string') {
-        for (const part of pp.split(',')) collect(part);
-      }
-    }
-    const prefixes = Array.from(prefixSet);
-    this.nvPlzCache = { exact, prefixes, ts: now };
-    return { exact, prefixes };
-  }
-
-  /** Match-Helper: exact + Prefix-Wildcard. */
-  private plzMatchesNv(
-    zip: string,
-    set: { exact: Set<string>; prefixes: string[] },
-  ): boolean {
-    if (!zip) return false;
-    if (set.exact.has(zip)) return true;
-    for (const pre of set.prefixes) if (zip.startsWith(pre)) return true;
-    return false;
+  /** Delegiert an lib/nv-plz.lib (gemeinsam mit tours.service). */
+  private async getOwnNvPlzSet(): Promise<NvPlzSet> {
+    return getNvPlzSet(this.prisma as any);
   }
 
   async optimizeTourRoute(tourId: string) {
@@ -1356,7 +1303,7 @@ export class NvTourenService {
         if (zip) {
           for (const g of gebiete) {
             if (
-              this.plzMatchesNv(zip, {
+              plzMatchesNv(zip, {
                 exact: g.exact,
                 prefixes: g.prefixes,
               })

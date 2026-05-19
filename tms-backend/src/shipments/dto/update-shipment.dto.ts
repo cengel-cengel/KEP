@@ -84,6 +84,10 @@ export class UpdateShipmentDto {
   isHazmat?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  partnerDelivered?: boolean;
+
+  @IsOptional()
   @IsString()
   hazmatClass?: string | null;
 

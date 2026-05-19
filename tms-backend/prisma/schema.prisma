@@ -263,6 +263,7 @@ model shipments {
   calculated_revenue                                 Decimal?                   @db.Decimal(10, 2)
   daily_price                                        Decimal?                   @db.Decimal(10, 2)
   effective_pallets                                  Decimal?                   @db.Decimal(8, 2)
+  partner_delivered                                  Boolean                    @default(false)
   partner_on_carriage_cost                           Decimal?                   @default(0) @db.Decimal(10, 2)
   has_nv_disposition                                 Boolean?                   @default(false)
   has_damage_report                                  Boolean?                   @default(false)

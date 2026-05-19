@@ -14,6 +14,7 @@ import { DocumentsService } from '../documents/documents.service';
 import { LockService } from '../status/lock.service';
 import { StatusService } from '../status/status.service';
 import { routeDistanceKm, routeOnly, routeTrip } from '../lib/osrm.lib';
+import { getNvPlzSet } from '../lib/nv-plz.lib';
 
 const FV_TRANSPORT_TYPES = [
   'SAMMELGUT',
@@ -612,25 +613,82 @@ export class ToursService {
     const fvRelations = await this.getOwnFvRelationsSet();
     if (fvRelations.size === 0) return [];
 
+    // NV-Gebiet-PLZ-Set (60s-Cache, geteilt mit nv-touren).
+    // exact + prefixes — Application-Side-Match via Prisma
+    // 'in' bzw. startsWith-OR.
+    const nvPlz = await getNvPlzSet(this.prisma as any);
+    const nvExactList = [...nvPlz.exact];
+    const nvPrefixOr = nvPlz.prefixes.map((p) => ({
+      zip: { startsWith: p },
+    }));
+    const inNvGebiet = {
+      OR: [
+        { zip: { in: nvExactList } },
+        ...nvPrefixOr,
+      ],
+    };
+    const outsideNvGebiet = {
+      AND: [
+        { zip: { notIn: nvExactList } },
+        ...nvPlz.prefixes.map((p) => ({
+          NOT: { zip: { startsWith: p } },
+        })),
+      ],
+    };
+
+    const eligibilityOr: any[] = [
+      // 1. NV-Gebiet + durch eigene NV-Tour vorgeholt (COMPLETED)
+      {
+        AND: [
+          {
+            addresses_shipments_loading_address_idToaddresses: inNvGebiet,
+          },
+          {
+            nv_tour_stops: {
+              some: {
+                nv_touren: { status: 'COMPLETED' },
+              },
+            },
+          },
+        ],
+      },
+      // 2. NV-Gebiet + Partner-Vorlauf
+      {
+        AND: [
+          {
+            addresses_shipments_loading_address_idToaddresses: inNvGebiet,
+          },
+          { partner_delivered: true },
+        ],
+      },
+      // 3. Außerhalb NV-Gebiet = Charter
+      {
+        addresses_shipments_loading_address_idToaddresses: outsideNvGebiet,
+      },
+    ];
+
     const where: any = {
       status: 'new',
       tour_id: null,
       deleted_at: null,
       transport_type: { in: FV_TRANSPORT_TYPES },
       relation_id: { in: [...fvRelations] },
+      AND: [{ OR: eligibilityOr }],
     };
     if (filter.datum) {
       where.loading_date = { lte: new Date(filter.datum) };
     }
     if (filter.search) {
-      where.OR = [
-        { shipment_number: { contains: filter.search, mode: 'insensitive' } },
-        {
-          customers: {
-            name: { contains: filter.search, mode: 'insensitive' },
+      where.AND.push({
+        OR: [
+          { shipment_number: { contains: filter.search, mode: 'insensitive' } },
+          {
+            customers: {
+              name: { contains: filter.search, mode: 'insensitive' },
+            },
           },
-        },
-      ];
+        ],
+      });
     }
 
     const shipments = await this.prisma.shipments.findMany({

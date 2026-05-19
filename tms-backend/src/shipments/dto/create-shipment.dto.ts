@@ -119,6 +119,10 @@ export class CreateShipmentDto {
   isHazmat?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  partnerDelivered?: boolean;
+
+  @IsOptional()
   @IsString()
   hazmatClass?: string | null;
 

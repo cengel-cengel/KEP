@@ -485,6 +485,7 @@ export class ShipmentsService {
             }
           : {}),
         is_hazmat: dto.isHazmat ?? false,
+        partner_delivered: dto.partnerDelivered ?? false,
         hazmat_class: dto.hazmatClass,
         hazmat_un_number: dto.hazmatUnNumber,
         hazmat_packing_group: dto.hazmatPackingGroup,
@@ -600,6 +601,7 @@ export class ShipmentsService {
         ldm: dto.ldm,
         volume_m3: dto.volumeM3,
         is_hazmat: dto.isHazmat,
+        partner_delivered: dto.partnerDelivered,
         hazmat_class: dto.hazmatClass,
         hazmat_un_number: dto.hazmatUnNumber,
         hazmat_packing_group: dto.hazmatPackingGroup,

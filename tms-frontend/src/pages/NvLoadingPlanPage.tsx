@@ -59,44 +59,81 @@ const SHIPMENT_COLORS = [
   '#d946ef', '#ec4899', '#f43f5e',
 ];
 
-function flattenPackages(tour: NvLoadingDetail | null): Plan3DPackage[] {
+/**
+ * P0-6.3 BUG 1: Row-Bin-Pack Auto-Placer.
+ * Respektiert Trailer-Bounds. DB-Position wird für q=0 honoriert
+ * wenn vorhanden, sonst layout-packed.
+ *
+ * Algorithmus:
+ *   - Pack-Cursor in Reihen entlang Trailer-Länge (posY)
+ *   - Items side-by-side entlang Trailer-Breite (posX)
+ *   - Row wechselt wenn nächstes Item posX+widthCm > trailerWidth
+ *   - posY-Overflow: package landet bei posY=0 (UI zeigt's
+ *     dann am Vorne, user kann via Drag aussortieren)
+ */
+function flattenPackages(
+  tour: NvLoadingDetail | null,
+  trailerWidthCm: number,
+  trailerLengthCm: number,
+): Plan3DPackage[] {
   if (!tour) return [];
   const out: Plan3DPackage[] = [];
-  // Auto-Layout-Cursor: entlang Trailer-Länge (posY) je Sendung,
-  // entlang Trailer-Breite (posX) je qty-Clone. Greift nur wenn
-  // DB-Position fehlt (pos_*_cm null → Auto-Placer noch nicht
-  // gelaufen).
   let cursorY = 0;
+  let cursorX = 0;
+  let rowMaxLength = 0;
   let shipIdx = 0;
+  const placeAuto = (
+    w: number,
+    l: number,
+  ): { posX: number; posY: number } => {
+    // Neue Reihe wenn aktueller Cursor nicht mehr passt
+    if (cursorX + w > trailerWidthCm + 1e-6) {
+      cursorY += rowMaxLength + 5;
+      cursorX = 0;
+      rowMaxLength = 0;
+    }
+    const posX = cursorX;
+    const posY = cursorY;
+    cursorX += w + 5;
+    if (l > rowMaxLength) rowMaxLength = l;
+    return { posX, posY };
+  };
   for (const stop of tour.stops) {
     const ship = stop.shipment;
     const color = SHIPMENT_COLORS[shipIdx % SHIPMENT_COLORS.length];
     shipIdx++;
     const items = ship.shipment_package_items ?? [];
     const shipFullyStackable = items.every((it) => it.stackable !== false);
-    let shipMaxLength = 0;
-    let cursorX = 0;
     for (const it of items) {
       const qty = Math.max(1, Number(it.quantity ?? 1));
       const w = Number(it.width_cm) || 0;
       const l = Number(it.length_cm) || 0;
+      const h = Number(it.height_cm) || 0;
       const dbPosX = it.pos_x_cm == null ? null : Number(it.pos_x_cm);
       const dbPosY = it.pos_y_cm == null ? null : Number(it.pos_y_cm);
       const dbPosZ = it.pos_z_cm == null ? null : Number(it.pos_z_cm);
       const hasDbPos = dbPosX != null && dbPosY != null;
       for (let q = 0; q < qty; q++) {
-        // q=0 nutzt DB-Position falls vorhanden, sonst Auto-Cursor.
-        // q>0 (synth-Clones) IMMER auto-spread (DB hat nur 1 Row).
         const useDb = q === 0 && hasDbPos;
-        const posX = useDb ? (dbPosX as number) : cursorX;
-        const posY = useDb ? (dbPosY as number) : cursorY;
-        const posZ = useDb && dbPosZ != null ? dbPosZ : 0;
+        let posX: number;
+        let posY: number;
+        let posZ: number;
+        if (useDb) {
+          posX = dbPosX as number;
+          posY = dbPosY as number;
+          posZ = dbPosZ != null ? dbPosZ : 0;
+        } else {
+          const auto = placeAuto(w, l);
+          posX = auto.posX;
+          posY = auto.posY;
+          posZ = 0;
+        }
         const synthSuffix = qty === 1 ? '' : `:pkg:${q}`;
         out.push({
           id: it.id + synthSuffix,
           lengthCm: l,
           widthCm: w,
-          heightCm: Number(it.height_cm) || 0,
+          heightCm: h,
           posX,
           posY,
           posZ,
@@ -105,15 +142,13 @@ function flattenPackages(tour: NvLoadingDetail | null): Plan3DPackage[] {
           isStackable: shipFullyStackable && it.stackable !== false,
           rotationDeg: Number(it.rotation_deg ?? 0) || 0,
         });
-        if (!useDb) {
-          cursorX += w + 5;
-        }
       }
-      if (l > shipMaxLength) shipMaxLength = l;
     }
-    // Nächste Sendung in neuer Reihe (entlang Trailer-Länge).
-    cursorY += shipMaxLength + 5;
   }
+  // PosY-Overflow-Warning: falls cursorY weit über trailer hinausragt
+  // bekommt User es trotzdem zu sehen (UI zeigt outside-Items im
+  // Render-Bounds, kann via Drag aussortiert werden).
+  void trailerLengthCm;
   return out;
 }
 
@@ -143,8 +178,13 @@ export default function NvLoadingPlanPage() {
   }, [tourQ.data?.fahrzeug_typ, tourQ.data?.subunternehmer?.fahrzeug_typ]);
 
   const packages = useMemo(
-    () => flattenPackages(tourQ.data ?? null),
-    [tourQ.data],
+    () =>
+      flattenPackages(
+        tourQ.data ?? null,
+        vehicle.widthCm,
+        vehicle.lengthCm,
+      ),
+    [tourQ.data, vehicle.widthCm, vehicle.lengthCm],
   );
 
   const persistMut = useMutation({

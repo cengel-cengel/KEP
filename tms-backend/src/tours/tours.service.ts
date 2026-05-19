@@ -725,6 +725,7 @@ export class ToursService {
           {
             addresses_shipments_loading_address_idToaddresses: inNvGebiet,
           },
+          { relation_id: { in: [...fvRelations] } },
           {
             nv_tour_stops: {
               some: {
@@ -741,10 +742,12 @@ export class ToursService {
           {
             addresses_shipments_loading_address_idToaddresses: inNvGebiet,
           },
+          { relation_id: { in: [...fvRelations] } },
           { partner_delivered: true },
         ],
       },
-      // 3. Außerhalb NV-Gebiet = Charter
+      // 3. Außerhalb NV-Gebiet = Charter (KEIN relation_id-Filter —
+      //    Charter sind ad-hoc-Routen ohne pre-defined FV-Relation).
       {
         addresses_shipments_loading_address_idToaddresses: outsideNvGebiet,
       },
@@ -755,7 +758,6 @@ export class ToursService {
       tour_id: null,
       deleted_at: null,
       transport_type: { in: FV_TRANSPORT_TYPES },
-      relation_id: { in: [...fvRelations] },
       AND: [{ OR: eligibilityOr }],
     };
     if (filter.datum) {

@@ -1368,9 +1368,8 @@ export class NvTourenService {
       };
     });
 
-    const hasAnyPattern = gebiete.some(
-      (g) => g.exact.size > 0 || g.prefixes.length > 0,
-    );
+    // P0-6.3 BUG 2: matched-only filter unten — kein hasAnyPattern-
+    // Fallback (Carlos: kein Pattern = kein Shipment in NV-Dispo).
 
     const stoppedShipmentIds = new Set(
       (
@@ -1501,7 +1500,7 @@ export class NvTourenService {
       .filter((s) =>
         filter.nv_tour_gebiet_id
           ? s.matched_tour_gebiet_id === filter.nv_tour_gebiet_id
-          : !hasAnyPattern || s.matched_tour_gebiet_id !== null,
+          : s.matched_tour_gebiet_id !== null,
       );
   }
 

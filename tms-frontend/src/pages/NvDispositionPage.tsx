@@ -291,7 +291,13 @@ export default function NvDispositionPage() {
         const raw = localStorage.getItem('tms.nv-dispo.tour-statuses');
         const arr = raw ? (JSON.parse(raw) as unknown) : null;
         if (Array.isArray(arr) && arr.every((x) => typeof x === 'string')) {
-          const s = new Set(arr as string[]);
+          // P0-6: alte localStorage-Werte enthalten ggf. 'DISPATCHED'
+          // → in 'IN_PROGRESS' migrieren.
+          const mapped = (arr as string[]).map((v) =>
+            v === 'DISPATCHED' ? 'IN_PROGRESS' : v,
+          );
+          const allowed = new Set(['PLANNING', 'IN_PROGRESS', 'COMPLETED']);
+          const s = new Set(mapped.filter((v) => allowed.has(v)));
           if (s.size > 0) return s;
         }
       } catch {
@@ -801,7 +807,7 @@ export default function NvDispositionPage() {
   const updateTourStatusMut = useMutation({
     mutationFn: async (input: {
       tourId: string;
-      status: 'DISPATCHED' | 'IN_PROGRESS' | 'COMPLETED';
+      status: 'IN_PROGRESS' | 'COMPLETED';
     }) =>
       (
         await api.patch(`/nv-touren/${input.tourId}`, {
@@ -1309,10 +1315,9 @@ export default function NvDispositionPage() {
         <div className="inline-flex rounded border border-gray-300 overflow-hidden text-xs">
           {(
             [
-              ['PLANNING', 'Planung'],
-              ['DISPATCHED', 'Gestartet'],
-              ['IN_PROGRESS', 'In Fahrt'],
-              ['COMPLETED', 'Abgeschlossen'],
+              ['PLANNING', 'Geplant'],
+              ['IN_PROGRESS', mode === 'DELIVERY' ? 'In Zustellung' : 'In Abholung'],
+              ['COMPLETED', mode === 'DELIVERY' ? 'Zugestellt' : 'Im Lager'],
             ] as const
           ).map(([key, label], i) => (
             <button
@@ -1733,7 +1738,7 @@ function TourCard({
   onOpenDrillDown: (shipmentId: string, shipmentNumber: string) => void;
   onOpenDetail: (shipmentId: string) => void;
   onSetTourStatus: (
-    status: 'DISPATCHED' | 'IN_PROGRESS' | 'COMPLETED',
+    status: 'IN_PROGRESS' | 'COMPLETED',
     openCount: number,
     shipmentCount: number,
   ) => void;
@@ -1983,22 +1988,10 @@ function TourCard({
         >
           {tour.status === 'PLANNING' && (
             <button
-              onClick={() =>
-                onSetTourStatus('DISPATCHED', 0, 0)
-              }
+              onClick={() => onSetTourStatus('IN_PROGRESS', 0, 0)}
               className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
             >
               Starten
-            </button>
-          )}
-          {tour.status === 'DISPATCHED' && (
-            <button
-              onClick={() =>
-                onSetTourStatus('IN_PROGRESS', 0, 0)
-              }
-              className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              In Fahrt
             </button>
           )}
           {tour.status === 'IN_PROGRESS' && (

@@ -177,7 +177,6 @@ export default function NvDispoMapPopupPage() {
       const sp = new URLSearchParams();
       sp.set('datum', datum);
       sp.append('status', 'PLANNING');
-      sp.append('status', 'DISPATCHED');
       sp.append('status', 'IN_PROGRESS');
       return (await api.get<NvTour[]>('/nv-touren', { params: sp })).data;
     },

@@ -710,7 +710,9 @@ export class ToursService {
     };
 
     const eligibilityOr: any[] = [
-      // 1. NV-Gebiet + durch eigene NV-Tour vorgeholt (COMPLETED)
+      // 1. NV-Gebiet + durch eigene NV-Tour PICKUP-completed
+      //    P0-6: stop_type='PICKUP' filtert DELIVERY-completed
+      //    aus (DELIVERY = beim Empfänger = NICHT FV-eligible).
       {
         AND: [
           {
@@ -719,6 +721,7 @@ export class ToursService {
           {
             nv_tour_stops: {
               some: {
+                stop_type: 'PICKUP',
                 nv_touren: { status: 'COMPLETED' },
               },
             },

@@ -723,11 +723,12 @@ export class NvTourenService {
     const existing = await this.prisma.nv_touren.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('NV-Tour nicht gefunden');
 
-    // B-4: Pre-Check Overload bei Status-Wechsel auf DISPATCHED.
+    // B-4 + P0-6: Pre-Check Overload bei Status-Wechsel auf IN_PROGRESS
+    // (Trigger ehemals DISPATCHED — siehe Status-Reduktion 5→3).
     // assertCapacityOk (createStop) bleibt für add-pfade.
     if (
-      dto.status === 'DISPATCHED' &&
-      existing.status !== 'DISPATCHED'
+      dto.status === 'IN_PROGRESS' &&
+      existing.status !== 'IN_PROGRESS'
     ) {
       await this.assertReadyForDispatchNv(id);
     }
@@ -1316,7 +1317,7 @@ export class NvTourenService {
             stop_type: mode,
             status: { notIn: ['COMPLETED', 'FAILED'] },
             nv_tour: {
-              status: { in: ['PLANNING', 'DISPATCHED', 'IN_PROGRESS'] },
+              status: { in: ['PLANNING', 'IN_PROGRESS'] },
             },
           },
           select: { shipment_id: true },

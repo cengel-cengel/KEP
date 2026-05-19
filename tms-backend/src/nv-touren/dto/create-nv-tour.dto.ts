@@ -9,7 +9,6 @@ import {
 
 export const NV_TOUR_STATUS = [
   'PLANNING',
-  'DISPATCHED',
   'IN_PROGRESS',
   'COMPLETED',
   'CANCELLED',

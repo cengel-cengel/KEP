@@ -36,12 +36,19 @@ const SCENARIO_LABEL: Record<FvScenario, string> = {
 export default function CreateFvTourModal({
   scenario,
   initialDate,
+  initialShipmentIds,
+  initialLabel,
   onClose,
   onCreate,
   saving,
 }: {
   scenario: FvScenario;
   initialDate: string;
+  /** Sendungen die NACH tour-create per batch-stops zugeordnet
+   *  werden. Display-Hint im Modal. Parent triggert batchMut. */
+  initialShipmentIds?: string[];
+  /** Anzeige-Label (z.B. "🇩🇪 → 🇫🇷"). */
+  initialLabel?: string;
   onClose: () => void;
   onCreate: (payload: FvCreateTourPayload) => void;
   saving: boolean;
@@ -126,6 +133,14 @@ export default function CreateFvTourModal({
           <div className="text-xs text-gray-500 bg-gray-50 border rounded px-2 py-1.5">
             Szenario: <strong>{SCENARIO_LABEL[scenario]}</strong>
           </div>
+          {initialShipmentIds && initialShipmentIds.length > 0 && (
+            <div className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded px-2 py-1.5">
+              {initialShipmentIds.length} Sendung
+              {initialShipmentIds.length === 1 ? '' : 'en'}
+              {initialLabel ? ` (${initialLabel})` : ''} werden nach
+              Anlegen direkt zugeordnet.
+            </div>
+          )}
           {whMissing && (
             <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">
               Achtung: Kein Standard-Lager hinterlegt. Hub-Adressen

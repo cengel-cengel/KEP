@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { api } from '../lib/api';
@@ -7,6 +7,7 @@ import CreateFvTourModal, {
   type FvCreateTourPayload,
 } from '../components/fv/CreateFvTourModal';
 import FvTourCard from '../components/fv/FvTourCard';
+import FvShipmentTree from '../components/fv/FvShipmentTree';
 
 interface FvAddress {
   id: string;
@@ -44,17 +45,17 @@ interface FvTourListItem {
 
 const todayIso = (): string => new Date().toISOString().slice(0, 10);
 
-function fmtAddr(a?: FvAddress | null): string {
-  if (!a) return '—';
-  const parts = [a.zip, a.city].filter(Boolean).join(' ');
-  return parts || a.name || '—';
-}
-
 export default function FvDispositionPage() {
   const qc = useQueryClient();
   const [datum, setDatum] = useState(todayIso());
   const [search, setSearch] = useState('');
   const [modalScenario, setModalScenario] = useState<FvScenario | null>(null);
+  const [pendingBulk, setPendingBulk] = useState<{
+    shipmentIds: string[];
+    label: string;
+  } | null>(null);
+  // Verhindert doppelt-Trigger des batchMut (createMut.onSuccess + Re-Render).
+  const bulkClaimedRef = useRef(false);
 
   const eligibleQ = useQuery<FvEligibleShipment[]>({
     queryKey: ['fv-eligible', datum, search],
@@ -84,12 +85,22 @@ export default function FvDispositionPage() {
 
   const createMut = useMutation({
     mutationFn: async (payload: FvCreateTourPayload) => {
-      const { data } = await api.post('/tours', payload);
+      const { data } = await api.post<{ id: string }>('/tours', payload);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (tour) => {
       qc.invalidateQueries({ queryKey: ['fv-touren'] });
+      if (
+        pendingBulk &&
+        pendingBulk.shipmentIds.length > 0 &&
+        !bulkClaimedRef.current &&
+        tour?.id
+      ) {
+        bulkClaimedRef.current = true;
+        batchMut.mutate({ tourId: tour.id, adds: pendingBulk.shipmentIds });
+      }
       setModalScenario(null);
+      setPendingBulk(null);
     },
   });
 
@@ -131,9 +142,21 @@ export default function FvDispositionPage() {
     [touren],
   );
 
+  const handleBulkAdd = (shipmentIds: string[], label: string) => {
+    setPendingBulk({ shipmentIds, label });
+    bulkClaimedRef.current = false;
+    setModalScenario('OHNE_LAGER');
+  };
+
   return (
     <div className="flex flex-col h-full">
-      <FvQuickAddBar onCreate={(s) => setModalScenario(s)} />
+      <FvQuickAddBar
+        onCreate={(s) => {
+          setPendingBulk(null);
+          bulkClaimedRef.current = false;
+          setModalScenario(s);
+        }}
+      />
 
       <div className="px-4 py-2 flex items-center gap-3 border-b bg-white">
         <div>
@@ -175,50 +198,16 @@ export default function FvDispositionPage() {
           <div className="px-3 py-2 border-b bg-gray-50 font-medium text-sm text-gray-700">
             FV-Sendungen offen
           </div>
-          <div className="flex-1 overflow-y-auto divide-y">
+          <div className="flex-1 overflow-y-auto">
             {eligibleQ.isLoading && (
               <div className="p-3 text-xs text-gray-400">Lädt...</div>
             )}
-            {!eligibleQ.isLoading && eligible.length === 0 && (
-              <div className="p-3 text-xs text-gray-400 italic">
-                Keine offenen FV-Sendungen.
-              </div>
+            {!eligibleQ.isLoading && (
+              <FvShipmentTree
+                shipments={eligible}
+                onBulkAdd={handleBulkAdd}
+              />
             )}
-            {eligible.map((s) => (
-              <div
-                key={s.id}
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData(
-                    'application/x-fv-shipment-id',
-                    s.id,
-                  );
-                  e.dataTransfer.effectAllowed = 'move';
-                }}
-                className="px-3 py-2 text-xs hover:bg-blue-50 cursor-grab active:cursor-grabbing"
-                title="Auf Tour ziehen"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-semibold text-gray-800">
-                    {s.shipment_number ?? '—'}
-                  </span>
-                  {s.relation?.code && (
-                    <span className="text-[10px] px-1 py-0.5 bg-gray-100 rounded text-gray-600 font-mono">
-                      {s.relation.code}
-                    </span>
-                  )}
-                  <span className="ml-auto text-gray-500">
-                    {s.ldm != null ? `${Number(s.ldm).toFixed(1)} ldm` : ''}
-                  </span>
-                </div>
-                <div className="text-gray-600 truncate">
-                  {s.customer?.name ?? '—'}
-                </div>
-                <div className="text-gray-500 truncate">
-                  {fmtAddr(s.loading_address)} → {fmtAddr(s.delivery_address)}
-                </div>
-              </div>
-            ))}
           </div>
         </section>
 
@@ -253,7 +242,12 @@ export default function FvDispositionPage() {
         <CreateFvTourModal
           scenario={modalScenario}
           initialDate={datum}
-          onClose={() => setModalScenario(null)}
+          initialShipmentIds={pendingBulk?.shipmentIds}
+          initialLabel={pendingBulk?.label}
+          onClose={() => {
+            setModalScenario(null);
+            setPendingBulk(null);
+          }}
           onCreate={(payload) => createMut.mutate(payload)}
           saving={createMut.isPending}
         />

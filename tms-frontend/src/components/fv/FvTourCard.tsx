@@ -1,10 +1,26 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Trash2, Warehouse, MapPin } from 'lucide-react';
+import { Trash2, Warehouse, MapPin, ExternalLink } from 'lucide-react';
 import { api } from '../../lib/api';
 import OverloadBar, {
   type OverloadInfo,
 } from '../shared/OverloadBar';
+
+/** Pop-out-Window-Ref pro Tour (singleton per FvTourCard-Instance). */
+function openFvMapPopup(tourId: string, ref: { current: Window | null }) {
+  if (ref.current && !ref.current.closed) {
+    ref.current.focus();
+    return;
+  }
+  const sp = new URLSearchParams({ tour: tourId });
+  const url = `/fv-disposition/map-popup?${sp.toString()}`;
+  const w = window.open(
+    url,
+    `fv-dispo-map-popup-${tourId}`,
+    'width=1200,height=900,noopener=no',
+  );
+  if (w) ref.current = w;
+}
 
 interface ShipmentAddress {
   id: string;
@@ -57,6 +73,7 @@ export default function FvTourCard({
   onRemoveStop: (tourId: string, shipmentId: string) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
+  const popupWindowRef = useRef<Window | null>(null);
 
   const tourQ = useQuery<FvTourDetail>({
     queryKey: ['fv-tour-detail', tourId],
@@ -119,6 +136,14 @@ export default function FvTourCard({
               · {tour.subcontractors.name}
             </span>
           )}
+          <button
+            onClick={() => openFvMapPopup(tourId, popupWindowRef)}
+            className="ml-auto inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
+            title="Karte in neuem Fenster"
+          >
+            <ExternalLink size={11} />
+            Karte
+          </button>
         </div>
         <div className="mt-1 flex items-center gap-1 text-[11px] text-gray-600 flex-wrap">
           <span

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { api } from '../lib/api';
@@ -56,6 +56,29 @@ export default function FvDispositionPage() {
   } | null>(null);
   // Verhindert doppelt-Trigger des batchMut (createMut.onSuccess + Re-Render).
   const bulkClaimedRef = useRef(false);
+  const popupChannelRef = useRef<BroadcastChannel | null>(null);
+
+  // B-5: BroadcastChannel — Pop-out-Map empfängt invalidate-touren
+  // bei jeder Tour-Mutation (Mirror NV-Pattern).
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window))
+      return;
+    let ch: BroadcastChannel | null = null;
+    try {
+      ch = new BroadcastChannel('tms-fv-dispo-popup');
+      popupChannelRef.current = ch;
+    } catch {
+      /* silent */
+    }
+    return () => {
+      try {
+        ch?.close();
+      } catch {
+        /* noop */
+      }
+      popupChannelRef.current = null;
+    };
+  }, []);
 
   const eligibleQ = useQuery<FvEligibleShipment[]>({
     queryKey: ['fv-eligible', datum, search],
@@ -90,6 +113,7 @@ export default function FvDispositionPage() {
     },
     onSuccess: (tour) => {
       qc.invalidateQueries({ queryKey: ['fv-touren'] });
+      popupChannelRef.current?.postMessage({ type: 'invalidate-touren' });
       if (
         pendingBulk &&
         pendingBulk.shipmentIds.length > 0 &&
@@ -120,6 +144,7 @@ export default function FvDispositionPage() {
       qc.invalidateQueries({ queryKey: ['fv-touren'] });
       qc.invalidateQueries({ queryKey: ['fv-eligible'] });
       qc.invalidateQueries({ queryKey: ['fv-tour-detail', vars.tourId] });
+      popupChannelRef.current?.postMessage({ type: 'invalidate-touren' });
     },
   });
 

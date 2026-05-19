@@ -38,6 +38,11 @@ interface NvTourDetail {
   notizen?: string | null;
   nv_stamm_tour?: { code: string; name: string } | null;
   subunternehmer?: { id: string; name: string } | null;
+  risk?: {
+    max_score: number;
+    critical_count: number;
+    warning_count: number;
+  } | null;
   stops?: Array<{
     id: string;
     position: number;
@@ -45,6 +50,8 @@ interface NvTourDetail {
     servicezeit_min?: number | null;
     planned_arrival?: string | null;
     planned_departure?: string | null;
+    risk_score?: number | null;
+    risk_severity?: string | null;
     shipment?: {
       id: string;
       shipment_number?: string | null;
@@ -268,6 +275,29 @@ function NvTourBody({ tourId }: { tourId: string }) {
         </Row>
       </section>
 
+      {t.risk && (t.risk.critical_count > 0 || t.risk.warning_count > 0) && (
+        <section>
+          <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1">
+            Risiko
+          </h3>
+          <div className="flex items-center gap-2 text-xs">
+            {t.risk.critical_count > 0 && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-red-100 text-red-800 rounded">
+                {t.risk.critical_count} kritisch
+              </span>
+            )}
+            {t.risk.warning_count > 0 && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded">
+                {t.risk.warning_count} Warnung
+              </span>
+            )}
+            <span className="text-gray-500 text-[10px]">
+              max: {t.risk.max_score}
+            </span>
+          </div>
+        </section>
+      )}
+
       <section>
         <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1">
           Timeline
@@ -311,6 +341,7 @@ function NvTourTimelineSection({
     loading_time_to: s.shipment?.loading_time_to ?? null,
     delivery_time_from: s.shipment?.delivery_time_from ?? null,
     delivery_time_to: s.shipment?.delivery_time_to ?? null,
+    risk_severity: s.risk_severity,
   }));
   return (
     <TourTimeline

@@ -35,6 +35,9 @@ export interface TimelineStop {
   loading_time_to?: string | null;
   delivery_time_from?: string | null;
   delivery_time_to?: string | null;
+  /** T-3.1: BE-persisted risk_severity. Fallback auf SLA-lib
+   * wenn null (Legacy-Touren ohne recompute). */
+  risk_severity?: string | null;
 }
 
 function toDate(d?: string | Date | null): Date | null {
@@ -96,18 +99,33 @@ export default function TourTimeline({
     () => [...stops].sort((a, b) => a.position - b.position),
     [stops],
   );
+  // T-3.1: bevorzuge BE-persisted risk_severity. Fallback
+  // SLA-lib wenn null (Legacy-Touren).
   const slaResults = useMemo<Map<string, SlaResult>>(() => {
-    const inputs: SlaCheckInput[] = sortedStops.map((s) => ({
-      stopId: s.id,
-      stopType: s.stop_type,
-      planned_arrival: s.planned_arrival,
-      loading_time_from: s.loading_time_from,
-      loading_time_to: s.loading_time_to,
-      delivery_time_from: s.delivery_time_from,
-      delivery_time_to: s.delivery_time_to,
-    }));
     const out = new Map<string, SlaResult>();
-    for (const r of checkSlaViolations(inputs)) out.set(r.stopId, r);
+    for (const s of sortedStops) {
+      if (s.risk_severity === 'ok' || s.risk_severity === 'warning' ||
+          s.risk_severity === 'critical' || s.risk_severity === 'unknown') {
+        out.set(s.id, {
+          stopId: s.id,
+          severity: s.risk_severity as SlaResult['severity'],
+        });
+      }
+    }
+    // Fallback für Stops ohne persisted-severity
+    const missing = sortedStops.filter((s) => !out.has(s.id));
+    if (missing.length > 0) {
+      const inputs: SlaCheckInput[] = missing.map((s) => ({
+        stopId: s.id,
+        stopType: s.stop_type,
+        planned_arrival: s.planned_arrival,
+        loading_time_from: s.loading_time_from,
+        loading_time_to: s.loading_time_to,
+        delivery_time_from: s.delivery_time_from,
+        delivery_time_to: s.delivery_time_to,
+      }));
+      for (const r of checkSlaViolations(inputs)) out.set(r.stopId, r);
+    }
     return out;
   }, [sortedStops]);
 

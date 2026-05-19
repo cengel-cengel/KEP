@@ -20,7 +20,12 @@ import {
   type ShipmentRoutingKlasse,
   type VorlaufCostInput,
 } from '../lib/vorlauf-costs.lib';
-import { routeDistanceKm, routeOnly, routeTrip } from '../lib/osrm.lib';
+import {
+  routeDistanceKm,
+  routeOnly,
+  routeTrip,
+  routeWithDurations,
+} from '../lib/osrm.lib';
 import { computeStopSchedule } from './scheduler.lib';
 import {
   getNvPlzSet,
@@ -161,6 +166,7 @@ export class NvTourenService {
         datum: true,
         start_zeit: true,
         stops: {
+          orderBy: [{ position: 'asc' }],
           select: {
             id: true,
             position: true,
@@ -168,6 +174,10 @@ export class NvTourenService {
             stop_type: true,
             shipment: {
               select: {
+                loading_time_from: true,
+                loading_time_to: true,
+                delivery_time_from: true,
+                delivery_time_to: true,
                 addresses_shipments_loading_address_idToaddresses: {
                   select: { lat: true, lng: true },
                 },
@@ -200,19 +210,58 @@ export class NvTourenService {
         s.stop_type === 'DELIVERY'
           ? s.shipment?.addresses_shipments_delivery_address_idToaddresses
           : s.shipment?.addresses_shipments_loading_address_idToaddresses;
+      const timeToString = (t: any): string | null => {
+        if (!t) return null;
+        if (typeof t === 'string') return t;
+        const d = new Date(t);
+        return `${d.getUTCHours().toString().padStart(2, '0')}:${d
+          .getUTCMinutes()
+          .toString()
+          .padStart(2, '0')}`;
+      };
       return {
         id: s.id,
         position: s.position,
         servicezeit_min: s.servicezeit_min,
+        stop_type: s.stop_type,
         lat: addr?.lat != null ? Number(addr.lat) : null,
         lng: addr?.lng != null ? Number(addr.lng) : null,
+        loading_time_from: timeToString(s.shipment?.loading_time_from),
+        loading_time_to: timeToString(s.shipment?.loading_time_to),
+        delivery_time_from: timeToString(s.shipment?.delivery_time_from),
+        delivery_time_to: timeToString(s.shipment?.delivery_time_to),
       };
     });
+
+    // T-3.1: Precise-ETA via OSRM. Coord-Sequenz inkl. startCoord.
+    let legDurationsSec: number[] | undefined;
+    const coords: Array<[number, number]> = [];
+    if (startCoord) coords.push([startCoord.lng, startCoord.lat]);
+    for (const s of stopsInput) {
+      if (s.lat != null && s.lng != null) coords.push([s.lng, s.lat]);
+    }
+    if (coords.length >= 2) {
+      const r = await routeWithDurations(coords);
+      if (r && r.legs.length >= 1) {
+        // Per-Stop-Travel-Time. Wenn kein startCoord, ist legs[0]
+        // erste-zu-zweite-Stop (also stop_1.travel = legs[0]).
+        // Wenn startCoord vorhanden: legs[0] = start→stop_0,
+        // legs[1] = stop_0→stop_1 etc.
+        const offset = startCoord ? 0 : 1;
+        legDurationsSec = stopsInput.map((_, i) => r.legs[i - offset]?.duration_sec ?? 0);
+        if (!startCoord) {
+          // erstes Element kein Leg → 0
+          legDurationsSec[0] = 0;
+        }
+      }
+    }
+
     const sched = computeStopSchedule({
       datum: tour.datum,
       startZeit: startHHMM,
       startCoord,
       stops: stopsInput,
+      legDurationsSec,
     });
     await this.prisma.$transaction(
       sched.map((s) =>
@@ -221,6 +270,8 @@ export class NvTourenService {
           data: {
             planned_arrival: s.planned_arrival,
             planned_departure: s.planned_departure,
+            risk_score: s.risk_score,
+            risk_severity: s.risk_severity,
           },
         }),
       ),
@@ -744,9 +795,21 @@ export class NvTourenService {
         sub?.max_ldm != null ? Number(sub.max_ldm) : null,
         sub?.max_gewicht_kg != null ? Number(sub.max_gewicht_kg) : null,
       );
+      // T-3.1: tour.risk on-the-fly aus stops.risk_severity.
+      let max_score = 0;
+      let critical_count = 0;
+      let warning_count = 0;
+      for (const s of t.stops as any[]) {
+        const sc = Number(s.risk_score ?? 0);
+        if (sc > max_score) max_score = sc;
+        if (s.risk_severity === 'critical') critical_count++;
+        else if (s.risk_severity === 'warning') warning_count++;
+      }
+      const risk = { max_score, critical_count, warning_count };
       return {
         ...t,
         overload,
+        risk,
         stops: t.stops.map((s: any) => ({
           ...s,
           is_stamm_kunde:

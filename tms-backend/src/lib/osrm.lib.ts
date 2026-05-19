@@ -67,6 +67,89 @@ export interface RouteOnlyResult {
   geometry: PolylineGeometry | null;
 }
 
+export interface RouteLeg {
+  duration_sec: number;
+  distance_m: number;
+}
+
+export interface RouteWithDurationsResult {
+  distanceKm: number;
+  totalDurationSec: number;
+  legs: RouteLeg[];
+}
+
+/**
+ * OSRM /route mit ?annotations=duration.
+ * Returnt pro Leg (consecutive coord-pair) Duration + Distance.
+ * legs.length === coords.length - 1.
+ *
+ * Verwendet für Precise-ETA (T-3.1): ersetzt Haversine-Quick-Win
+ * im Scheduler.
+ */
+export async function routeWithDurations(
+  coords: Array<[number, number]>,
+  timeoutMs = 8000,
+): Promise<RouteWithDurationsResult | null> {
+  if (!Array.isArray(coords) || coords.length < 2) {
+    logger.warn(`routeWithDurations skip: <2 coords`);
+    return null;
+  }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const path = coords.map(([lng, lat]) => `${lng},${lat}`).join(';');
+  const url = `${OSRM_URL}/${path}?overview=false&annotations=duration,distance`;
+  logger.log(`routeWithDurations request ${coords.length} coords`);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) {
+      logger.warn(`routeWithDurations HTTP ${res.status}`);
+      return null;
+    }
+    const j = (await res.json()) as {
+      routes?: Array<{
+        distance?: number;
+        duration?: number;
+        legs?: Array<{
+          distance?: number;
+          duration?: number;
+        }>;
+      }>;
+    };
+    const route = j?.routes?.[0];
+    if (!route || typeof route.distance !== 'number') {
+      logger.warn(`routeWithDurations no route in response`);
+      return null;
+    }
+    const legs = (route.legs ?? []).map((l) => ({
+      duration_sec: Number(l.duration) || 0,
+      distance_m: Number(l.distance) || 0,
+    }));
+    if (legs.length !== coords.length - 1) {
+      logger.warn(
+        `routeWithDurations leg-count mismatch: expected ${coords.length - 1}, got ${legs.length}`,
+      );
+      return null;
+    }
+    const totalSec = Number(route.duration) || legs.reduce((s, l) => s + l.duration_sec, 0);
+    logger.log(
+      `routeWithDurations -> ${(route.distance / 1000).toFixed(2)} km, ${Math.round(totalSec / 60)} min, ${legs.length} legs`,
+    );
+    return {
+      distanceKm: route.distance / 1000,
+      totalDurationSec: totalSec,
+      legs,
+    };
+  } catch (e: unknown) {
+    const name = (e as { name?: string })?.name;
+    const msg = e instanceof Error ? e.message : String(e);
+    if (name === 'AbortError') logger.warn(`routeWithDurations timeout`);
+    else logger.warn(`routeWithDurations error: ${msg}`);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * OSRM /route mit full geometry. KEIN Reorder (anders als /trip).
  * Verwendet die Input-Coord-Sequenz exakt — für manual-reorder

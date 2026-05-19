@@ -1,4 +1,7 @@
-import { computeStopSchedule } from './scheduler.lib';
+import {
+  computeStopSchedule,
+  computeRiskForStop,
+} from './scheduler.lib';
 
 const datum = new Date('2026-05-19T00:00:00Z');
 
@@ -84,6 +87,22 @@ describe('computeStopSchedule', () => {
     expect(diffMin).toBe(30);
   });
 
+  it('legDurationsSec override haversine', () => {
+    const out = computeStopSchedule({
+      datum,
+      stops: [
+        { id: 's1', position: 0, lat: 48.78, lng: 9.18, servicezeit_min: 30 },
+        { id: 's2', position: 1, lat: 49.14, lng: 9.22, servicezeit_min: 30 },
+      ],
+      legDurationsSec: [0, 600], // 0s + 10min für s2
+    });
+    const diffMin =
+      (out[1].planned_arrival.getTime() - out[0].planned_arrival.getTime()) /
+      60_000;
+    // 30 service + 10 OSRM-travel
+    expect(diffMin).toBe(40);
+  });
+
   it('startCoord → erster Stop hat Travel-Zeit', () => {
     const out = computeStopSchedule({
       datum,
@@ -100,5 +119,75 @@ describe('computeStopSchedule', () => {
       60_000;
     expect(minutesSinceStart).toBeGreaterThan(30);
     expect(minutesSinceStart).toBeLessThan(90);
+  });
+});
+
+describe('computeRiskForStop', () => {
+  const day = new Date('2026-05-19T08:00:00Z');
+  const at = (h: number, m: number): Date => {
+    const d = new Date(day);
+    d.setHours(h, m, 0, 0);
+    return d;
+  };
+
+  it('unknown wenn kein Fenster', () => {
+    const r = computeRiskForStop(at(8, 0), 'PICKUP', {});
+    expect(r.severity).toBe('unknown');
+    expect(r.score).toBe(0);
+  });
+
+  it('ok bei genug Buffer', () => {
+    const r = computeRiskForStop(at(8, 0), 'PICKUP', {
+      loading_time_from: '07:00',
+      loading_time_to: '12:00',
+    });
+    expect(r.severity).toBe('ok');
+    expect(r.score).toBe(0);
+  });
+
+  it('warning bei knappem Buffer (<15min)', () => {
+    const r = computeRiskForStop(at(11, 50), 'PICKUP', {
+      loading_time_from: '07:00',
+      loading_time_to: '12:00',
+    });
+    expect(r.severity).toBe('warning');
+    expect(r.score).toBe(30);
+  });
+
+  it('ok bei zwischen-15-30min-Buffer mit kleinem score', () => {
+    const r = computeRiskForStop(at(11, 40), 'PICKUP', {
+      loading_time_from: '07:00',
+      loading_time_to: '12:00',
+    });
+    expect(r.severity).toBe('ok');
+    expect(r.score).toBe(15);
+  });
+
+  it('critical nach Fenster-Ende', () => {
+    const r = computeRiskForStop(at(13, 0), 'PICKUP', {
+      loading_time_from: '07:00',
+      loading_time_to: '12:00',
+    });
+    expect(r.severity).toBe('critical');
+    expect(r.score).toBe(90);
+  });
+
+  it('warning bei zu früh', () => {
+    const r = computeRiskForStop(at(6, 0), 'PICKUP', {
+      loading_time_from: '07:00',
+      loading_time_to: '12:00',
+    });
+    expect(r.severity).toBe('warning');
+    expect(r.score).toBe(70);
+  });
+
+  it('DELIVERY nutzt delivery_time_*', () => {
+    const r = computeRiskForStop(at(15, 0), 'DELIVERY', {
+      delivery_time_from: '14:00',
+      delivery_time_to: '16:00',
+      loading_time_from: '06:00',
+      loading_time_to: '07:00',
+    });
+    expect(r.severity).toBe('ok');
   });
 });

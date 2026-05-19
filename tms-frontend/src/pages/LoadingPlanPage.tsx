@@ -139,6 +139,8 @@ interface PlacedPackage extends Package {
   posX: number;
   posY: number;
   posZ: number;
+  /** LP-1: 0 oder 90 (Y-axis Drag-Rotation, persistiert). */
+  rotationDeg?: number;
 }
 
 function expandPackagesFromOrder(order: ShipmentLoad[]): Package[] {

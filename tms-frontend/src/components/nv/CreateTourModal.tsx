@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X } from 'lucide-react';
+import { MapPin, X } from 'lucide-react';
 import { api } from '../../lib/api';
+import SubcontractorPicker from '../dialogs/SubcontractorPicker';
 
 export interface CreateTourStammTour {
   id: string;
@@ -84,6 +85,7 @@ export default function CreateTourModal({
   const [subId, setSubId] = useState<string>('');
   const [km, setKm] = useState<number | null>(null);
   const [stunden, setStunden] = useState<number | null>(null);
+  const [subPickerOpen, setSubPickerOpen] = useState(false);
 
   const subsQ = useQuery<SubFull[]>({
     queryKey: ['nv-subunternehmer', 'all-active'],
@@ -156,19 +158,41 @@ export default function CreateTourModal({
             <label className="block text-xs font-medium text-gray-600 mb-1">
               Subunternehmer
             </label>
-            <select
-              value={subId}
-              onChange={(e) => setSubId(e.target.value)}
-              className="w-full border rounded px-3 py-2 text-sm"
-            >
-              <option value="">— keiner —</option>
-              {subs.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} ({s.tarif_typ})
-                </option>
-              ))}
-            </select>
+            <div className="flex gap-2 items-center">
+              <select
+                value={subId}
+                onChange={(e) => setSubId(e.target.value)}
+                className="flex-1 border rounded px-3 py-2 text-sm"
+              >
+                <option value="">— keiner —</option>
+                {subs.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.tarif_typ})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setSubPickerOpen(true)}
+                className="text-xs px-2 py-2 border border-gray-300 rounded hover:bg-gray-50 inline-flex items-center gap-1"
+                title="Subs nach Umkreis filtern"
+              >
+                <MapPin size={12} />
+                Umkreis…
+              </button>
+            </div>
           </div>
+          {subPickerOpen && (
+            <SubcontractorPicker
+              mode="nv"
+              currentSubId={null}
+              onPick={(id) => {
+                setSubId(id);
+                setSubPickerOpen(false);
+              }}
+              onClose={() => setSubPickerOpen(false)}
+            />
+          )}
           {selectedSub?.tarif_typ === 'KM_BASIERT' && (
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">

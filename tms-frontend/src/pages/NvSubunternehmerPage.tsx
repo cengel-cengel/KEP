@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, Pencil, Plus, Power, Trash2, X } from 'lucide-react';
+import { ExternalLink, Pencil, Plus, Power, Sparkles, Trash2, X } from 'lucide-react';
 import { api } from '../lib/api';
 import ResponsiveTable from '../components/table/ResponsiveTable';
 import type { Column } from '../components/table/ResponsiveTable';
@@ -241,6 +241,34 @@ export default function NvSubunternehmerPage() {
     queryFn: async () => (await api.get<TourGebiet[]>('/nv-tour-gebiete')).data,
   });
 
+  // Sprint D: Geocode-All-Mutation für Sub-Umkreissuche.
+  const [geocodeResult, setGeocodeResult] = useState<{
+    geocoded: number;
+    failed: number;
+    skipped: number;
+  } | null>(null);
+  const geocodeMut = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post<{
+        total: number;
+        candidates: number;
+        geocoded: number;
+        failed: number;
+        skipped: number;
+      }>('/nv-subunternehmer/geocode-all');
+      return data;
+    },
+    onSuccess: (r) => {
+      setGeocodeResult({
+        geocoded: r.geocoded,
+        failed: r.failed,
+        skipped: r.skipped,
+      });
+      qc.invalidateQueries({ queryKey: ['nv-subunternehmer'] });
+      window.setTimeout(() => setGeocodeResult(null), 5_000);
+    },
+  });
+
   const filtered = useMemo(() => {
     const list = subQ.data ?? [];
     const s = search.trim().toLowerCase();
@@ -347,6 +375,15 @@ export default function NvSubunternehmerPage() {
             className="border border-gray-300 rounded px-3 py-2 text-sm w-56"
           />
           <button
+            onClick={() => geocodeMut.mutate()}
+            disabled={geocodeMut.isPending}
+            className="bg-white text-gray-700 border border-gray-300 text-sm rounded px-3 py-2 flex items-center gap-1 hover:bg-gray-50 disabled:opacity-50"
+            title="Alle Subs ohne Koordinaten geocodieren"
+          >
+            <Sparkles size={14} />
+            {geocodeMut.isPending ? 'Geocodieren…' : 'Geocodieren'}
+          </button>
+          <button
             onClick={() => setCreating(true)}
             className="bg-blue-600 text-white text-sm rounded px-3 py-2 flex items-center gap-1 hover:bg-blue-700"
           >
@@ -355,6 +392,12 @@ export default function NvSubunternehmerPage() {
           </button>
         </div>
       </div>
+      {geocodeResult && (
+        <div className="bg-green-50 border-b border-green-200 px-4 py-1.5 text-xs text-green-800">
+          ✓ {geocodeResult.geocoded} geocoded · {geocodeResult.failed} fehlgeschlagen ·{' '}
+          {geocodeResult.skipped} übersprungen (Adresse fehlt).
+        </div>
+      )}
 
       {selected.size > 0 && (
         <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center gap-2 text-sm">

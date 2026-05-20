@@ -1,47 +1,36 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X } from 'lucide-react';
+/**
+ * Sprint D: SwapDriverDialog nutzt jetzt SubcontractorPicker
+ * (shared NV/FV-Picker mit Radius-Toggle + requireAdr).
+ *
+ * onPick → triggert apply-action SWAP_DRIVER mit gewählter sub-id,
+ * invalidate + onClose.
+ *
+ * Wrap statt eigene Sub-Liste → Carlos's NV+FV-Symmetrie-Regel.
+ */
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
-
-interface Sub {
-  id: string;
-  name: string;
-  aktiv?: boolean | null;
-  has_adr_license?: boolean | null;
-}
+import SubcontractorPicker from '../../dialogs/SubcontractorPicker';
 
 export default function SwapDriverDialog({
   tourId,
   currentSubId,
   requireAdr = false,
+  centerLat,
+  centerLng,
   onClose,
 }: {
   tourId: string;
   currentSubId?: string | null;
-  /** T-3.2.1: wenn tour Hazmat-Stops hat → nur ADR-Subs anzeigen. */
+  /** T-3.2.1: Tour enthält Hazmat → nur ADR-Subs anzeigen. */
   requireAdr?: boolean;
+  /** Sprint D: Radius-Center (z.B. erster Tour-Stop lat/lng). */
+  centerLat?: number | null;
+  centerLng?: number | null;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const [newSubId, setNewSubId] = useState<string>('');
-  const [showAll, setShowAll] = useState(false);
-
-  const subsQ = useQuery<Sub[]>({
-    queryKey: ['nv-subunternehmer'],
-    queryFn: async () =>
-      (await api.get<Sub[]>('/nv-subunternehmer')).data,
-    staleTime: 5 * 60_000,
-  });
-  const subsAll = (subsQ.data ?? []).filter(
-    (s) => s.aktiv !== false && s.id !== currentSubId,
-  );
-  const subs =
-    requireAdr && !showAll
-      ? subsAll.filter((s) => s.has_adr_license === true)
-      : subsAll;
-
   const mut = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (newSubId: string) => {
       const { data } = await api.post(`/nv-touren/${tourId}/apply-action`, {
         action_type: 'SWAP_DRIVER',
         new_subunternehmer_id: newSubId,
@@ -54,62 +43,15 @@ export default function SwapDriverDialog({
       onClose();
     },
   });
-
   return (
-    <div className="fixed inset-0 z-[1100] bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm overflow-hidden">
-        <div className="flex items-center justify-between border-b px-3 py-2">
-          <h3 className="font-semibold text-sm">Subunternehmer wechseln</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
-            <X size={16} />
-          </button>
-        </div>
-        <div className="p-3 space-y-2 text-xs">
-          {requireAdr && (
-            <div className="flex items-center justify-between text-[10px] bg-amber-50 border border-amber-300 text-amber-800 rounded px-2 py-1">
-              <span>Tour enthält Hazmat — nur ADR-Subs gelistet.</span>
-              <button
-                type="button"
-                onClick={() => setShowAll((v) => !v)}
-                className="underline ml-2"
-              >
-                {showAll ? 'Nur ADR' : 'Alle zeigen'}
-              </button>
-            </div>
-          )}
-          <label className="block">
-            <span className="text-gray-600">Neuer Sub</span>
-            <select
-              value={newSubId}
-              onChange={(e) => setNewSubId(e.target.value)}
-              className="mt-1 w-full border rounded px-2 py-1 text-sm"
-            >
-              <option value="">— wählen —</option>
-              {subs.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                  {s.has_adr_license ? ' · ADR' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <div className="flex justify-end gap-2 border-t px-3 py-2">
-          <button
-            onClick={onClose}
-            className="px-2 py-1 text-xs border rounded hover:bg-gray-50"
-          >
-            Abbrechen
-          </button>
-          <button
-            onClick={() => mut.mutate()}
-            disabled={!newSubId || mut.isPending}
-            className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {mut.isPending ? 'Wechsele…' : 'Wechseln'}
-          </button>
-        </div>
-      </div>
-    </div>
+    <SubcontractorPicker
+      mode="nv"
+      currentSubId={currentSubId ?? null}
+      requireAdr={requireAdr}
+      centerLat={centerLat ?? null}
+      centerLng={centerLng ?? null}
+      onPick={(id) => mut.mutate(id)}
+      onClose={onClose}
+    />
   );
 }

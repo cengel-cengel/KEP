@@ -8,6 +8,7 @@ import InsertModeBanner from '../components/loadingplan/InsertModeBanner';
 import ContextMenu, {
   type ContextMenuItem,
 } from '../components/loadingplan/ContextMenu';
+import { planNvInsertShift } from '../lib/nvRepack';
 import LoadingPlan3D, {
   type Plan3DPackage,
 } from '../components/LoadingPlan3D';
@@ -277,27 +278,35 @@ export default function NvLoadingPlanPage() {
       insertMode.cancel();
       return;
     }
-    const shiftY = dragged.lengthCm + 5;
+    // B-2.2: shared Helper für Cascade-Shift mit row-wrap.
+    const actions = planNvInsertShift({
+      packages: packages
+        .filter((p) => !p.id.includes(':pkg:'))
+        .map((p) => ({
+          id: p.id,
+          posX: p.posX,
+          posY: p.posY,
+          posZ: p.posZ,
+          lengthCm: p.lengthCm,
+          widthCm: p.widthCm,
+        })),
+      draggedId,
+      targetId: t.id,
+      trailerLengthCm: vehicle.lengthCm,
+      trailerWidthCm: vehicle.widthCm,
+    });
     void (async () => {
       try {
-        for (const pkg of packages) {
-          if (pkg.id === draggedId || pkg.id.includes(':pkg:')) continue;
-          if (pkg.posY >= t.posY) {
-            await api.patch(`/loading/package-item/${pkg.id}/position`, {
-              posXCm: Math.round(pkg.posX),
-              posYCm: Math.round(pkg.posY + shiftY),
-              posZCm: Math.round(pkg.posZ),
-            });
-          }
+        for (const a of actions) {
+          await api.patch(`/loading/package-item/${a.itemId}/position`, {
+            posXCm: a.posXCm,
+            posYCm: a.posYCm,
+            posZCm: a.posZCm,
+          });
         }
-        await api.patch(`/loading/package-item/${draggedId}/position`, {
-          posXCm: Math.round(t.posX),
-          posYCm: Math.round(t.posY),
-          posZCm: Math.round(t.posZ),
-        });
         await qc.invalidateQueries({ queryKey: ['nv-loading', tourId] });
       } catch {
-        /* silent — UI state revertiert sich beim invalidate */
+        /* silent — invalidate korrigiert UI bei Error */
       }
       insertMode.cancel();
     })();
@@ -423,17 +432,38 @@ export default function NvLoadingPlanPage() {
               danger: true,
               disabled: !ctxMenu.shipmentId,
               onClick: () => {
+                // NV-RC.1: shipment-id → stop-id lookup via tour.stops.
+                const stop = tourQ.data?.stops.find(
+                  (s) => s.shipment.id === ctxMenu.shipmentId,
+                );
+                if (!stop) {
+                  window.alert('Stop nicht gefunden — kann nicht entfernen.');
+                  return;
+                }
+                const shipmentNr = stop.shipment.shipment_number ?? '';
                 if (
                   !window.confirm(
-                    'Diese Sendung komplett aus der Tour entfernen?',
+                    `Sendung ${shipmentNr} komplett aus der Tour entfernen?`,
                   )
                 )
                   return;
-                // NV-Stops werden über DELETE /nv-touren/:id/stops/:stopId
-                // entfernt. Hier brauchen wir stop-id, nicht shipment-id.
-                // Fallback: invalidate + Hinweis dass dies über Panel-
-                // ContextMenu (Sprint C) geht. Für jetzt nur invalidate.
-                qc.invalidateQueries({ queryKey: ['nv-loading', tourId] });
+                void (async () => {
+                  try {
+                    await api.delete(
+                      `/nv-touren/${tourId}/stops/${stop.id}`,
+                    );
+                    await qc.invalidateQueries({
+                      queryKey: ['nv-loading', tourId],
+                    });
+                    await qc.invalidateQueries({
+                      queryKey: ['nv-tour-detail', tourId],
+                    });
+                  } catch (e: any) {
+                    window.alert(
+                      `Entfernen fehlgeschlagen (${e?.response?.status ?? '?'}).`,
+                    );
+                  }
+                })();
               },
             },
           ];

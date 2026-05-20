@@ -847,16 +847,33 @@ function NvTourBody({ tourId }: { tourId: string }) {
           onClose={() => setSplitOpen(null)}
         />
       )}
-      {swapOpen && (
-        <SwapDriverDialog
-          tourId={t.id}
-          currentSubId={t.subunternehmer?.id ?? t.subunternehmer_id ?? null}
-          requireAdr={
-            t.conflicts?.some((c) => c.type === 'HAZMAT_DRIVER') ?? false
-          }
-          onClose={() => setSwapOpen(false)}
-        />
-      )}
+      {swapOpen &&
+        (() => {
+          // Sprint D: Center-Coord für Radius-Filter = erster Stop
+          // (PICKUP: loading-addr; sonst delivery-addr).
+          const first = t.stops?.[0];
+          const sh: any = first?.shipment;
+          const addr =
+            first?.stop_type === 'DELIVERY'
+              ? sh?.addresses_shipments_delivery_address_idToaddresses
+              : sh?.addresses_shipments_loading_address_idToaddresses;
+          const cLat = addr?.lat != null ? Number(addr.lat) : null;
+          const cLng = addr?.lng != null ? Number(addr.lng) : null;
+          return (
+            <SwapDriverDialog
+              tourId={t.id}
+              currentSubId={
+                t.subunternehmer?.id ?? t.subunternehmer_id ?? null
+              }
+              requireAdr={
+                t.conflicts?.some((c) => c.type === 'HAZMAT_DRIVER') ?? false
+              }
+              centerLat={cLat}
+              centerLng={cLng}
+              onClose={() => setSwapOpen(false)}
+            />
+          );
+        })()}
       {moveOpen && (
         <MoveStopDialog
           fromTourId={t.id}

@@ -168,6 +168,38 @@ function FvTourBody({ tourId }: { tourId: string }) {
     });
   }, [tourQ.data]);
 
+  // P0-10: useMemo MUSS vor early-returns aufgerufen werden
+  // (Hooks-Order-Rule). Handle null-t intern.
+  const fvAcuteItems = useMemo<AcuteItem[]>(() => {
+    const t = tourQ.data;
+    if (!t) return [];
+    const items: AcuteItem[] = [];
+    if (t.overload?.isOverloaded) {
+      items.push({
+        id: 'overload',
+        severity: 'L1',
+        icon: 'shield',
+        label: 'Tour überladen',
+        hint: `LDM ${((t.overload.ldm ?? 0) * 100).toFixed(0)}% / Gewicht ${((t.overload.weight ?? 0) * 100).toFixed(0)}%`,
+      });
+    }
+    for (const s of t.shipments ?? []) {
+      const sev = s.risk_severity_fv;
+      if (sev !== 'critical' && sev !== 'warning') continue;
+      items.push({
+        id: `s-${s.id}`,
+        severity: sev === 'critical' ? 'L1' : 'L2',
+        icon: 'alert',
+        label: s.shipment_number ?? s.id.slice(0, 6),
+        hint:
+          sev === 'critical'
+            ? 'Stop außerhalb Zeitfenster (kritisch)'
+            : 'Knapper Puffer',
+      });
+    }
+    return sortAcuteItems(items);
+  }, [tourQ.data]);
+
   const openMap = () => {
     const sp = new URLSearchParams({ tour: tourId });
     window.open(
@@ -199,35 +231,6 @@ function FvTourBody({ tourId }: { tourId: string }) {
       onClick: openLoading,
     },
   ];
-
-  // AcuteSection items for FV (no conflicts, only stop-risks).
-  const fvAcuteItems = useMemo<AcuteItem[]>(() => {
-    const items: AcuteItem[] = [];
-    if (t.overload?.isOverloaded) {
-      items.push({
-        id: 'overload',
-        severity: 'L1',
-        icon: 'shield',
-        label: 'Tour überladen',
-        hint: `LDM ${((t.overload.ldm ?? 0) * 100).toFixed(0)}% / Gewicht ${((t.overload.weight ?? 0) * 100).toFixed(0)}%`,
-      });
-    }
-    for (const s of t.shipments ?? []) {
-      const sev = s.risk_severity_fv;
-      if (sev !== 'critical' && sev !== 'warning') continue;
-      items.push({
-        id: `s-${s.id}`,
-        severity: sev === 'critical' ? 'L1' : 'L2',
-        icon: 'alert',
-        label: s.shipment_number ?? s.id.slice(0, 6),
-        hint:
-          sev === 'critical'
-            ? 'Stop außerhalb Zeitfenster (kritisch)'
-            : 'Knapper Puffer',
-      });
-    }
-    return sortAcuteItems(items);
-  }, [t]);
 
   const titleStr = t.tour_number ?? '—';
 

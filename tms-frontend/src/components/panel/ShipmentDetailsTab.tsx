@@ -132,6 +132,34 @@ export default function ShipmentDetailsTab({ shipmentId }: { shipmentId: string 
     });
   }, [detailQ.data]);
 
+  // P0-10: useMemo MUSS vor early-returns aufgerufen werden.
+  // Daten-Refs intern aus detailQ.data, null-safe.
+  const acuteItems: AcuteItem[] = useMemo(() => {
+    const d = detailQ.data;
+    if (!d) return [];
+    if (!severity || severityRank(severity) === 0) return [];
+    const label =
+      severity === 'L1'
+        ? 'Lade-Datum überschritten — Sendung noch nicht disponiert'
+        : severity === 'L2'
+          ? d.risk_severity === 'critical' || d.risk_severity_fv === 'critical'
+            ? 'Stop außerhalb Zeitfenster (kritisch)'
+            : 'Lade-Datum heute'
+          : 'VIP-Kunde oder hohe Priorität';
+    return [
+      {
+        id: 'shipment-sev',
+        severity,
+        icon: 'alert',
+        label,
+        primaryAction: {
+          label: 'Edit',
+          onClick: () => setShowEditModal(true),
+        },
+      },
+    ];
+  }, [detailQ.data, severity]);
+
   const s = detailQ.data;
   if (detailQ.isLoading) {
     return <div className="p-3 text-xs text-gray-400">Lädt…</div>;
@@ -152,31 +180,6 @@ export default function ShipmentDetailsTab({ shipmentId }: { shipmentId: string 
       onClick: () => setShowEditModal(true),
     },
   ];
-
-  // S-3 AcuteSection: 0 oder 1 Item aus shipment-Severity.
-  const acuteItems: AcuteItem[] = useMemo(() => {
-    if (!severity || severityRank(severity) === 0) return [];
-    const label =
-      severity === 'L1'
-        ? 'Lade-Datum überschritten — Sendung noch nicht disponiert'
-        : severity === 'L2'
-          ? s.risk_severity === 'critical' || s.risk_severity_fv === 'critical'
-            ? 'Stop außerhalb Zeitfenster (kritisch)'
-            : 'Lade-Datum heute'
-          : 'VIP-Kunde oder hohe Priorität';
-    return [
-      {
-        id: 'shipment-sev',
-        severity,
-        icon: severity === 'L3' ? 'alert' : 'alert',
-        label,
-        primaryAction: {
-          label: 'Edit',
-          onClick: () => setShowEditModal(true),
-        },
-      },
-    ];
-  }, [severity, s.risk_severity, s.risk_severity_fv]);
 
   return (
     <>

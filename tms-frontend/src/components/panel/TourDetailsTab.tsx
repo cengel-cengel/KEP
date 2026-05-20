@@ -1,6 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Box, ExternalLink, Warehouse } from 'lucide-react';
+import {
+  Box,
+  ExternalLink,
+  Warehouse,
+  Trash2,
+  ArrowRightLeft,
+  Scissors,
+  Circle,
+  StickyNote,
+} from 'lucide-react';
+import ContextMenu from '../loadingplan/ContextMenu';
+import { useLongPress } from '../../hooks/useLongPress';
+import StopStatusBadge, {
+  STOP_STATUS_UI_OPTIONS,
+  stopStatusMeta,
+} from '../nv/StopStatusBadge';
 import { api } from '../../lib/api';
 import InlineEdit from './InlineEdit';
 import { nvStatusLabel, type NvTourMutableStatus } from '../../lib/nvTourStatus';
@@ -105,6 +120,8 @@ interface NvTourDetail {
     id: string;
     position: number;
     stop_type?: string;
+    status?: string | null;
+    notizen?: string | null;
     servicezeit_min?: number | null;
     planned_arrival?: string | null;
     planned_departure?: string | null;
@@ -499,6 +516,32 @@ function NvTourBody({ tourId }: { tourId: string }) {
     },
   });
 
+  // Sprint C: Stop-Mutationen für ContextMenu (Remove/PATCH).
+  const removeStopMut = useMutation({
+    mutationFn: async (stopId: string) => {
+      await api.delete(`/nv-touren/${tourId}/stops/${stopId}`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['nv-tour-detail', tourId] });
+      qc.invalidateQueries({ queryKey: ['nv-touren'] });
+    },
+  });
+  const patchStopMut = useMutation({
+    mutationFn: async ({
+      stopId,
+      body,
+    }: {
+      stopId: string;
+      body: { status?: string; notizen?: string | null };
+    }) => {
+      await api.patch(`/nv-touren/${tourId}/stops/${stopId}`, body);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['nv-tour-detail', tourId] });
+      qc.invalidateQueries({ queryKey: ['nv-touren'] });
+    },
+  });
+
   const t = tourQ.data;
 
   const severity = useMemo<SeverityLevel>(
@@ -667,6 +710,24 @@ function NvTourBody({ tourId }: { tourId: string }) {
           geocodePending={geocodeMut.isPending}
           tourDatum={t.datum}
           tourTitle={titleStr}
+          onRemoveStop={(stopId) => {
+            if (confirm('Stop von Tour entfernen?')) {
+              removeStopMut.mutate(stopId);
+            }
+          }}
+          onMoveStop={(stop) =>
+            setMoveOpen({
+              stopId: stop.id,
+              label: stop.shipment?.shipment_number ?? stop.id.slice(0, 6),
+              shipmentId: stop.shipment?.id,
+            })
+          }
+          onSetStopStatus={(stopId, status) =>
+            patchStopMut.mutate({ stopId, body: { status } })
+          }
+          onSetStopNotiz={(stopId, notizen) =>
+            patchStopMut.mutate({ stopId, body: { notizen } })
+          }
         />
 
         <CollapsibleSection
@@ -799,6 +860,16 @@ interface NvStopsSubTabsProps {
   geocodePending: boolean;
   tourDatum: string;
   tourTitle: string;
+  /** Sprint C: ContextMenu-Action für Stop-Remove (mit confirm). */
+  onRemoveStop: (stopId: string) => void;
+  /** Sprint C: ContextMenu-Action "in andere Tour" → MoveStopDialog. */
+  onMoveStop: (
+    stop: NonNullable<NvTourDetail['stops']>[number],
+  ) => void;
+  /** Sprint C: Status-Submenu PATCH stop.status. */
+  onSetStopStatus: (stopId: string, status: string) => void;
+  /** Sprint C: Notiz-Popover PATCH stop.notizen. */
+  onSetStopNotiz: (stopId: string, notizen: string | null) => void;
 }
 
 function NvStopsSubTabs({
@@ -814,6 +885,10 @@ function NvStopsSubTabs({
   geocodePending,
   tourDatum,
   tourTitle,
+  onRemoveStop,
+  onMoveStop,
+  onSetStopStatus,
+  onSetStopNotiz,
 }: NvStopsSubTabsProps) {
   // C' Sprint: gemeinsamer Search-State für Stoppliste + Sendungsliste
   // (decision 4B). Stopps-Tab nutzt Search nicht.
@@ -878,6 +953,10 @@ function NvStopsSubTabs({
           selectedStopId={selectedStopId}
           setSelectedStopId={setSelectedStopId}
           tourDatum={tourDatum}
+          onRemoveStop={onRemoveStop}
+          onMoveStop={onMoveStop}
+          onSetStopStatus={onSetStopStatus}
+          onSetStopNotiz={onSetStopNotiz}
         />
       )}
       {subTab === 'stoppliste' && (
@@ -932,46 +1011,229 @@ function NvStopsView({
   selectedStopId,
   setSelectedStopId,
   tourDatum,
+  onRemoveStop,
+  onMoveStop,
+  onSetStopStatus,
+  onSetStopNotiz,
 }: {
   stops: NonNullable<NvTourDetail['stops']>;
   selectedStopId: string | null;
   setSelectedStopId: (id: string | null) => void;
   tourDatum: string;
+  onRemoveStop: (stopId: string) => void;
+  onMoveStop: (stop: NonNullable<NvTourDetail['stops']>[number]) => void;
+  onSetStopStatus: (stopId: string, status: string) => void;
+  onSetStopNotiz: (stopId: string, notizen: string | null) => void;
 }) {
   const wt = isoToWochentag(tourDatum);
   const groupLabel = wt
     ? `${wochentagLabel(wt)} · ${tourDatum.slice(0, 10)}`
     : tourDatum.slice(0, 10);
+  const [menu, setMenu] = useState<{
+    stop: NonNullable<NvTourDetail['stops']>[number];
+    x: number;
+    y: number;
+  } | null>(null);
+  const [submenu, setSubmenu] = useState<'status' | null>(null);
+  const [notizEditor, setNotizEditor] = useState<{
+    stopId: string;
+    initial: string;
+  } | null>(null);
   return (
     <div>
       <div className="text-[10px] font-mono uppercase text-gray-500 mb-1 border-b border-gray-200 pb-0.5">
         {groupLabel} · {stops.length}
       </div>
-      {stops.map((s) => {
-        const isSelected = selectedStopId === s.id;
-        return (
+      {stops.map((s) => (
+        <StopRow
+          key={s.id}
+          stop={s}
+          isSelected={selectedStopId === s.id}
+          onToggleSelect={() =>
+            setSelectedStopId(selectedStopId === s.id ? null : s.id)
+          }
+          onOpenMenu={(x, y) => {
+            setMenu({ stop: s, x, y });
+            setSubmenu(null);
+          }}
+        />
+      ))}
+      {menu && submenu === null && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={[
+            {
+              label: 'Stop entfernen',
+              icon: <Trash2 size={12} />,
+              danger: true,
+              onClick: () => onRemoveStop(menu.stop.id),
+            },
+            {
+              label: 'In andere Tour…',
+              icon: <ArrowRightLeft size={12} />,
+              onClick: () => onMoveStop(menu.stop),
+            },
+            {
+              label: 'Sendung splitten',
+              icon: <Scissors size={12} />,
+              disabled: true,
+              onClick: () => {},
+            },
+            {
+              label: 'Status setzen ▶',
+              icon: <Circle size={12} />,
+              onClick: () => setSubmenu('status'),
+            },
+            {
+              label: menu.stop.notizen
+                ? 'Notiz bearbeiten'
+                : 'Notiz hinzufügen',
+              icon: <StickyNote size={12} />,
+              onClick: () =>
+                setNotizEditor({
+                  stopId: menu.stop.id,
+                  initial: menu.stop.notizen ?? '',
+                }),
+            },
+          ]}
+        />
+      )}
+      {menu && submenu === 'status' && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={STOP_STATUS_UI_OPTIONS.map((opt) => {
+            const meta = stopStatusMeta(opt);
+            return {
+              label: meta.label,
+              icon: (
+                <span
+                  className={`inline-block w-2 h-2 rounded-full ${meta.dotClass}`}
+                  aria-hidden
+                />
+              ),
+              onClick: () => onSetStopStatus(menu.stop.id, opt),
+            };
+          })}
+        />
+      )}
+      {notizEditor && (
+        <NotizEditor
+          initial={notizEditor.initial}
+          onSave={(text) => {
+            onSetStopNotiz(notizEditor.stopId, text || null);
+            setNotizEditor(null);
+            setMenu(null);
+          }}
+          onCancel={() => setNotizEditor(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function StopRow({
+  stop,
+  isSelected,
+  onToggleSelect,
+  onOpenMenu,
+}: {
+  stop: NonNullable<NvTourDetail['stops']>[number];
+  isSelected: boolean;
+  onToggleSelect: () => void;
+  onOpenMenu: (x: number, y: number) => void;
+}) {
+  const lp = useLongPress((x, y) => onOpenMenu(x, y));
+  return (
+    <button
+      type="button"
+      onClick={onToggleSelect}
+      {...lp}
+      className={`w-full text-left text-xs flex items-center gap-2 py-0.5 px-1 rounded ${
+        isSelected
+          ? 'bg-amber-50 border-l-2 border-amber-500'
+          : 'hover:bg-gray-50 border-l-2 border-transparent'
+      }`}
+    >
+      <span className="text-gray-400 font-mono w-5 text-right">
+        {stop.position}.
+      </span>
+      <StopStatusBadge status={stop.status} compact />
+      <span className="font-mono">
+        {stop.shipment?.shipment_number ?? '—'}
+      </span>
+      <span className="text-[10px] text-gray-500">
+        {stop.stop_type ?? ''}
+      </span>
+      {stop.notizen && (
+        <StickyNote
+          size={11}
+          className="text-amber-600 ml-auto"
+          aria-label={`Notiz: ${stop.notizen}`}
+        />
+      )}
+    </button>
+  );
+}
+
+function NotizEditor({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial: string;
+  onSave: (text: string) => void;
+  onCancel: () => void;
+}) {
+  const [text, setText] = useState(initial);
+  return (
+    <div
+      className="fixed inset-0 z-[1100] bg-black/40 flex items-center justify-center p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="bg-white rounded-lg shadow-xl w-full max-w-sm overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b px-3 py-2">
+          <h3 className="font-semibold text-sm">Stop-Notiz</h3>
+        </div>
+        <div className="p-3">
+          <textarea
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+                e.preventDefault();
+                onSave(text);
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                onCancel();
+              }
+            }}
+            placeholder="Notiz eingeben… (Cmd+S speichern, Esc abbrechen)"
+            className="w-full border rounded px-2 py-1 text-xs h-24 resize-y"
+          />
+        </div>
+        <div className="flex justify-end gap-2 border-t px-3 py-2">
           <button
-            key={s.id}
-            type="button"
-            onClick={() => setSelectedStopId(isSelected ? null : s.id)}
-            className={`w-full text-left text-xs flex items-center gap-2 py-0.5 px-1 rounded ${
-              isSelected
-                ? 'bg-amber-50 border-l-2 border-amber-500'
-                : 'hover:bg-gray-50 border-l-2 border-transparent'
-            }`}
+            onClick={onCancel}
+            className="px-2 py-1 text-xs border rounded hover:bg-gray-50"
           >
-            <span className="text-gray-400 font-mono w-5 text-right">
-              {s.position}.
-            </span>
-            <span className="font-mono">
-              {s.shipment?.shipment_number ?? '—'}
-            </span>
-            <span className="text-[10px] text-gray-500">
-              {s.stop_type ?? ''}
-            </span>
+            Abbrechen
           </button>
-        );
-      })}
+          <button
+            onClick={() => onSave(text)}
+            className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Speichern
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

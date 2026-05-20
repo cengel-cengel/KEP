@@ -14,6 +14,7 @@ import { Type } from 'class-transformer';
 
 export const STOP_STATUS = [
   'PLANNED',
+  'EN_ROUTE',
   'ARRIVED',
   'COMPLETED',
   'FAILED',

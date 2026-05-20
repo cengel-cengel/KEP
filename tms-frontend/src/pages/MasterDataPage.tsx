@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { COUNTRY_CODE_OPTIONS } from '../lib/countryCodes';
+import type { CustomerDetail } from '../types/customer';
+import CustomerEditForm from '../components/customer/CustomerEditForm';
+import CustomerTierBadge from '../components/customer/CustomerTierBadge';
 
 type BusinessPartner = {
   id: string;
@@ -83,7 +86,7 @@ function partnerTypeBadge(type?: string) {
 
 export default function MasterDataPage() {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<1 | 2>(1);
+  const [tab, setTab] = useState<1 | 2 | 3>(1);
 
   // TAB 1 - filters
   const [partnerType, setPartnerType] = useState<string>('');
@@ -688,6 +691,17 @@ export default function MasterDataPage() {
             }`}
           >
             Relationen
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab(3)}
+            className={`px-3 py-2 rounded-lg border ${
+              tab === 3
+                ? 'bg-[#1e40af] text-white border-[#1e40af]'
+                : 'bg-white text-gray-700 border-gray-300'
+            }`}
+          >
+            Kunden
           </button>
         </div>
 
@@ -1888,6 +1902,8 @@ export default function MasterDataPage() {
           </div>
         )}
 
+        {tab === 3 && <CustomersTab />}
+
       {isCreatePartnerOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl border border-gray-200">
@@ -2229,3 +2245,111 @@ export default function MasterDataPage() {
   );
 }
 
+// ─── M-1.1: KUNDEN-TAB ───────────────────────────────────────
+
+function CustomersTab() {
+  const [search, setSearch] = useState('');
+  const [debounced, setDebounced] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const listQ = useQuery<CustomerDetail[]>({
+    queryKey: ['customers', 'list', debounced],
+    queryFn: async () => {
+      const params = debounced ? { search: debounced } : {};
+      const { data } = await api.get<CustomerDetail[]>('/customers', {
+        params,
+      });
+      return data;
+    },
+    staleTime: 30_000,
+  });
+
+  const detailQ = useQuery<CustomerDetail>({
+    queryKey: ['customers', 'detail', selectedId],
+    queryFn: async () => {
+      const { data } = await api.get<CustomerDetail>(
+        `/customers/${selectedId}`,
+      );
+      return data;
+    },
+    enabled: !!selectedId,
+    staleTime: 30_000,
+  });
+
+  const list = listQ.data ?? [];
+
+  return (
+    <div className="flex flex-col xl:flex-row gap-4">
+      {/* List-Pane (40%) */}
+      <div className="xl:w-[40%] rounded-lg border border-gray-200 bg-white">
+        <div className="p-3 border-b">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Suchen (Name oder Kundennr.)…"
+            className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+          />
+        </div>
+        <div className="max-h-[70vh] overflow-y-auto">
+          {listQ.isLoading && (
+            <div className="p-3 text-xs text-gray-500">Lade Kunden…</div>
+          )}
+          {!listQ.isLoading && list.length === 0 && (
+            <div className="p-3 text-xs text-gray-500">Keine Treffer.</div>
+          )}
+          {list.map((c) => {
+            const isSelected = selectedId === c.id;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setSelectedId(c.id)}
+                className={`w-full text-left px-3 py-1.5 flex items-center gap-2 text-xs border-l-2 ${
+                  isSelected
+                    ? 'bg-blue-50 border-blue-500'
+                    : 'hover:bg-gray-50 border-transparent'
+                }`}
+              >
+                <span className="font-mono text-gray-700 w-16 truncate">
+                  {c.customer_number}
+                </span>
+                <span className="truncate text-gray-800 flex-1">
+                  {c.name}
+                </span>
+                <CustomerTierBadge tier={c.priority_tier} compact />
+                {!c.is_active && (
+                  <span
+                    className="inline-block w-2 h-2 rounded-full bg-gray-300"
+                    title="inaktiv"
+                    aria-label="inaktiv"
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Edit-Pane (60%) */}
+      <div className="flex-1 rounded-lg border border-gray-200 bg-white p-4">
+        {!selectedId && (
+          <div className="text-xs text-gray-500 italic">
+            Kunde aus Liste wählen.
+          </div>
+        )}
+        {selectedId && detailQ.isLoading && (
+          <div className="text-xs text-gray-500">Lade…</div>
+        )}
+        {selectedId && detailQ.data && (
+          <CustomerEditForm customer={detailQ.data} />
+        )}
+      </div>
+    </div>
+  );
+}

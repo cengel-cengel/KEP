@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pencil, Sparkles } from 'lucide-react';
 import { api } from '../../lib/api';
+import { TIER_OPTIONS } from '../../lib/customerTier';
 import InlineEdit from './InlineEdit';
 import ShipmentEditModal from '../ShipmentEditModal';
 import StickyHead, { type QuickAction } from './StickyHead';
@@ -73,14 +74,6 @@ function addrLine(
     .join(', ');
   return parts || '—';
 }
-
-const TIER_OPTIONS = [
-  { value: '', label: '— neutral —' },
-  { value: 'VIP', label: 'VIP' },
-  { value: 'A', label: 'A' },
-  { value: 'B', label: 'B' },
-  { value: 'C', label: 'C' },
-];
 
 export default function ShipmentDetailsTab({ shipmentId }: { shipmentId: string }) {
   const qc = useQueryClient();
@@ -359,7 +352,7 @@ function CustomerTierRow({
     <Row label="Tier">
       <InlineEdit
         value={tier ?? ''}
-        options={TIER_OPTIONS}
+        options={[...TIER_OPTIONS]}
         onSave={(v) => tierMut.mutateAsync(v)}
         type="select"
         label="Customer-Tier"

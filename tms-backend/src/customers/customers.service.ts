@@ -61,6 +61,7 @@ export class CustomersService {
         min_contribution_pct: dto.minContributionPct,
         notes: dto.notes,
         priority_tier: dto.priorityTier,
+        is_active: dto.isActive,
         created_by: userId,
       },
     });
@@ -84,6 +85,7 @@ export class CustomersService {
         min_contribution_pct: dto.minContributionPct,
         notes: dto.notes,
         priority_tier: dto.priorityTier,
+        is_active: dto.isActive,
       },
     });
   }

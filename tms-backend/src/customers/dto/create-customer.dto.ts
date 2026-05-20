@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEmail,
   IsIn,
   IsInt,
@@ -65,4 +66,9 @@ export class CreateCustomerDto {
   @IsOptional()
   @IsIn(['VIP', 'A', 'B', 'C'])
   priorityTier?: 'VIP' | 'A' | 'B' | 'C';
+
+  /** M-1.1: Aktivierungs-Status (Soft-Disable). */
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

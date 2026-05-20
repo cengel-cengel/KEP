@@ -92,6 +92,42 @@ describe('computePriorityScore', () => {
     );
     expect(r.factors.find((f) => f.name === 'SLA-Urgenz')?.value).toBe(5);
   });
+
+  it('Customer-Tier VIP > C bei sonst identischen Inputs', () => {
+    const base = {
+      loading_date: '2026-05-25T10:00:00Z',
+      cm_percent: 50,
+      is_hazmat: false,
+    };
+    const vip = computePriorityScore(
+      { ...base, customer_priority_tier: 'VIP' },
+      now,
+    );
+    const c = computePriorityScore(
+      { ...base, customer_priority_tier: 'C' },
+      now,
+    );
+    expect(vip.score).toBeGreaterThan(c.score);
+    expect(vip.factors.find((f) => f.name === 'Customer-Tier')?.value).toBe(100);
+    expect(c.factors.find((f) => f.name === 'Customer-Tier')?.value).toBe(20);
+  });
+
+  it('null Customer-Tier → neutral 50', () => {
+    const r = computePriorityScore(
+      { loading_date: '2026-05-25T10:00:00Z', cm_percent: 50 },
+      now,
+    );
+    expect(r.factors.find((f) => f.name === 'Customer-Tier')?.value).toBe(50);
+  });
+
+  it('factors[].weight sums to 1.0', () => {
+    const r = computePriorityScore(
+      { loading_date: '2026-05-19T11:00:00Z' },
+      now,
+    );
+    const sum = r.factors.reduce((acc, f) => acc + f.weight, 0);
+    expect(sum).toBeCloseTo(1.0, 5);
+  });
 });
 
 describe('priorityBadgeClass', () => {

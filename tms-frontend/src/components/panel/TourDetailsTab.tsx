@@ -27,6 +27,14 @@ interface TourDetail {
     id: string;
     shipment_number?: string | null;
     tour_position?: number | null;
+    /** W-2.1: FV-Timeline shipment-level. */
+    planned_arrival_fv?: string | null;
+    planned_departure_fv?: string | null;
+    risk_severity_fv?: string | null;
+    loading_time_from?: string | null;
+    loading_time_to?: string | null;
+    delivery_time_from?: string | null;
+    delivery_time_to?: string | null;
   }>;
 }
 
@@ -169,6 +177,13 @@ function FvTourBody({ tourId }: { tourId: string }) {
 
       <section>
         <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1">
+          Timeline
+        </h3>
+        <FvTourTimelineSection shipments={t.shipments ?? []} />
+      </section>
+
+      <section>
+        <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1">
           Stops ({t.shipments?.length ?? 0})
         </h3>
         {(t.shipments ?? []).map((s, i) => (
@@ -181,6 +196,51 @@ function FvTourBody({ tourId }: { tourId: string }) {
         ))}
       </section>
     </div>
+  );
+}
+
+function FvTourTimelineSection({
+  shipments,
+}: {
+  shipments: NonNullable<TourDetail['shipments']>;
+}) {
+  const panel = usePanel();
+  if (shipments.length === 0) {
+    return (
+      <div className="text-[11px] text-gray-400 italic">
+        Keine Stops auf Tour.
+      </div>
+    );
+  }
+  const anyScheduled = shipments.some((s) => s.planned_arrival_fv);
+  if (!anyScheduled) {
+    return (
+      <div className="text-[11px] text-gray-400 italic">
+        Schedule wird berechnet…
+      </div>
+    );
+  }
+  const tlStops = shipments.map((s, i) => ({
+    id: s.id,
+    position: s.tour_position ?? i + 1,
+    stop_type: 'DELIVERY',
+    shipment_number: s.shipment_number ?? undefined,
+    planned_arrival: s.planned_arrival_fv ?? null,
+    planned_departure: s.planned_departure_fv ?? null,
+    loading_time_from: s.loading_time_from ?? null,
+    loading_time_to: s.loading_time_to ?? null,
+    delivery_time_from: s.delivery_time_from ?? null,
+    delivery_time_to: s.delivery_time_to ?? null,
+    risk_severity: s.risk_severity_fv,
+  }));
+  return (
+    <TourTimeline
+      stops={tlStops}
+      onStopClick={(stopId) => {
+        const found = shipments.find((s) => s.id === stopId);
+        if (found?.id) panel.selectShipment(found.id);
+      }}
+    />
   );
 }
 

@@ -24,6 +24,7 @@ import {
   findBestToursForShipment,
   type MatchTourCandidate,
 } from '../lib/tourMatcher.lib';
+import { computeFvSchedule } from './fv-scheduler.lib';
 
 /**
  * Transport-Types die in /tours/eligible-shipments-fv landen.
@@ -523,6 +524,10 @@ export class ToursService {
       },
     });
 
+    setImmediate(() => {
+      void this.safeRecomputeFvSchedule(tourId);
+    });
+
     return this.findOne(tourId);
   }
 
@@ -546,7 +551,15 @@ export class ToursService {
         status: 'new',
         tour_id: null,
         tour_position: null,
+        planned_arrival_fv: null,
+        planned_departure_fv: null,
+        risk_score_fv: null,
+        risk_severity_fv: null,
       },
+    });
+
+    setImmediate(() => {
+      void this.safeRecomputeFvSchedule(tourId);
     });
 
     return this.findOne(tourId);
@@ -590,6 +603,9 @@ export class ToursService {
     // AFTER commit: background-route für USER-Order (kein TSP).
     setImmediate(() => {
       void this.safeRouteOnlyFv(tourId);
+    });
+    setImmediate(() => {
+      void this.safeRecomputeFvSchedule(tourId);
     });
 
     return this.findOne(tourId);
@@ -960,7 +976,14 @@ export class ToursService {
       where,
       orderBy: [{ loading_date: 'asc' }, { created_at: 'asc' }],
       include: {
-        customers: { select: { id: true, customer_number: true, name: true } },
+        customers: {
+          select: {
+            id: true,
+            customer_number: true,
+            name: true,
+            priority_tier: true,
+          },
+        },
         relation: {
           select: {
             id: true,
@@ -1172,6 +1195,9 @@ export class ToursService {
     setImmediate(() => {
       void this.safeOptimizeFvTour(tourId);
     });
+    setImmediate(() => {
+      void this.safeRecomputeFvSchedule(tourId);
+    });
 
     return { ok: true, added: adds.length, removed: removes.length };
   }
@@ -1195,6 +1221,97 @@ export class ToursService {
         `routeOnlyForFvTour(${tourId}) failed: ${err?.message ?? err}`,
       );
     }
+  }
+
+  /** W-2.1: recompute planned_arrival_fv/departure + risk pro Stop. */
+  private async safeRecomputeFvSchedule(tourId: string) {
+    try {
+      await this.recomputeFvSchedule(tourId);
+    } catch (err: any) {
+      this.logger.warn(
+        `recomputeFvSchedule(${tourId}) failed: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  async recomputeFvSchedule(tourId: string) {
+    const tour = await this.prisma.tours.findUnique({
+      where: { id: tourId },
+      select: {
+        id: true,
+        tour_date: true,
+        departure_time: true,
+        hub_start_address: { select: { lat: true, lng: true } },
+        shipments: {
+          where: { deleted_at: null },
+          orderBy: [{ tour_position: 'asc' }, { created_at: 'asc' }],
+          select: {
+            id: true,
+            tour_position: true,
+            loading_time_from: true,
+            loading_time_to: true,
+            delivery_time_from: true,
+            delivery_time_to: true,
+            addresses_shipments_delivery_address_idToaddresses: {
+              select: { lat: true, lng: true },
+            },
+          },
+        },
+      },
+    });
+    if (!tour || tour.shipments.length === 0) return null;
+
+    const startCoord =
+      tour.hub_start_address?.lat != null && tour.hub_start_address?.lng != null
+        ? {
+            lat: Number(tour.hub_start_address.lat),
+            lng: Number(tour.hub_start_address.lng),
+          }
+        : null;
+
+    const sched = computeFvSchedule({
+      tourDate: tour.tour_date,
+      departureTime: tour.departure_time,
+      startCoord,
+      shipments: tour.shipments.map((s) => ({
+        id: s.id,
+        tour_position: s.tour_position,
+        loading_time_from: s.loading_time_from,
+        loading_time_to: s.loading_time_to,
+        delivery_time_from: s.delivery_time_from,
+        delivery_time_to: s.delivery_time_to,
+        delivery_address: s.addresses_shipments_delivery_address_idToaddresses
+          ? {
+              lat:
+                s.addresses_shipments_delivery_address_idToaddresses.lat != null
+                  ? Number(
+                      s.addresses_shipments_delivery_address_idToaddresses.lat,
+                    )
+                  : null,
+              lng:
+                s.addresses_shipments_delivery_address_idToaddresses.lng != null
+                  ? Number(
+                      s.addresses_shipments_delivery_address_idToaddresses.lng,
+                    )
+                  : null,
+            }
+          : null,
+      })),
+    });
+    await this.prisma.$transaction(
+      sched.map((s) =>
+        this.prisma.shipments.update({
+          where: { id: s.shipment_id },
+          data: {
+            planned_arrival_fv: s.planned_arrival,
+            planned_departure_fv: s.planned_departure,
+            risk_score_fv: s.risk_score,
+            risk_severity_fv: s.risk_severity,
+          },
+        }),
+      ),
+    );
+    return sched.length;
   }
 
   /**

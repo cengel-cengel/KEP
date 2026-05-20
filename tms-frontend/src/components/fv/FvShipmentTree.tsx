@@ -26,7 +26,12 @@ export interface FvTreeShipment extends FvHierarchyShipment {
   id: string;
   shipment_number?: string | null;
   ldm?: string | number | null;
-  customer?: { id: string; name: string } | null;
+  customer?: {
+    id: string;
+    name: string;
+    /** M-1: Customer-Tier wird in Priority-Score gewichtet. */
+    priority_tier?: 'VIP' | 'A' | 'B' | 'C' | string | null;
+  } | null;
   loading_address?: TreeAddress | null;
   delivery_address?: TreeAddress | null;
   relation?: { id: string; code: string; name?: string | null } | null;
@@ -131,12 +136,23 @@ export default function FvShipmentTree({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const { selectShipment } = usePanel();
 
-  // T-3.3: Priority-Scores einmal pro Shipment cachen
+  // T-3.3 + M-1: Priority-Scores einmal pro Shipment cachen.
+  // customer.priority_tier muss zusätzlich aus FvTreeShipment.customer
+  // gemapped werden — PriorityInput erwartet flach customer_priority_tier.
   const scoreById = useMemo(() => {
     const now = new Date();
     const m = new Map<string, number>();
     for (const s of shipments) {
-      m.set(s.id, computePriorityScore(s as any, now).score);
+      m.set(
+        s.id,
+        computePriorityScore(
+          {
+            ...(s as any),
+            customer_priority_tier: s.customer?.priority_tier ?? null,
+          },
+          now,
+        ).score,
+      );
     }
     return m;
   }, [shipments]);

@@ -18,7 +18,12 @@ interface ShipmentDetail {
   ldm?: string | number | null;
   loading_date?: string | null;
   delivery_date?: string | null;
-  customers?: { id: string; name: string } | null;
+  /** M-1: priority_tier wird inline via Customer-Section editierbar. */
+  customers?: {
+    id: string;
+    name: string;
+    priority_tier?: 'VIP' | 'A' | 'B' | 'C' | string | null;
+  } | null;
   addresses_shipments_loading_address_idToaddresses?: {
     name?: string | null;
     zip?: string | null;
@@ -133,6 +138,13 @@ export default function ShipmentDetailsTab({ shipmentId }: { shipmentId: string 
             label="Kunden-Ref"
           />
         </Row>
+        {s.customers?.id && (
+          <CustomerTierRow
+            customerId={s.customers.id}
+            tier={s.customers.priority_tier ?? null}
+            shipmentId={shipmentId}
+          />
+        )}
       </section>
 
       <section>
@@ -228,6 +240,56 @@ export default function ShipmentDetailsTab({ shipmentId }: { shipmentId: string 
         />
       )}
     </div>
+  );
+}
+
+const TIER_OPTIONS = [
+  { value: '', label: '— neutral —' },
+  { value: 'VIP', label: 'VIP' },
+  { value: 'A', label: 'A' },
+  { value: 'B', label: 'B' },
+  { value: 'C', label: 'C' },
+];
+
+/**
+ * M-1: Customer-Tier-Inline-Edit. Schreibt auf PATCH /customers/:id,
+ * invalidiert shipments-detail + eligible-trees + best-match (Score-Refresh).
+ */
+function CustomerTierRow({
+  customerId,
+  tier,
+  shipmentId,
+}: {
+  customerId: string;
+  tier: string | null;
+  shipmentId: string;
+}) {
+  const qc = useQueryClient();
+  const tierMut = useMutation({
+    mutationFn: async (next: string) => {
+      const body: Record<string, unknown> = {
+        priorityTier: next === '' ? null : next,
+      };
+      const { data } = await api.patch(`/customers/${customerId}`, body);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['shipments', 'detail', shipmentId] });
+      qc.invalidateQueries({ queryKey: ['fv-eligible'] });
+      qc.invalidateQueries({ queryKey: ['nv-elig'] });
+      qc.invalidateQueries({ queryKey: ['shipment-best-match'] });
+    },
+  });
+  return (
+    <Row label="Tier">
+      <InlineEdit
+        value={tier ?? ''}
+        options={TIER_OPTIONS}
+        onSave={(v) => tierMut.mutateAsync(v)}
+        type="select"
+        label="Customer-Tier"
+      />
+    </Row>
   );
 }
 

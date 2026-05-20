@@ -1,13 +1,11 @@
 /**
- * T-3.3 Priority-Score für Sendungs-Queue-Sortierung.
+ * T-3.3 + M-1 Priority-Score für Sendungs-Queue-Sortierung.
  *
  * Faktoren (gewichtet, total 100%):
- *   SLA-Urgenz  50%  — Stunden bis loading_date
- *   Marge       30%  — cm_percent (capped 0..100)
- *   Risk-Pre    20%  — hazmat + zeitfenster + 1-day-window
- *
- * Customer-Tier (geplant 20%) ist BACKLOG bis Migration 40
- * (customers.priority_tier).
+ *   SLA-Urgenz    40%  — Stunden bis loading_date
+ *   Marge         25%  — cm_percent (capped 0..100)
+ *   Risk-Pre      15%  — hazmat + zeitfenster + 1-day-window
+ *   Customer-Tier 20%  — VIP/A/B/C → 100/70/40/20 (null=50)
  *
  * Output: 0..100, höher = dringender. Explainable via
  * factors[] für Debug + Tooltip.
@@ -20,6 +18,8 @@ export interface PriorityInput {
   delivery_date?: string | null;
   cm_percent?: number | string | null;
   is_hazmat?: boolean | null;
+  /** M-1: customer.priority_tier. null/undefined = neutral (50). */
+  customer_priority_tier?: 'VIP' | 'A' | 'B' | 'C' | string | null;
 }
 
 export interface PriorityFactor {
@@ -75,9 +75,19 @@ function riskPreScore(s: PriorityInput): number {
   return Math.min(100, score);
 }
 
-const W_SLA = 0.5;
-const W_MARGE = 0.3;
-const W_RISK = 0.2;
+function tierScore(s: PriorityInput): number {
+  const t = s.customer_priority_tier;
+  if (t === 'VIP') return 100;
+  if (t === 'A') return 70;
+  if (t === 'B') return 40;
+  if (t === 'C') return 20;
+  return 50; // neutral default für unklassifizierte Kunden
+}
+
+const W_SLA = 0.4;
+const W_MARGE = 0.25;
+const W_RISK = 0.15;
+const W_TIER = 0.2;
 
 export function computePriorityScore(
   s: PriorityInput,
@@ -86,13 +96,17 @@ export function computePriorityScore(
   const sla = slaUrgencyScore(s, now);
   const marge = margeScore(s);
   const risk = riskPreScore(s);
-  const score = Math.round(sla * W_SLA + marge * W_MARGE + risk * W_RISK);
+  const tier = tierScore(s);
+  const score = Math.round(
+    sla * W_SLA + marge * W_MARGE + risk * W_RISK + tier * W_TIER,
+  );
   return {
     score,
     factors: [
       { name: 'SLA-Urgenz', value: sla, weight: W_SLA },
       { name: 'Marge', value: marge, weight: W_MARGE },
       { name: 'Risk-Pre', value: risk, weight: W_RISK },
+      { name: 'Customer-Tier', value: tier, weight: W_TIER },
     ],
   };
 }

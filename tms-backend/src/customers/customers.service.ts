@@ -60,6 +60,7 @@ export class CustomersService {
         edi_partner_id: dto.ediPartnerId,
         min_contribution_pct: dto.minContributionPct,
         notes: dto.notes,
+        priority_tier: dto.priorityTier,
         created_by: userId,
       },
     });
@@ -82,6 +83,7 @@ export class CustomersService {
         edi_partner_id: dto.ediPartnerId,
         min_contribution_pct: dto.minContributionPct,
         notes: dto.notes,
+        priority_tier: dto.priorityTier,
       },
     });
   }

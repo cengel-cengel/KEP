@@ -112,6 +112,7 @@ model customers {
   min_contribution_pct  Decimal?           @default(10.00) @db.Decimal(5, 2)
   notes                 String?
   is_active             Boolean            @default(true)
+  priority_tier         String?            @db.VarChar(4)
   created_by            String?            @db.Uuid
   created_at            DateTime           @default(now()) @db.Timestamptz(6)
   updated_at            DateTime           @default(now()) @db.Timestamptz(6)
@@ -269,6 +270,10 @@ model shipments {
   has_damage_report                                  Boolean?                   @default(false)
   has_return                                         Boolean?                   @default(false)
   return_status                                      String?                    @db.VarChar(20)
+  planned_arrival_fv                                 DateTime?                  @db.Timestamptz(6)
+  planned_departure_fv                               DateTime?                  @db.Timestamptz(6)
+  risk_score_fv                                      Int?
+  risk_severity_fv                                   String?                    @db.VarChar(20)
   advisories                                         advisories[]
   claims                                             claims[]
   damage_reports                                     damage_reports[]

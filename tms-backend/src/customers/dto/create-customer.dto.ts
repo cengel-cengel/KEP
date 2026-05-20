@@ -1,5 +1,6 @@
 import {
   IsEmail,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -59,4 +60,9 @@ export class CreateCustomerDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  /** M-1: Priority-Tier für Customer-Score-Faktor. */
+  @IsOptional()
+  @IsIn(['VIP', 'A', 'B', 'C'])
+  priorityTier?: 'VIP' | 'A' | 'B' | 'C';
 }

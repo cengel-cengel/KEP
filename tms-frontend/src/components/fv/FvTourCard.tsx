@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Trash2, Warehouse, MapPin, ExternalLink } from 'lucide-react';
+import { Box, Trash2, Warehouse, MapPin, ExternalLink } from 'lucide-react';
 import { api } from '../../lib/api';
 import {
   prefetchFvTourDetail,
@@ -118,6 +118,21 @@ export default function FvTourCard({
 
   const km = tour?.geplante_km != null ? Number(tour.geplante_km) : null;
 
+  // W-3.4: FV-Beladeplan in neuem Fenster (mirror P0-8 NV-Pattern).
+  const loadingPopupRef = useRef<Window | null>(null);
+  const openLoadingPopup = () => {
+    if (loadingPopupRef.current && !loadingPopupRef.current.closed) {
+      loadingPopupRef.current.focus();
+      return;
+    }
+    const w = window.open(
+      `/loading/${tourId}`,
+      `fv-loading-plan-${tourId}`,
+      'width=1200,height=900,noopener=no',
+    );
+    if (w) loadingPopupRef.current = w;
+  };
+
   return (
     <div
       onDragOver={handleDragOver}
@@ -162,6 +177,14 @@ export default function FvTourCard({
           >
             <ExternalLink size={11} />
             Karte
+          </button>
+          <button
+            onClick={openLoadingPopup}
+            className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
+            title="Beladeplan in neuem Fenster"
+          >
+            <Box size={11} />
+            Beladeplan
           </button>
         </div>
         <div className="mt-1 flex items-center gap-1 text-[11px] text-gray-600 flex-wrap">

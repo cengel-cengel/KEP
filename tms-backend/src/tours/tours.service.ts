@@ -20,6 +20,10 @@ import {
   computeEffectiveLdm,
   isShipmentFullyStackable,
 } from '../lib/stackable.lib';
+import {
+  findBestToursForShipment,
+  type MatchTourCandidate,
+} from '../lib/tourMatcher.lib';
 
 /**
  * Transport-Types die in /tours/eligible-shipments-fv landen.
@@ -685,6 +689,171 @@ export class ToursService {
     return ids;
   }
 
+
+  /**
+   * T-3.3 Best-Tour-Match.
+   * Sucht Top-3 Touren (FV + NV) für eine Sendung via
+   * Haversine-Geo + Capacity + Time + Cluster.
+   */
+  async findBestMatchForShipment(shipmentId: string) {
+    if (!shipmentId) return [];
+    const ship = await this.prisma.shipments.findUnique({
+      where: { id: shipmentId },
+      select: {
+        id: true,
+        ldm: true,
+        weight_kg: true,
+        loading_date: true,
+        customer_id: true,
+        addresses_shipments_loading_address_idToaddresses: {
+          select: { lat: true, lng: true },
+        },
+      },
+    });
+    if (!ship) return [];
+    const loading_lat =
+      ship.addresses_shipments_loading_address_idToaddresses?.lat != null
+        ? Number(ship.addresses_shipments_loading_address_idToaddresses.lat)
+        : null;
+    const loading_lng =
+      ship.addresses_shipments_loading_address_idToaddresses?.lng != null
+        ? Number(ship.addresses_shipments_loading_address_idToaddresses.lng)
+        : null;
+
+    // FV-Touren-Pool (planned/dispatched)
+    const fvTours = await this.prisma.tours.findMany({
+      where: { status: { in: ['planned', 'dispatched'] } },
+      select: {
+        id: true,
+        tour_number: true,
+        tour_date: true,
+        status: true,
+        max_ldm: true,
+        max_weight_kg: true,
+        total_ldm: true,
+        total_weight_kg: true,
+        shipments: {
+          where: { deleted_at: null },
+          orderBy: { tour_position: 'desc' },
+          take: 1,
+          select: {
+            customer_id: true,
+            addresses_shipments_loading_address_idToaddresses: {
+              select: { lat: true, lng: true },
+            },
+          },
+        },
+      },
+      take: 100,
+    });
+
+    // NV-Touren-Pool (PLANNING/IN_PROGRESS)
+    const nvTours = await this.prisma.nv_touren.findMany({
+      where: { status: { in: ['PLANNING', 'IN_PROGRESS'] } },
+      select: {
+        id: true,
+        datum: true,
+        status: true,
+        subunternehmer: {
+          select: { max_ldm: true, max_gewicht_kg: true },
+        },
+        stops: {
+          orderBy: { position: 'desc' },
+          take: 1,
+          select: {
+            shipment: {
+              select: {
+                customer_id: true,
+                ldm: true,
+                weight_kg: true,
+                addresses_shipments_loading_address_idToaddresses: {
+                  select: { lat: true, lng: true },
+                },
+              },
+            },
+          },
+        },
+      },
+      take: 100,
+    });
+
+    const candidates: MatchTourCandidate[] = [
+      ...fvTours.map((t) => {
+        const last = t.shipments[0];
+        return {
+          id: t.id,
+          mode: 'fv' as const,
+          tour_number: t.tour_number,
+          datum: t.tour_date,
+          status: t.status,
+          max_ldm: t.max_ldm ? Number(t.max_ldm) : null,
+          max_weight_kg: t.max_weight_kg ? Number(t.max_weight_kg) : null,
+          used_ldm: t.total_ldm ? Number(t.total_ldm) : 0,
+          used_weight_kg: t.total_weight_kg ? Number(t.total_weight_kg) : 0,
+          last_stop_lat:
+            last?.addresses_shipments_loading_address_idToaddresses?.lat != null
+              ? Number(
+                  last.addresses_shipments_loading_address_idToaddresses.lat,
+                )
+              : null,
+          last_stop_lng:
+            last?.addresses_shipments_loading_address_idToaddresses?.lng != null
+              ? Number(
+                  last.addresses_shipments_loading_address_idToaddresses.lng,
+                )
+              : null,
+          customer_ids: t.shipments
+            .map((s) => s.customer_id)
+            .filter((id): id is string => !!id),
+        };
+      }),
+      ...nvTours.map((t) => {
+        const last = t.stops[0]?.shipment;
+        return {
+          id: t.id,
+          mode: 'nv' as const,
+          tour_number: null,
+          datum: t.datum,
+          status: t.status,
+          max_ldm: t.subunternehmer?.max_ldm
+            ? Number(t.subunternehmer.max_ldm)
+            : null,
+          max_weight_kg: t.subunternehmer?.max_gewicht_kg
+            ? Number(t.subunternehmer.max_gewicht_kg)
+            : null,
+          used_ldm: 0, // NV: nicht persistiert, würde aggregate kosten
+          used_weight_kg: 0,
+          last_stop_lat:
+            last?.addresses_shipments_loading_address_idToaddresses?.lat != null
+              ? Number(
+                  last.addresses_shipments_loading_address_idToaddresses.lat,
+                )
+              : null,
+          last_stop_lng:
+            last?.addresses_shipments_loading_address_idToaddresses?.lng != null
+              ? Number(
+                  last.addresses_shipments_loading_address_idToaddresses.lng,
+                )
+              : null,
+          customer_ids: last?.customer_id ? [last.customer_id] : [],
+        };
+      }),
+    ];
+
+    return findBestToursForShipment(
+      {
+        id: ship.id,
+        ldm: ship.ldm ? Number(ship.ldm) : null,
+        weight_kg: ship.weight_kg ? Number(ship.weight_kg) : null,
+        loading_date: ship.loading_date,
+        customer_id: ship.customer_id,
+        loading_lat,
+        loading_lng,
+      },
+      candidates,
+      3,
+    );
+  }
 
   async eligibleShipmentsFv(filter: {
     datum?: string;

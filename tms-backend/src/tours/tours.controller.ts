@@ -54,6 +54,12 @@ export class ToursController {
     return this.toursService.eligibleShipmentsFv({ datum, search, tourId });
   }
 
+  // T-3.3 Best-Tour-Match (FV + NV pool)
+  @Get('best-match')
+  async bestMatch(@Query('shipment_id') shipmentId: string) {
+    return this.toursService.findBestMatchForShipment(shipmentId);
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.toursService.findOne(id);

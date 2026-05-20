@@ -8,6 +8,10 @@ import {
   type FvHierarchyShipment,
 } from '../../hooks/useFvHierarchy';
 import { usePanel } from '../../state/panel';
+import {
+  computePriorityScore,
+  priorityBadgeClass,
+} from '../../lib/priorityScore';
 
 const STORAGE_KEY = 'fv.expanded.tree';
 
@@ -26,6 +30,36 @@ export interface FvTreeShipment extends FvHierarchyShipment {
   loading_address?: TreeAddress | null;
   delivery_address?: TreeAddress | null;
   relation?: { id: string; code: string; name?: string | null } | null;
+  // T-3.3: Priority-Score-Inputs
+  loading_date?: string | null;
+  loading_time_from?: string | null;
+  loading_time_to?: string | null;
+  delivery_date?: string | null;
+  cm_percent?: number | string | null;
+  is_hazmat?: boolean | null;
+}
+
+export type FvTreeSortMode = 'auto' | 'land' | 'datum';
+
+const SORT_KEY = 'fv.tree.sort';
+
+function loadSortMode(): FvTreeSortMode {
+  if (typeof window === 'undefined') return 'auto';
+  try {
+    const raw = localStorage.getItem(SORT_KEY);
+    if (raw === 'auto' || raw === 'land' || raw === 'datum') return raw;
+  } catch {
+    /* noop */
+  }
+  return 'auto';
+}
+
+function saveSortMode(m: FvTreeSortMode) {
+  try {
+    localStorage.setItem(SORT_KEY, m);
+  } catch {
+    /* noop */
+  }
 }
 
 type FlatRow =
@@ -93,8 +127,45 @@ export default function FvShipmentTree({
 }) {
   const tree = useFvHierarchy(shipments);
   const [expanded, setExpanded] = useState<Set<string>>(loadExpanded);
+  const [sortMode, setSortMode] = useState<FvTreeSortMode>(loadSortMode);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const { selectShipment } = usePanel();
+
+  // T-3.3: Priority-Scores einmal pro Shipment cachen
+  const scoreById = useMemo(() => {
+    const now = new Date();
+    const m = new Map<string, number>();
+    for (const s of shipments) {
+      m.set(s.id, computePriorityScore(s as any, now).score);
+    }
+    return m;
+  }, [shipments]);
+
+  // Sort-Comparator je nach Modus
+  const sortShipments = useCallback(
+    (arr: FvTreeShipment[]): FvTreeShipment[] => {
+      if (sortMode === 'auto') {
+        return [...arr].sort(
+          (a, b) =>
+            (scoreById.get(b.id) ?? 0) - (scoreById.get(a.id) ?? 0),
+        );
+      }
+      if (sortMode === 'datum') {
+        return [...arr].sort((a, b) => {
+          const ad = a.loading_date ? new Date(a.loading_date).getTime() : Number.MAX_SAFE_INTEGER;
+          const bd = b.loading_date ? new Date(b.loading_date).getTime() : Number.MAX_SAFE_INTEGER;
+          return ad - bd;
+        });
+      }
+      // 'land': bereits durch useFvHierarchy strukturiert
+      return arr;
+    },
+    [sortMode, scoreById],
+  );
+
+  useEffect(() => {
+    saveSortMode(sortMode);
+  }, [sortMode]);
 
   // Default: erste Loading-Country expanded falls noch nichts persistiert.
   useEffect(() => {
@@ -151,7 +222,8 @@ export default function FvShipmentTree({
           shipmentIds: dc.shipments.map((s) => s.id),
         });
         if (!rExp) continue;
-        for (const s of dc.shipments) {
+        // T-3.3: sort intra-relation nach gewähltem Modus
+        for (const s of sortShipments(dc.shipments as FvTreeShipment[])) {
           out.push({
             kind: 'shipment',
             key: `S:${s.id}`,
@@ -161,7 +233,7 @@ export default function FvShipmentTree({
       }
     }
     return out;
-  }, [tree, expanded]);
+  }, [tree, expanded, sortShipments]);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -184,9 +256,34 @@ export default function FvShipmentTree({
   }
 
   return (
+    <div className="h-full flex flex-col text-xs">
+      {/* T-3.3 Sort-Toggle */}
+      <div className="flex items-center gap-1 px-2 py-1 border-b bg-gray-50 text-[10px]">
+        <span className="text-gray-500">Sort:</span>
+        {(['auto', 'land', 'datum'] as const).map((m) => (
+          <button
+            key={m}
+            onClick={() => setSortMode(m)}
+            className={`px-1.5 py-0.5 rounded ${
+              sortMode === m
+                ? 'bg-blue-600 text-white'
+                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+            }`}
+            title={
+              m === 'auto'
+                ? 'Priority-Score (SLA + Marge + Risk)'
+                : m === 'land'
+                  ? 'Loading-Country alphabetisch'
+                  : 'Loading-Date aufsteigend'
+            }
+          >
+            {m === 'auto' ? 'Auto' : m === 'land' ? 'Land' : 'Datum'}
+          </button>
+        ))}
+      </div>
     <div
       ref={scrollRef}
-      className="h-full overflow-y-auto text-xs"
+      className="flex-1 overflow-y-auto"
     >
       <div
         style={{
@@ -269,6 +366,18 @@ export default function FvShipmentTree({
                         {r.s.relation.code}
                       </span>
                     )}
+                    {(() => {
+                      const sc = scoreById.get(r.s.id);
+                      if (sc == null) return null;
+                      return (
+                        <span
+                          className={`text-[10px] px-1 py-0.5 rounded font-mono ${priorityBadgeClass(sc)}`}
+                          title="Priority-Score (SLA + Marge + Risk)"
+                        >
+                          P{sc}
+                        </span>
+                      );
+                    })()}
                     <span className="ml-auto text-gray-500">
                       {r.s.ldm != null
                         ? `${Number(r.s.ldm).toFixed(1)} ldm`
@@ -288,6 +397,7 @@ export default function FvShipmentTree({
           );
         })}
       </div>
+    </div>
     </div>
   );
 }

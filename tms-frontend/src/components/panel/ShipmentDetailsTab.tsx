@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pencil } from 'lucide-react';
+import { Pencil, Sparkles } from 'lucide-react';
 import { api } from '../../lib/api';
 import InlineEdit from './InlineEdit';
 import ShipmentEditModal from '../ShipmentEditModal';
@@ -201,6 +201,8 @@ export default function ShipmentDetailsTab({ shipmentId }: { shipmentId: string 
         </Row>
       </section>
 
+      <BestTourSection shipmentId={shipmentId} />
+
       <div className="pt-2 border-t">
         <button
           onClick={() => setShowEditModal(true)}
@@ -226,5 +228,97 @@ export default function ShipmentDetailsTab({ shipmentId }: { shipmentId: string 
         />
       )}
     </div>
+  );
+}
+
+interface BestTourMatch {
+  tour_id: string;
+  mode: 'nv' | 'fv';
+  tour_number?: string | null;
+  score: number;
+  reason: string;
+}
+
+function BestTourSection({ shipmentId }: { shipmentId: string }) {
+  const qc = useQueryClient();
+  const matchQ = useQuery<BestTourMatch[]>({
+    queryKey: ['shipment-best-match', shipmentId],
+    queryFn: async () =>
+      (
+        await api.get<BestTourMatch[]>('/tours/best-match', {
+          params: { shipment_id: shipmentId },
+        })
+      ).data,
+    staleTime: 30_000,
+  });
+
+  const assignMut = useMutation({
+    mutationFn: async (vars: { tour_id: string; mode: 'nv' | 'fv' }) => {
+      const url =
+        vars.mode === 'fv'
+          ? `/tours/${vars.tour_id}/batch-stops`
+          : `/nv-touren/${vars.tour_id}/batch-stops`;
+      await api.post(url, { adds: [shipmentId], removes: [] });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fv-touren'] });
+      qc.invalidateQueries({ queryKey: ['nv-touren'] });
+      qc.invalidateQueries({ queryKey: ['fv-eligible'] });
+      qc.invalidateQueries({ queryKey: ['nv-elig'] });
+      qc.invalidateQueries({ queryKey: ['shipment-best-match', shipmentId] });
+    },
+  });
+
+  if (matchQ.isLoading) return null;
+  const matches = matchQ.data ?? [];
+  if (matches.length === 0) return null;
+
+  return (
+    <section>
+      <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1 flex items-center gap-1">
+        <Sparkles size={11} />
+        Empfehlungen
+      </h3>
+      <div className="space-y-1.5">
+        {matches.map((m) => {
+          const col =
+            m.score >= 70
+              ? 'border-emerald-300 bg-emerald-50'
+              : m.score >= 40
+                ? 'border-amber-300 bg-amber-50'
+                : 'border-gray-300 bg-gray-50';
+          return (
+            <div
+              key={m.tour_id}
+              className={`border ${col} rounded px-2 py-1.5 text-xs`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-mono uppercase text-gray-500">
+                  {m.mode}
+                </span>
+                <span className="font-mono font-semibold">
+                  {m.tour_number ?? m.tour_id.slice(0, 8)}
+                </span>
+                <span className="ml-auto text-[10px] font-mono text-gray-700">
+                  Score {m.score}
+                </span>
+              </div>
+              <div className="text-[10px] text-gray-600 mt-0.5">
+                {m.reason}
+              </div>
+              <button
+                onClick={() =>
+                  assignMut.mutate({ tour_id: m.tour_id, mode: m.mode })
+                }
+                disabled={assignMut.isPending}
+                className="mt-1 px-2 py-0.5 text-[10px] bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              >
+                Zuordnen
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }

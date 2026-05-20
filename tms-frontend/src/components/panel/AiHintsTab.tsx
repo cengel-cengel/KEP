@@ -86,6 +86,7 @@ export default function AiHintsTab() {
   const [moveOpen, setMoveOpen] = useState<{
     stopId: string;
     label: string;
+    shipmentId?: string;
   } | null>(null);
 
   const tourQ = useQuery<NvTourRiskDetail | null>({
@@ -239,11 +240,16 @@ export default function AiHintsTab() {
                             a.type,
                             a.stop_id,
                             'In andere Tour',
-                            () =>
-                              setMoveOpen({
+                            () => {
+                              const found = t.stops?.find(
+                                (s) => s.id === a.stop_id,
+                              );
+                              return setMoveOpen({
                                 stopId: a.stop_id!,
                                 label,
-                              }),
+                                shipmentId: (found?.shipment as any)?.id,
+                              });
+                            },
                           );
                         }
                         return null;
@@ -331,6 +337,7 @@ export default function AiHintsTab() {
                         setMoveOpen({
                           stopId: s.id,
                           label: s.shipment?.shipment_number ?? s.id.slice(0, 6),
+                          shipmentId: (s.shipment as any)?.id,
                         }),
                     )}
                   </div>
@@ -365,6 +372,7 @@ export default function AiHintsTab() {
           fromTourId={t.id}
           stopId={moveOpen.stopId}
           stopLabel={moveOpen.label}
+          shipmentId={moveOpen.shipmentId}
           onClose={() => setMoveOpen(null)}
         />
       )}

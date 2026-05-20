@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X } from 'lucide-react';
+import { Sparkles, X } from 'lucide-react';
 import { api } from '../../../lib/api';
 
 interface NvTourOption {
@@ -9,19 +9,49 @@ interface NvTourOption {
   datum?: string;
 }
 
+interface BestMatch {
+  tour_id: string;
+  mode: 'nv' | 'fv';
+  score: number;
+  reason: string;
+}
+
 export default function MoveStopDialog({
   fromTourId,
   stopId,
   stopLabel,
+  shipmentId,
   onClose,
 }: {
   fromTourId: string;
   stopId: string;
   stopLabel?: string;
+  /** T-3.3: wenn vorhanden, best-match-Vorschlag pre-fillen. */
+  shipmentId?: string;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
   const [targetId, setTargetId] = useState<string>('');
+
+  const matchQ = useQuery<BestMatch[]>({
+    queryKey: ['shipment-best-match', shipmentId],
+    queryFn: async () =>
+      (
+        await api.get<BestMatch[]>('/tours/best-match', {
+          params: { shipment_id: shipmentId },
+        })
+      ).data,
+    enabled: !!shipmentId,
+    staleTime: 30_000,
+  });
+
+  // Best-Match-Vorschlag: erster NV-Match der nicht source-Tour ist
+  const suggested = (matchQ.data ?? []).find(
+    (m) => m.mode === 'nv' && m.tour_id !== fromTourId,
+  );
+  useEffect(() => {
+    if (suggested && !targetId) setTargetId(suggested.tour_id);
+  }, [suggested, targetId]);
 
   const toursQ = useQuery<NvTourOption[]>({
     queryKey: ['nv-touren', 'all-for-move'],
@@ -66,6 +96,12 @@ export default function MoveStopDialog({
               Stop: <span className="font-mono">{stopLabel}</span>
             </div>
           )}
+          {suggested && (
+            <div className="text-[10px] text-emerald-700 inline-flex items-center gap-1">
+              <Sparkles size={10} />
+              Empfehlung: Score {suggested.score} · {suggested.reason}
+            </div>
+          )}
           <label className="block">
             <span className="text-gray-600">Ziel-Tour</span>
             <select
@@ -78,6 +114,7 @@ export default function MoveStopDialog({
                 <option key={t.id} value={t.id}>
                   {t.nv_stamm_tour?.code ?? t.id.slice(0, 8)}
                   {t.datum ? ` · ${t.datum.slice(0, 10)}` : ''}
+                  {suggested && t.id === suggested.tour_id ? ' ⭐' : ''}
                 </option>
               ))}
             </select>

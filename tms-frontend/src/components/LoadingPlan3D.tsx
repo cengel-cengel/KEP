@@ -90,6 +90,20 @@ interface Props {
     screenX: number,
     screenY: number,
   ) => void;
+  /** B-2.1: Insert-Mode aktiv-Flag. Wenn true → onInsertAt statt
+   *  onPositionChange feuert (Caller kümmert sich um Cascade-Shift
+   *  + Re-Pack der Downstream-Items). */
+  insertMode?: boolean;
+  /** B-2.1: Insert-Mode Drop-Callback.
+   *  draggedId = die ID des gedraggten Pakets;
+   *  targetId  = das nächst-liegende Paket bei Drop (oder null
+   *              wenn drop ins Leere);
+   *  dropPosY  = posY-Drop-Coord (cm, lengthCm-Achse). */
+  onInsertAt?: (
+    draggedId: string,
+    targetId: string | null,
+    dropPosY: number,
+  ) => void;
 }
 
 const AXLE_COLOR: Record<AxleStatus, string> = {
@@ -105,6 +119,8 @@ export default function LoadingPlan3D({
   securementStraps = 0,
   onPositionChange,
   onPackageContextMenu,
+  insertMode = false,
+  onInsertAt,
 }: Props) {
   const trailer = useMemo(() => {
     const L = vehicle.lengthCm / 100;
@@ -912,7 +928,12 @@ export default function LoadingPlan3D({
                       });
                       return applyGravity(m);
                     });
-                    if (onPositionChange) {
+                    // B-2.1: Insert-Mode → Caller bekommt Cascade-
+                    // Hook statt direkter Position-Persist.
+                    if (insertMode && onInsertAt) {
+                      const targetId = snap.belowId ?? null;
+                      onInsertAt(pkg.id, targetId, snap.posY);
+                    } else if (onPositionChange) {
                       onPositionChange(
                         pkg.id,
                         snap.posX,

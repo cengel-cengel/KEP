@@ -14,6 +14,10 @@ import { computeStackingLdmMetrics } from '../lib/loadingLdm';
 import { canStackOn } from '../lib/stackingRules';
 import { useInsertMode } from '../hooks/useInsertMode';
 import InsertModeBanner from '../components/loadingplan/InsertModeBanner';
+import {
+  computeInsertedOrder,
+  findInsertTarget,
+} from '../lib/insertCascade';
 
 /** Sattelzug-Standard, falls API keine Werte liefert */
 const DEFAULT_TRAILER_CM = { lengthCm: 1360, widthCm: 240, heightCm: 270 };
@@ -789,6 +793,86 @@ export default function LoadingPlanPage() {
     resetPositionsMutation.mutate();
   }
 
+  // B-2.1 Insert-Mode Drop-Cascade-Handler.
+  // Wenn user in insert-Mode auf besetzte Position dropt:
+  //   - target = nächstes Paket nach posY-Center (findInsertTarget)
+  //   - Reorder packages-Array: dragged VOR target
+  //   - placePackages mit neuer Order → alle Positionen re-computed
+  //   - PATCH alle geänderten Items + insertMode off + Toast
+  const handleInsertAt = (
+    draggedId: string,
+    targetId: string | null,
+    dropPosY: number,
+  ) => {
+    if (!draggedId || draggedId.includes(':pkg:')) {
+      showToast('Synth-Items können nicht ge-insert-werden.', 'err');
+      insertMode.cancel();
+      return;
+    }
+    // Falls LP3D keinen target erkannt hat, selbst suchen.
+    const t =
+      targetId ?? findInsertTarget(placedPackages, dropPosY, draggedId);
+    if (!t || t === draggedId) {
+      // Kein sinnvolles Ziel → Cascade-No-op, normaler Drop-Pfad.
+      handlePackagePosition(draggedId, 0, dropPosY, 0);
+      insertMode.cancel();
+      return;
+    }
+    // packages-Reihenfolge in Plan3DPackage[] reordern und re-placen.
+    const reordered = computeInsertedOrder(
+      placedPackages.map((p) => ({ id: p.id })),
+      draggedId,
+      t,
+    ).map((x) => placedPackages.find((p) => p.id === x.id)!).filter(Boolean);
+    const repacked = placePackages(
+      reordered.map((p) => ({
+        id: p.id,
+        shipmentId: p.shipmentId,
+        shipmentNumber: p.shipmentNumber,
+        packageIndex: p.packageIndex,
+        dbItemId: p.dbItemId,
+        lengthCm: p.lengthCm,
+        widthCm: p.widthCm,
+        heightCm: p.heightCm,
+        weightKg: p.weightKg,
+        color: p.color,
+        isStackable: p.isStackable,
+        rotationDeg: p.rotationDeg,
+        stopOrder: p.stopOrder,
+        // storedPosX/Y/Z auf NULL setzen — sonst snapped placePackages
+        // direkt zur gespeicherten Position und ignoriert die neue
+        // Reihenfolge.
+        storedPosX: undefined,
+        storedPosY: undefined,
+        storedPosZ: undefined,
+      })),
+      vehicleDims.lengthCm,
+      vehicleDims.widthCm,
+      vehicleDims.heightCm,
+    );
+    // PATCH alle DB-persisted Items.
+    void (async () => {
+      try {
+        for (const pkg of repacked) {
+          if (!pkg.dbItemId) continue;
+          await api.patch(`/loading/package-item/${pkg.dbItemId}/position`, {
+            posXCm: Math.round(pkg.posX),
+            posYCm: Math.round(pkg.posY),
+            posZCm: Math.round(pkg.posZ),
+            rotationDeg: pkg.rotationDeg ?? 0,
+          });
+        }
+        await queryClient.invalidateQueries({
+          queryKey: ['loading', 'optimize', tourId],
+        });
+        showToast(`Insert ✓ — ${repacked.length} Items neu positioniert.`);
+      } catch (e) {
+        showToast('Insert-Cascade fehlgeschlagen', 'err');
+      }
+      insertMode.cancel();
+    })();
+  };
+
   const handlePackagePosition = (
     id: string,
     posXCm: number,
@@ -1153,6 +1237,8 @@ export default function LoadingPlanPage() {
                         vehicleType={selectedVehicle?.type ?? selectedVehicleType}
                         securementStraps={totalStraps}
                         onPositionChange={handlePackagePosition}
+                        insertMode={insertMode.active}
+                        onInsertAt={handleInsertAt}
                         onPackageContextMenu={(pkgId, x, y) => {
                           const pkg = placedPackages.find((p) => p.id === pkgId);
                           if (!pkg) return;

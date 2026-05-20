@@ -1,6 +1,16 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { IsIn } from 'class-validator';
 
+const INVOICE_STATUSES = [
+  'draft',
+  'sent',
+  'paid',
+  'overdue',
+  'cancelled',
+] as const;
+
 export class UpdateInvoiceStatusDto {
-  @IsIn(['draft', 'sent', 'paid', 'overdue', 'cancelled'] as any)
+  @ApiProperty({ enum: INVOICE_STATUSES })
+  @IsIn(INVOICE_STATUSES as readonly string[])
   status!: string;
 }

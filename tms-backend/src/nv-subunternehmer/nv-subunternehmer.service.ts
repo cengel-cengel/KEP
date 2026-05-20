@@ -1,11 +1,32 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateNvSubunternehmerDto } from './dto/create-nv-subunternehmer.dto';
 import { UpdateNvSubunternehmerDto } from './dto/update-nv-subunternehmer.dto';
+import { nominatimGeocode } from '../lib/nominatim.lib';
+
+function haversineKm(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const sinDLat = Math.sin(dLat / 2);
+  const sinDLng = Math.sin(dLng / 2);
+  const aH =
+    sinDLat * sinDLat +
+    Math.cos((a.lat * Math.PI) / 180) *
+      Math.cos((b.lat * Math.PI) / 180) *
+      sinDLng *
+      sinDLng;
+  const c = 2 * Math.atan2(Math.sqrt(aH), Math.sqrt(1 - aH));
+  return R * c;
+}
 
 @Injectable()
 export class NvSubunternehmerService {
@@ -169,5 +190,122 @@ export class NvSubunternehmerService {
       data: { aktiv },
     });
     return { count: result.count };
+  }
+
+  // Sprint D: Sub-Geocoding via Nominatim (Address aus business_partner).
+  async geocodeAll(): Promise<{
+    total: number;
+    candidates: number;
+    geocoded: number;
+    failed: number;
+    skipped: number;
+  }> {
+    const logger = new Logger('NvSub-Geocode');
+    const subs = await this.prisma.nv_subunternehmer.findMany({
+      where: { aktiv: true, lat: null },
+      select: {
+        id: true,
+        business_partner: {
+          select: {
+            name: true,
+            street: true,
+            zip: true,
+            city: true,
+            country_code: true,
+          },
+        },
+      },
+    });
+    const total = await this.prisma.nv_subunternehmer.count({
+      where: { aktiv: true },
+    });
+    let geocoded = 0;
+    let failed = 0;
+    let skipped = 0;
+    for (const s of subs) {
+      const bp = s.business_partner;
+      if (!bp?.street || !bp?.city) {
+        skipped++;
+        continue;
+      }
+      const query = `${bp.street}, ${bp.zip ?? ''} ${bp.city}, ${bp.country_code ?? 'DE'}`;
+      try {
+        const res = await nominatimGeocode(query);
+        if (res && Number.isFinite(res.lat) && Number.isFinite(res.lng)) {
+          await this.prisma.nv_subunternehmer.update({
+            where: { id: s.id },
+            data: {
+              lat: res.lat,
+              lng: res.lng,
+              geocoded_at: new Date(),
+            },
+          });
+          geocoded++;
+        } else {
+          failed++;
+        }
+      } catch (e: any) {
+        logger.warn(`geocode failed for ${s.id}: ${e?.message ?? e}`);
+        failed++;
+      }
+    }
+    return {
+      total,
+      candidates: subs.length,
+      geocoded,
+      failed,
+      skipped,
+    };
+  }
+
+  // Sprint D: Haversine-Radius-Search.
+  async searchByRadius(
+    lat: number,
+    lng: number,
+    radius_km: number,
+  ): Promise<
+    Array<{
+      id: string;
+      name: string;
+      distance_km: number;
+      has_adr_license: boolean;
+    }>
+  > {
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      !Number.isFinite(radius_km) ||
+      radius_km <= 0
+    ) {
+      throw new BadRequestException('lat/lng/radius_km ungültig.');
+    }
+    const subs = await this.prisma.nv_subunternehmer.findMany({
+      where: {
+        aktiv: true,
+        lat: { not: null },
+        lng: { not: null },
+      },
+      select: {
+        id: true,
+        name: true,
+        lat: true,
+        lng: true,
+        has_adr_license: true,
+      },
+    });
+    const center = { lat, lng };
+    const out = subs
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        has_adr_license: s.has_adr_license,
+        distance_km: haversineKm(center, {
+          lat: Number(s.lat),
+          lng: Number(s.lng),
+        }),
+      }))
+      .filter((s) => s.distance_km <= radius_km)
+      .sort((a, b) => a.distance_km - b.distance_km);
+    return out;
   }
 }

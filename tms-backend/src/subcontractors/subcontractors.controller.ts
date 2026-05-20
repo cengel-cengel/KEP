@@ -41,4 +41,23 @@ export class SubcontractorsController {
   async update(@Param('id') id: string, @Body() dto: UpdateSubcontractorDto) {
     return this.subcontractorsService.update(id, dto);
   }
+
+  // Sprint D Umkreissuche (FV-Analog zu NV).
+  @Post('geocode-all')
+  geocodeAll() {
+    return this.subcontractorsService.geocodeAll();
+  }
+
+  @Get('search/radius')
+  searchRadius(
+    @Query('lat') lat: string,
+    @Query('lng') lng: string,
+    @Query('radius_km') radius_km: string,
+  ) {
+    return this.subcontractorsService.searchByRadius(
+      Number(lat),
+      Number(lng),
+      Number(radius_km),
+    );
+  }
 }

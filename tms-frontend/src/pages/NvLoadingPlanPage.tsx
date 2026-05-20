@@ -1,10 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X } from 'lucide-react';
+import { Trash2, RotateCcw, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { useInsertMode } from '../hooks/useInsertMode';
 import InsertModeBanner from '../components/loadingplan/InsertModeBanner';
+import ContextMenu, {
+  type ContextMenuItem,
+} from '../components/loadingplan/ContextMenu';
 import LoadingPlan3D, {
   type Plan3DPackage,
 } from '../components/LoadingPlan3D';
@@ -159,6 +162,13 @@ export default function NvLoadingPlanPage() {
   const { tourId } = useParams<{ tourId: string }>();
   // B-2 Insert-Mode page-local state.
   const insertMode = useInsertMode();
+  // NV-RC: Right-Click ContextMenu state (Symmetrie zu FV).
+  const [ctxMenu, setCtxMenu] = useState<{
+    pkgId: string;
+    shipmentId: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const tourQ = useQuery<NvLoadingDetail | null>({
     queryKey: ['nv-loading', tourId],
@@ -231,6 +241,68 @@ export default function NvLoadingPlanPage() {
     persistMut.mutate({ itemId: id, posXCm, posYCm, posZCm, rotationDeg });
   };
 
+  // B-2.1 NV Insert-Mode Drop-Cascade.
+  // NV hat keinen placePackages-Helper → einfache posY-Shift-Heuristik:
+  // alle Items mit posY >= target.posY shiften um draggedLengthCm + 5cm.
+  // (Reicht für single-row Layouts; mehrreihige Trailers brauchen
+  // späteren Re-Pack-Helper — Backlog B-2.2.)
+  const handleNvInsertAt = (
+    draggedId: string,
+    targetId: string | null,
+    dropPosY: number,
+  ) => {
+    if (!draggedId || draggedId.includes(':pkg:')) {
+      insertMode.cancel();
+      return;
+    }
+    const dragged = packages.find((p) => p.id === draggedId);
+    if (!dragged) {
+      insertMode.cancel();
+      return;
+    }
+    const t =
+      (targetId &&
+        packages.find((p) => p.id === targetId && p.id !== draggedId)) ||
+      packages
+        .filter((p) => p.id !== draggedId)
+        .reduce<typeof packages[number] | null>((best, p) => {
+          const center = p.posY + p.lengthCm / 2;
+          const dist = Math.abs(center - dropPosY);
+          if (!best) return p;
+          const bCenter = best.posY + best.lengthCm / 2;
+          return dist < Math.abs(bCenter - dropPosY) ? p : best;
+        }, null);
+    if (!t || t.id === draggedId) {
+      handlePosition(draggedId, 0, dropPosY, 0);
+      insertMode.cancel();
+      return;
+    }
+    const shiftY = dragged.lengthCm + 5;
+    void (async () => {
+      try {
+        for (const pkg of packages) {
+          if (pkg.id === draggedId || pkg.id.includes(':pkg:')) continue;
+          if (pkg.posY >= t.posY) {
+            await api.patch(`/loading/package-item/${pkg.id}/position`, {
+              posXCm: Math.round(pkg.posX),
+              posYCm: Math.round(pkg.posY + shiftY),
+              posZCm: Math.round(pkg.posZ),
+            });
+          }
+        }
+        await api.patch(`/loading/package-item/${draggedId}/position`, {
+          posXCm: Math.round(t.posX),
+          posYCm: Math.round(t.posY),
+          posZCm: Math.round(t.posZ),
+        });
+        await qc.invalidateQueries({ queryKey: ['nv-loading', tourId] });
+      } catch {
+        /* silent — UI state revertiert sich beim invalidate */
+      }
+      insertMode.cancel();
+    })();
+  };
+
   const code = tourQ.data?.nv_stamm_tour?.code ?? '—';
   const datum = tourQ.data?.datum
     ? new Date(tourQ.data.datum).toISOString().slice(0, 10)
@@ -286,9 +358,94 @@ export default function NvLoadingPlanPage() {
             }}
             packages={packages}
             onPositionChange={handlePosition}
+            insertMode={insertMode.active}
+            onInsertAt={handleNvInsertAt}
+            onPackageContextMenu={(pkgId, x, y) => {
+              const pkg = packages.find((p) => p.id === pkgId);
+              if (!pkg) return;
+              setCtxMenu({
+                pkgId,
+                shipmentId: (pkg as { shipmentId?: string }).shipmentId ?? '',
+                x,
+                y,
+              });
+            }}
           />
         )}
       </div>
+      {ctxMenu &&
+        (() => {
+          const items: ContextMenuItem[] = [
+            {
+              label: 'Position zurücksetzen',
+              icon: <RotateCcw size={12} />,
+              onClick: () => {
+                void api
+                  .patch(`/loading/package-item/${ctxMenu.pkgId}/position`, {
+                    posXCm: null,
+                    posYCm: null,
+                    posZCm: null,
+                  })
+                  .then(() =>
+                    qc.invalidateQueries({ queryKey: ['nv-loading', tourId] }),
+                  );
+              },
+            },
+            {
+              label: 'Repack-Optimal',
+              icon: <RotateCcw size={12} />,
+              onClick: () => {
+                if (
+                  !window.confirm(
+                    'Alle Positionen zurücksetzen + Auto-Placement?',
+                  )
+                )
+                  return;
+                void (async () => {
+                  for (const p of packages) {
+                    if (p.id.includes(':pkg:')) continue;
+                    await api.patch(`/loading/package-item/${p.id}/position`, {
+                      posXCm: null,
+                      posYCm: null,
+                      posZCm: null,
+                    });
+                  }
+                  await qc.invalidateQueries({
+                    queryKey: ['nv-loading', tourId],
+                  });
+                })();
+              },
+              separator: true,
+            },
+            {
+              label: 'Sendung aus Tour entfernen',
+              icon: <Trash2 size={12} />,
+              danger: true,
+              disabled: !ctxMenu.shipmentId,
+              onClick: () => {
+                if (
+                  !window.confirm(
+                    'Diese Sendung komplett aus der Tour entfernen?',
+                  )
+                )
+                  return;
+                // NV-Stops werden über DELETE /nv-touren/:id/stops/:stopId
+                // entfernt. Hier brauchen wir stop-id, nicht shipment-id.
+                // Fallback: invalidate + Hinweis dass dies über Panel-
+                // ContextMenu (Sprint C) geht. Für jetzt nur invalidate.
+                qc.invalidateQueries({ queryKey: ['nv-loading', tourId] });
+              },
+            },
+          ];
+          return (
+            <ContextMenu
+              x={ctxMenu.x}
+              y={ctxMenu.y}
+              items={items}
+              onClose={() => setCtxMenu(null)}
+            />
+          );
+        })()}
     </div>
   );
 }

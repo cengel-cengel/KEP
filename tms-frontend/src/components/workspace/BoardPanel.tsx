@@ -88,6 +88,13 @@ export interface BoardPanelProps {
   onError?: (msg: string) => void;
   /** Optional success/info reporter. */
   onInfo?: (msg: string) => void;
+  /** W-3.2.D: NV-Pin→CreateTour-Chain. WorkspacePage incrementiert
+   *  diesen Counter wenn QuickAddBar.onCreateNew getriggert wird.
+   *  BoardPanel öffnet dann CreateTourModal. */
+  createTourTrigger?: number;
+  /** W-3.2.D: Callback nach erfolgreichem Tour-Create. WorkspacePage
+   *  hängt addStop({newId, pendingPinShipmentId}) dran. */
+  onTourCreated?: (tourId: string) => void;
 }
 
 export default function BoardPanel({
@@ -99,6 +106,8 @@ export default function BoardPanel({
   onClearSelection,
   onError,
   onInfo,
+  createTourTrigger,
+  onTourCreated,
 }: BoardPanelProps) {
   const { mode, datum } = useWorkspace();
   const { filter } = useWorkspaceFilter();
@@ -228,6 +237,19 @@ export default function BoardPanel({
       setModalScenario('OHNE_LAGER');
     }
   }, [pendingBulk, mode, modalScenario]);
+
+  // W-3.2.D: NV-Pin-Chain — Workspace incrementiert createTourTrigger
+  // wenn QuickAddBar.onCreateNew geklickt wurde. Hier öffnen wir das
+  // NV-CreateTourModal. onTourCreated-Callback feuert addStop.
+  const lastTriggerRef = useRef<number>(createTourTrigger ?? 0);
+  useEffect(() => {
+    if (mode !== 'nv') return;
+    if (createTourTrigger == null) return;
+    if (createTourTrigger > lastTriggerRef.current) {
+      lastTriggerRef.current = createTourTrigger;
+      setShowCreateTour(true);
+    }
+  }, [createTourTrigger, mode]);
 
   // === Drop-Handlers ================================================
   const dropOnTour = (
@@ -513,11 +535,13 @@ export default function BoardPanel({
           onClose={() => setShowCreateTour(false)}
           onCreate={(payload: CreateTourPayload) => {
             void (async () => {
-              await dispo.createTour.mutateAsync({
+              const created = await dispo.createTour.mutateAsync({
                 payload: payload as unknown as Record<string, unknown>,
               });
               setShowCreateTour(false);
               broadcastInvalidate();
+              // W-3.2.D Pin-Chain: WorkspacePage hängt addStop dran.
+              if (created?.id) onTourCreated?.(created.id);
             })();
           }}
           saving={dispo.createTour.isPending}

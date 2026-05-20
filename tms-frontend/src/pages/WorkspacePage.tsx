@@ -63,7 +63,11 @@ export default function WorkspacePage() {
     [],
   );
 
-  // Persist Resize → workspace.layout (debounced via onLayoutChanged).
+  // Persist Resize → workspace.layout.
+  // W-3.2.D NOTE: react-resizable-panels v4 unterscheidet:
+  //   onLayoutChange   feuert pro Pointer-Move (= Spam).
+  //   onLayoutChanged  feuert NACH Pointer-Release (= 1× pro Resize).
+  // Wir nutzen onLayoutChanged → kein zusätzlicher Debounce nötig.
   const onLayoutChanged = (next: Layout) => {
     const total =
       (next.queue ?? 0) + (next.board ?? 0) + (next.map ?? 0);
@@ -84,6 +88,15 @@ export default function WorkspacePage() {
   const [pinAddShipmentId, setPinAddShipmentId] = useState<string | null>(
     null,
   );
+  // W-3.2.D Pin→CreateTour-Chain:
+  //   pendingPinShipmentId überlebt QuickAddBar-Close + Modal-Open
+  //   und wird in BoardPanel.onTourCreated konsumiert.
+  //   createTourTrigger ist ein monoton steigender Counter — BoardPanel
+  //   öffnet sein CreateTourModal bei jedem Increment.
+  const [pendingPinShipmentId, setPendingPinShipmentId] = useState<
+    string | null
+  >(null);
+  const [createTourTrigger, setCreateTourTrigger] = useState(0);
   const [pendingBulk, setPendingBulk] = useState<{
     shipmentIds: string[];
     label: string;
@@ -101,12 +114,32 @@ export default function WorkspacePage() {
     return () => window.clearTimeout(t);
   }, [banner]);
 
+  // W-3.2.D Layout-Storage Cleanup:
+  // W-3.2.C-Zwischenstand setzte kurz autoSaveId="tms.workspace.panels"
+  // (vor Removal), wodurch react-resizable-panels intern Keys mit
+  // Prefix 'PanelGroup:' schrieb. One-shot Cleanup on-mount entfernt
+  // tote Keys, damit Single-Source workspace.layout sauber bleibt.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const keys: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('PanelGroup:')) keys.push(k);
+      }
+      for (const k of keys) localStorage.removeItem(k);
+    } catch {
+      /* silent */
+    }
+  }, []);
+
   // Reset Coordinator-State bei Mode-Wechsel.
   const lastModeRef = useRef(mode);
   useEffect(() => {
     if (lastModeRef.current !== mode) {
       setActiveTourViewId(null);
       setPinAddShipmentId(null);
+      setPendingPinShipmentId(null);
       setPendingBulk(null);
       setSelected(new Set());
       lastModeRef.current = mode;
@@ -179,17 +212,39 @@ export default function WorkspacePage() {
     setPinAddShipmentId(null);
   };
   const onQuickAddCreateNew = () => {
-    // Pin-Add → CreateTour-Modal (NV) in BoardPanel.
-    // BoardPanel listens via pendingBulk-shaped trigger? Nein,
-    // CreateTour öffnet sich via "+ Tour anlegen"-Btn. Pin-Add
-    // setzt pinAddShipmentId; nach Tour-Create müsste addStop
-    // gefeuert werden. Aktuell: schließen und User klickt selbst
-    // "+ Tour anlegen". W-3.2.D Backlog für volle Chain.
-    setBanner({
-      kind: 'ok',
-      msg: 'Tour-Anlegen-Btn nutzen, danach Sendung erneut auf Map klicken.',
-    });
+    // W-3.2.D Pin→CreateTour Auto-Chain:
+    // Übertrage pinAddShipmentId → pendingPinShipmentId,
+    // schließe QuickAddBar, incrementiere Trigger → BoardPanel
+    // öffnet CreateTourModal. Nach Tour-Create feuert
+    // BoardPanel.onTourCreated → addStop({newId, pendingPin}).
+    if (!pinAddShipmentId) return;
+    setPendingPinShipmentId(pinAddShipmentId);
     setPinAddShipmentId(null);
+    setCreateTourTrigger((n) => n + 1);
+  };
+
+  const onTourCreatedByBoard = (newTourId: string) => {
+    if (!pendingPinShipmentId) return;
+    addStopNv.mutate(
+      {
+        tourId: newTourId,
+        shipmentId: pendingPinShipmentId,
+        stop_type: filter.pickupMode,
+      },
+      {
+        onSuccess: () =>
+          setBanner({
+            kind: 'ok',
+            msg: 'Tour erstellt + Sendung zugeordnet.',
+          }),
+        onError: (err: any) =>
+          setBanner({
+            kind: 'err',
+            msg: `Tour erstellt aber Pin-Add fehlgeschlagen (${err?.response?.status ?? '?'}).`,
+          }),
+      },
+    );
+    setPendingPinShipmentId(null);
   };
 
   return (
@@ -248,6 +303,8 @@ export default function WorkspacePage() {
               onClearSelection={() => setSelected(new Set())}
               onError={(msg) => setBanner({ kind: 'err', msg })}
               onInfo={(msg) => setBanner({ kind: 'ok', msg })}
+              createTourTrigger={createTourTrigger}
+              onTourCreated={onTourCreatedByBoard}
             />
           </Panel>
           <Separator className="w-1 bg-gray-200 hover:bg-blue-300 transition-colors" />

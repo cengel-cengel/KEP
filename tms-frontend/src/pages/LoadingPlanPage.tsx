@@ -690,6 +690,14 @@ export default function LoadingPlanPage() {
       console.warn('persistItemPosition failed:', e);
       showToast('Speichern fehlgeschlagen', 'err');
     },
+    // P0-12 BUG-1: invalidate, damit BE-persisted rotation_deg in
+    // optimizeQuery.packageItems landet → LoadingPlan3D rendert
+    // korrekte Rotation nach Drop (sonst snapped es zurück).
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['loading', 'optimize', tourId],
+      });
+    },
   });
 
   const resetPositionsMutation = useMutation({
@@ -844,9 +852,9 @@ export default function LoadingPlanPage() {
       for (const shipmentId of shipmentIds) {
         await api.post(`/tours/${tourId}/remove-shipment`, { shipmentId });
       }
-      return { ok: true };
+      return { ok: true, count: shipmentIds.length };
     },
-    onSuccess: async () => {
+    onSuccess: async (res) => {
       setRemovedShipmentIds([]);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['loading', 'optimize', tourId] }),
@@ -854,6 +862,24 @@ export default function LoadingPlanPage() {
         queryClient.invalidateQueries({ queryKey: ['tours'] }),
         queryClient.invalidateQueries({ queryKey: ['shipments'] }),
       ]);
+      // P0-12 BUG-2: Explicit feedback (Right-Click-Path hatte vorher
+      // keinen Toast — User dachte "nichts passiert" obwohl Remove
+      // erfolgreich war).
+      if (res?.count) {
+        showToast(
+          res.count === 1
+            ? 'Sendung von Tour entfernt'
+            : `${res.count} Sendungen von Tour entfernt`,
+        );
+      }
+    },
+    onError: (e: any) => {
+      // eslint-disable-next-line no-console
+      console.warn('removeShipments failed:', e);
+      showToast(
+        `Entfernen fehlgeschlagen (${e?.response?.status ?? '?'}).`,
+        'err',
+      );
     },
   });
 

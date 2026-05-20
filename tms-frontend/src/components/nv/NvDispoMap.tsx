@@ -171,7 +171,19 @@ export default function NvDispoMap({
       attribution: '© OpenStreetMap',
     }).addTo(map);
     mapRef.current = map;
+    // P0-12 BUG-3b: ResizeObserver → invalidateSize.
+    // Wenn ContextPanel öffnet/schließt, schrumpft/wächst der Map-
+    // Container. Leaflet weiß das nicht von selbst → Pin-Klicks
+    // treffen alte Pixel-Positionen. invalidateSize() re-berechnet.
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+      ro = new ResizeObserver(() => {
+        mapRef.current?.invalidateSize();
+      });
+      ro.observe(containerRef.current);
+    }
     return () => {
+      ro?.disconnect();
       map.remove();
       mapRef.current = null;
     };

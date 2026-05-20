@@ -256,7 +256,7 @@ export default function WorkspacePage() {
           onClick={() => setBanner(null)}
           className={`px-4 py-2 text-sm cursor-pointer border-b ${
             banner.kind === 'ok'
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              ? 'bg-green-50 text-green-800 border-green-200'
               : 'bg-red-50 text-red-800 border-red-200'
           }`}
         >

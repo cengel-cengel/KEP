@@ -37,7 +37,7 @@ export default function FvQuickAddBar({
         </button>
         <button
           onClick={() => onCreate('BESCHAFFUNG_EXTERN')}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white text-xs font-medium rounded hover:bg-emerald-700"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700"
           title="Vorlauf: extern → Standard-Lager (Hub-End)"
         >
           <ArrowDownToLine size={14} />

@@ -72,7 +72,7 @@ export default function CapacityBars({ cap }: { cap?: CapacityData }) {
             </div>
             <div className="h-1.5 bg-gray-200 rounded overflow-hidden">
               <div
-                className={`h-full ${over ? 'bg-red-600' : 'bg-emerald-500'}`}
+                className={`h-full ${over ? 'bg-red-600' : 'bg-green-500'}`}
                 style={{ width: `${clamped}%` }}
               />
             </div>

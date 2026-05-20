@@ -182,7 +182,7 @@ export default function TourCard({
             </span>
             {tour.kosten_modus === 'SPOT' && (
               <span
-                className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-700"
+                className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700"
                 title="Spot-Preis (manuell eingegeben)"
               >
                 SPOT
@@ -224,7 +224,7 @@ export default function TourCard({
                 parts.push(
                   <span key="erloes">
                     Erlös:{' '}
-                    <span className="font-mono text-emerald-700">
+                    <span className="font-mono text-green-700">
                       €{tourAggregates.sumErloes.toFixed(0)}
                     </span>
                   </span>,
@@ -250,7 +250,7 @@ export default function TourCard({
                     <span
                       className={`font-mono ${
                         tourAggregates.sumDB >= 0
-                          ? 'text-emerald-700'
+                          ? 'text-green-700'
                           : 'text-rose-700'
                       }`}
                     >
@@ -289,7 +289,7 @@ export default function TourCard({
                 ).length;
                 onSetTourStatus('COMPLETED', open, open);
               }}
-              className="px-2 py-1 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700"
+              className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
             >
               Abschließen
             </button>
@@ -519,7 +519,7 @@ export default function TourCard({
                                   sh &&
                                   onOpenDrillDown(sh.id, sh.shipment_number)
                                 }
-                                className="font-mono text-emerald-700 hover:underline"
+                                className="font-mono text-green-700 hover:underline"
                                 title="Cost-Breakdown"
                               >
                                 €{Number(cc.total_eur).toFixed(0)}

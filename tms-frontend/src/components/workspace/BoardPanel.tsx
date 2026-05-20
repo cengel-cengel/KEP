@@ -421,7 +421,7 @@ export default function BoardPanel({
           <button
             onClick={runAutoSuggest}
             disabled={autoSuggestNv.isPending}
-            className="ml-auto bg-emerald-600 text-white text-sm rounded px-3 py-1.5 flex items-center gap-1 hover:bg-emerald-700 disabled:opacity-50"
+            className="ml-auto bg-green-600 text-white text-sm rounded px-3 py-1.5 flex items-center gap-1 hover:bg-green-700 disabled:opacity-50"
           >
             <Sparkles size={14} />
             {autoSuggestNv.isPending ? 'Erstelle…' : 'Auto-Vorschlag'}

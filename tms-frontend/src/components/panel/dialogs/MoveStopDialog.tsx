@@ -97,7 +97,7 @@ export default function MoveStopDialog({
             </div>
           )}
           {suggested && (
-            <div className="text-[10px] text-emerald-700 inline-flex items-center gap-1">
+            <div className="text-[10px] text-green-700 inline-flex items-center gap-1">
               <Sparkles size={10} />
               Empfehlung: Score {suggested.score} · {suggested.reason}
             </div>

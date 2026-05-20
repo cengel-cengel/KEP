@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Plus, Trash2, Wifi, WifiOff } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { AlertTriangle, ChevronDown, Plus, Trash2, Wifi, WifiOff } from 'lucide-react';
 import {
   listSavedViews,
   saveView,
@@ -14,12 +15,76 @@ import {
   onRealtimeStatus,
   type RealtimeStatus,
 } from '../../realtime/realtimeClient';
+import { api } from '../../lib/api';
+import { useWorkspace } from '../../state/workspace';
+import { getTourSeverity } from '../../lib/severity';
 
 /**
  * W-3 Top-Bar: Mode-Toggle + Realtime-Status + Saved-Views.
  * Datum-Picker bleibt für jetzt in NvDispoPage (eigener
  * State). W-3.2 (NvDispoPage-Refactor) liftet datum hoch.
  */
+interface TourLite {
+  id: string;
+  overload?: {
+    isOverloaded?: boolean;
+    ldm?: number;
+    weight?: number;
+  } | null;
+  // 'risk' bei NV-Touren in der Liste verfügbar (counts).
+  risk?: {
+    critical_count?: number | null;
+    warning_count?: number | null;
+  } | null;
+}
+
+/**
+ * S-1 Global-Critical-Counter — Compute aus tour-Liste (Option C).
+ * Liest die aktive workspace.mode + datum, fetcht die Tour-Liste
+ * und summiert L1-Severities aus tour.overload-Field (conservative
+ * Estimate, da Conflict-Engine-Details nicht in Liste enthalten sind).
+ *
+ * Backlog S-1.2: GET /tours/critical-summary?datum= für genaueren
+ * Counter inkl. Conflicts + Risk-Stop-Counts.
+ */
+function useGlobalCriticals(
+  mode: WorkspaceMode,
+  datum: string,
+): { l1Count: number; isLoading: boolean } {
+  const q = useQuery<TourLite[]>({
+    queryKey:
+      mode === 'fv'
+        ? ['fv-touren', datum, 'planned,dispatched']
+        : ['nv-touren', datum, 'PLANNING'],
+    queryFn: async () => {
+      if (mode === 'fv') {
+        const { data } = await api.get<TourLite[]>('/tours', {
+          params: { status: 'planned,dispatched', date: datum },
+        });
+        return data;
+      }
+      const { data } = await api.get<TourLite[]>('/nv-touren', {
+        params: { datum, status: 'PLANNING' },
+      });
+      return data;
+    },
+    staleTime: 15_000,
+  });
+  const l1Count = useMemo(() => {
+    if (!q.data) return 0;
+    let n = 0;
+    for (const t of q.data) {
+      const sev = getTourSeverity({
+        overload: t.overload ?? null,
+        risk: t.risk ?? null,
+      });
+      if (sev === 'L1') n += 1;
+    }
+    return n;
+  }, [q.data]);
+  return { l1Count, isLoading: q.isLoading };
+}
+
 export default function WorkspaceTopBar({
   mode,
   onModeChange,
@@ -29,6 +94,8 @@ export default function WorkspaceTopBar({
   onModeChange: (m: WorkspaceMode) => void;
   onLoadView?: (view: SavedView) => void;
 }) {
+  const { datum } = useWorkspace();
+  const { l1Count } = useGlobalCriticals(mode, datum);
   const [views, setViews] = useState<SavedView[]>(listSavedViews);
   const [dropOpen, setDropOpen] = useState(false);
   const [rtStatus, setRtStatus] = useState<RealtimeStatus>(getRealtimeStatus());
@@ -74,7 +141,7 @@ export default function WorkspaceTopBar({
 
   const rtColor =
     rtStatus === 'connected'
-      ? 'bg-emerald-500'
+      ? 'bg-green-500'
       : rtStatus === 'connecting'
         ? 'bg-amber-500 animate-pulse'
         : 'bg-red-500';
@@ -166,7 +233,18 @@ export default function WorkspaceTopBar({
         )}
       </div>
 
-      <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-gray-600">
+      {l1Count > 0 && (
+        <span
+          className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-red-50 text-red-700 border border-red-300 rounded"
+          title={`${l1Count} kritische Tour(en) heute`}
+        >
+          <AlertTriangle size={12} />
+          {l1Count} kritisch
+        </span>
+      )}
+      <span
+        className={`${l1Count > 0 ? '' : 'ml-auto'} inline-flex items-center gap-1.5 text-[11px] text-gray-600`}
+      >
         <span className={`w-2 h-2 rounded-full ${rtColor}`} />
         {rtIcon}
         {rtLabel}

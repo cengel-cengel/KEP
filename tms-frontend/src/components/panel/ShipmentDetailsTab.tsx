@@ -345,7 +345,7 @@ function BestTourSection({ shipmentId }: { shipmentId: string }) {
         {matches.map((m) => {
           const col =
             m.score >= 70
-              ? 'border-emerald-300 bg-emerald-50'
+              ? 'border-green-300 bg-green-50'
               : m.score >= 40
                 ? 'border-amber-300 bg-amber-50'
                 : 'border-gray-300 bg-gray-50';

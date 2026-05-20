@@ -72,9 +72,9 @@ function severityColor(sev: SlaResult['severity']): {
       };
     case 'ok':
       return {
-        bg: 'bg-emerald-100',
-        border: 'border-emerald-400',
-        text: 'text-emerald-800',
+        bg: 'bg-green-100',
+        border: 'border-green-400',
+        text: 'text-green-800',
       };
     case 'unknown':
     default:
@@ -234,7 +234,7 @@ export default function TourTimeline({
       {/* Legend / SLA-Badge */}
       <div className="flex items-center gap-3 px-2 py-1 text-[10px] text-gray-500 border-t border-gray-100">
         <span className="inline-flex items-center gap-1">
-          <CheckCircle2 size={10} className="text-emerald-600" />
+          <CheckCircle2 size={10} className="text-green-600" />
           OK
         </span>
         <span className="inline-flex items-center gap-1">

@@ -135,6 +135,18 @@ export default function FvTourCard({
 
   const km = tour?.geplante_km != null ? Number(tour.geplante_km) : null;
 
+  // S-1: Conditional Capacity-Display.
+  // < 70% → schmaler Text "X% (worst-axis)"
+  // >= 70% → OverloadBar (red wenn >100%, amber-Hint wenn 70-100%).
+  const overload = tour?.overload ?? null;
+  const maxAxisRatio = Math.max(
+    overload?.ldm ?? 0,
+    overload?.weight ?? 0,
+  );
+  const worstAxisLabel = (overload?.ldm ?? 0) >= (overload?.weight ?? 0)
+    ? 'LDM'
+    : 'kg';
+
   // W-3.4: FV-Beladeplan in neuem Fenster (mirror P0-8 NV-Pattern).
   const loadingPopupRef = useRef<Window | null>(null);
   const openLoadingPopup = () => {
@@ -169,7 +181,13 @@ export default function FvTourCard({
           selectTour(tourId);
         }}
       >
-        <OverloadBar overload={tour?.overload} className="mb-1" />
+        {maxAxisRatio >= 0.7 ? (
+          <OverloadBar overload={tour?.overload} className="mb-1" />
+        ) : maxAxisRatio > 0 ? (
+          <div className="text-[10px] text-gray-500 mb-1">
+            Auslastung {(maxAxisRatio * 100).toFixed(0)}% ({worstAxisLabel})
+          </div>
+        ) : null}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-mono font-semibold text-sm text-gray-800">
             {tourNumber ?? tour?.tour_number ?? '—'}
@@ -208,7 +226,7 @@ export default function FvTourCard({
           <span
             className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded ${
               tour?.hub_start_address
-                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                ? 'bg-green-50 text-green-800 border border-green-200'
                 : 'bg-gray-50 text-gray-500 border border-gray-200'
             }`}
             title="Hub-Start"
@@ -220,7 +238,7 @@ export default function FvTourCard({
           <span
             className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded ${
               tour?.hub_end_address
-                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                ? 'bg-green-50 text-green-800 border border-green-200'
                 : 'bg-gray-50 text-gray-500 border border-gray-200'
             }`}
             title="Hub-Ende"

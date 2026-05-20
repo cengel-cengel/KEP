@@ -127,7 +127,7 @@ export default function CostDrillDownModal({
                   </tr>
                   <tr>
                     <td className="py-2 font-semibold">Total</td>
-                    <td className="py-2 text-right font-mono font-semibold text-emerald-700">
+                    <td className="py-2 text-right font-mono font-semibold text-green-700">
                       € {fmt(c.total_eur)}
                     </td>
                   </tr>

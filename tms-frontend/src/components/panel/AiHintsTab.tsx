@@ -1,8 +1,17 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Clock, Lightbulb, Plus } from 'lucide-react';
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Lightbulb,
+  Plus,
+  ShieldAlert,
+} from 'lucide-react';
 import { api } from '../../lib/api';
 import { usePanel } from '../../state/panel';
+import { severityColorClass, type SeverityLevel } from '../../lib/severity';
 import SplitTourDialog from './dialogs/SplitTourDialog';
 import SwapDriverDialog from './dialogs/SwapDriverDialog';
 import MoveStopDialog from './dialogs/MoveStopDialog';
@@ -88,6 +97,8 @@ export default function AiHintsTab() {
     label: string;
     shipmentId?: string;
   } | null>(null);
+  // S-1: Details-Sections (Conflicts/Risk-Stops) default eingeklappt.
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const tourQ = useQuery<NvTourRiskDetail | null>({
     queryKey: ['nv-tour-detail', entity?.id],
@@ -143,10 +154,59 @@ export default function AiHintsTab() {
   const empty =
     riskStops.length === 0 && conflicts.length === 0;
 
+  // S-1: WAS-IST-AKUT ranked merge.
+  // Rank-Map: critical=4 > warning=2; conflict-Kind +1 (etwas höher
+  // gewichtet als gleichschwere Stop-Risks weil struktureller Tour-
+  // Konflikt typischerweise mehr Stops gleichzeitig blockiert).
+  type AcuteItem =
+    | {
+        kind: 'conflict';
+        rank: number;
+        severity: 'warning' | 'critical';
+        sevLevel: SeverityLevel;
+        item: NvTourConflict;
+        idx: number;
+      }
+    | {
+        kind: 'risk';
+        rank: number;
+        severity: 'warning' | 'critical';
+        sevLevel: SeverityLevel;
+        item: NvStopRisk;
+      };
+  const ranked = useMemo<AcuteItem[]>(() => {
+    const items: AcuteItem[] = [];
+    conflicts.forEach((c, idx) => {
+      const baseRank = c.severity === 'critical' ? 5 : 3;
+      items.push({
+        kind: 'conflict',
+        rank: baseRank,
+        severity: c.severity,
+        sevLevel: c.severity === 'critical' ? 'L1' : 'L2',
+        item: c,
+        idx,
+      });
+    });
+    for (const s of riskStops) {
+      const sev = s.risk_severity === 'critical' ? 'critical' : 'warning';
+      items.push({
+        kind: 'risk',
+        rank: sev === 'critical' ? 4 : 2,
+        severity: sev,
+        sevLevel: sev === 'critical' ? 'L1' : 'L2',
+        item: s,
+      });
+    }
+    return items.sort((a, b) => b.rank - a.rank);
+  }, [conflicts, riskStops]);
+
+  const topAcute = ranked.slice(0, 3);
+  const restCount = Math.max(0, ranked.length - topAcute.length);
+
   if (empty) {
     return (
       <div className="p-3 space-y-2 text-xs">
-        <div className="flex items-center gap-1.5 text-emerald-700">
+        <div className="flex items-center gap-1.5 text-green-700">
           <Lightbulb size={14} />
           <span className="font-medium">Keine kritischen Punkte</span>
         </div>
@@ -174,12 +234,127 @@ export default function AiHintsTab() {
     </button>
   );
 
+  /**
+   * S-1 WAS-IST-AKUT compact-Row pro Acute-Item.
+   * Renderiert: severity-Icon + 1-Line-Text + Primary-Action-Button.
+   */
+  const renderAcuteRow = (a: AcuteItem) => {
+    const colClass = severityColorClass(a.sevLevel);
+    const Icon = a.kind === 'conflict' ? ShieldAlert : AlertTriangle;
+    if (a.kind === 'conflict') {
+      const c = a.item;
+      // Primary-Action = erste suggested_action mit verfügbarem Handler.
+      const primary = c.suggested_actions[0];
+      const onPrimary = (() => {
+        if (!primary) return undefined;
+        if (primary.type === 'SHIFT_STOP_LATER' && primary.stop_id) {
+          const sid = primary.stop_id;
+          return () => shiftMut.mutate(sid);
+        }
+        if (primary.type === 'SPLIT_TOUR_AT_STOP') {
+          return () => setSplitOpen({ stopId: primary.stop_id });
+        }
+        if (primary.type === 'SWAP_DRIVER') {
+          return () => setSwapOpen(true);
+        }
+        if (primary.type === 'MOVE_STOP_TO_TOUR' && primary.stop_id) {
+          const sid = primary.stop_id;
+          const found = t.stops?.find((s) => s.id === sid);
+          return () =>
+            setMoveOpen({
+              stopId: sid,
+              label: found?.shipment?.shipment_number ?? sid.slice(0, 6),
+              shipmentId: (found?.shipment as any)?.id,
+            });
+        }
+        return undefined;
+      })();
+      const primaryLabel =
+        primary?.type === 'SHIFT_STOP_LATER'
+          ? 'Stop +15min'
+          : primary?.type === 'SPLIT_TOUR_AT_STOP'
+            ? 'Tour splitten'
+            : primary?.type === 'SWAP_DRIVER'
+              ? 'Sub wechseln'
+              : primary?.type === 'MOVE_STOP_TO_TOUR'
+                ? 'In andere Tour'
+                : null;
+      return (
+        <div
+          key={`c-${a.idx}`}
+          className={`border ${colClass} rounded px-2 py-1.5 flex items-center gap-1.5`}
+        >
+          <Icon size={12} className="flex-shrink-0" />
+          <span className="flex-1 truncate">{c.msg}</span>
+          {primaryLabel && onPrimary && (
+            <button
+              onClick={onPrimary}
+              disabled={shiftMut.isPending}
+              className="text-[10px] px-1.5 py-0.5 bg-white border border-gray-300 rounded hover:bg-blue-50 hover:border-blue-400 disabled:opacity-50 flex-shrink-0"
+            >
+              {primaryLabel}
+            </button>
+          )}
+        </div>
+      );
+    }
+    // risk
+    const s = a.item;
+    const num = s.shipment?.shipment_number ?? `Stop ${s.position}`;
+    const hint = hintForStop(s);
+    return (
+      <div
+        key={`r-${s.id}`}
+        className={`border ${colClass} rounded px-2 py-1.5 flex items-center gap-1.5`}
+      >
+        <Icon size={12} className="flex-shrink-0" />
+        <span className="font-mono font-semibold">{num}</span>
+        <span className="flex-1 truncate text-[10px] text-gray-700">
+          {hint ?? s.stop_type}
+        </span>
+        <button
+          onClick={() => shiftMut.mutate(s.id)}
+          disabled={shiftMut.isPending}
+          className="text-[10px] px-1.5 py-0.5 bg-white border border-gray-300 rounded hover:bg-blue-50 hover:border-blue-400 disabled:opacity-50 flex-shrink-0"
+        >
+          +15min
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="p-3 space-y-3 text-xs">
-      {conflicts.length > 0 && (
+      {ranked.length > 0 && (
+        <section>
+          <div className="flex items-center gap-1.5 text-gray-700 font-medium mb-1">
+            <AlertTriangle size={14} className="text-red-600" />
+            Was ist akut?
+            <span className="ml-1 text-[10px] text-gray-500">
+              ({ranked.length} insg.)
+            </span>
+          </div>
+          <div className="space-y-1.5">{topAcute.map(renderAcuteRow)}</div>
+          {restCount > 0 && (
+            <button
+              onClick={() => setDetailsOpen((o) => !o)}
+              className="mt-1.5 text-[10px] text-blue-700 hover:underline inline-flex items-center gap-0.5"
+            >
+              {detailsOpen ? (
+                <ChevronDown size={10} />
+              ) : (
+                <ChevronRight size={10} />
+              )}
+              {detailsOpen ? 'weniger anzeigen' : `+ ${restCount} weitere`}
+            </button>
+          )}
+        </section>
+      )}
+
+      {detailsOpen && conflicts.length > 0 && (
         <section>
           <div className="flex items-center gap-1.5 text-amber-700 font-medium mb-1">
-            <AlertTriangle size={14} />
+            <ShieldAlert size={14} />
             {conflicts.length} Konflikt(e)
           </div>
           <div className="space-y-2">
@@ -263,7 +438,7 @@ export default function AiHintsTab() {
         </section>
       )}
 
-      {riskStops.length > 0 && (
+      {detailsOpen && riskStops.length > 0 && (
         <section>
           <div className="flex items-center gap-1.5 text-amber-700 font-medium mb-1">
             <AlertTriangle size={14} />

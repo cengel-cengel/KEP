@@ -1626,6 +1626,192 @@ export class NvTourenService {
    * (Datum, Sub, Fahrzeug) und transferiert alle Stops ab from_stop
    * (inkl.) in die neue Tour. Original-Tour behält die Stops davor.
    */
+
+  /**
+   * C-2 Sendung-Splitten:
+   *   - Original-Shipment behält Items NICHT in splitItemIds[].
+   *   - Neue Shipment klont scalar-Felder (customer, addresses, dates,
+   *     hazmat, etc.) und übernimmt die splitItemIds-Items per
+   *     UPDATE shipment_id (move, kein clone — decision 1A).
+   *   - weight_kg + package_count beider Shipments rekomputiert
+   *     aus SUM(items.weight_kg) bzw. SUM(quantity).
+   *   - pos_x_cm/y/z der gemoveten Items auf NULL (re-pack-Bedarf).
+   *   - Neuer Stop direkt nach current (position+1, übrige Stops
+   *     verschoben). Beide Stops in derselben Tour.
+   *   - split_from_id auf neuem Shipment für Audit-Trail.
+   */
+  async splitShipmentAtStop(
+    tourId: string,
+    stopId: string,
+    splitItemIds: string[],
+  ) {
+    if (!splitItemIds || splitItemIds.length === 0) {
+      throw new BadRequestException('splitItemIds darf nicht leer sein.');
+    }
+    const stop = await this.prisma.nv_tour_stops.findUnique({
+      where: { id: stopId },
+      select: {
+        id: true,
+        nv_tour_id: true,
+        position: true,
+        stop_type: true,
+        servicezeit_min: true,
+        shipment: {
+          select: {
+            id: true,
+            shipment_number: true,
+            customer_id: true,
+            customer_ref: true,
+            status: true,
+            loading_address_id: true,
+            delivery_address_id: true,
+            loading_date: true,
+            loading_time_from: true,
+            loading_time_to: true,
+            delivery_date: true,
+            delivery_time_from: true,
+            delivery_time_to: true,
+            package_type: true,
+            transport_type: true,
+            incoterm: true,
+            freight_payer: true,
+            is_hazmat: true,
+            hazmat_class: true,
+            hazmat_un_number: true,
+            hazmat_packing_group: true,
+            hazmat_description: true,
+            comment: true,
+            created_by: true,
+            shipment_package_items: {
+              select: { id: true, quantity: true, weight_kg: true },
+            },
+          },
+        },
+      },
+    });
+    if (!stop) throw new NotFoundException('Stop nicht gefunden');
+    if (stop.nv_tour_id !== tourId) {
+      throw new BadRequestException('Stop gehört nicht zur angegebenen Tour.');
+    }
+    const orig = stop.shipment;
+    if (!orig) throw new NotFoundException('Stop hat keine Sendung.');
+    const allItemIds = orig.shipment_package_items.map((i) => i.id);
+    const moveSet = new Set(splitItemIds);
+    const validMoveIds = splitItemIds.filter((id) => allItemIds.includes(id));
+    if (validMoveIds.length !== splitItemIds.length) {
+      throw new BadRequestException(
+        'splitItemIds enthält IDs die nicht zur Original-Sendung gehören.',
+      );
+    }
+    const remainItems = orig.shipment_package_items.filter(
+      (i) => !moveSet.has(i.id),
+    );
+    if (remainItems.length === 0 || validMoveIds.length === orig.shipment_package_items.length) {
+      throw new BadRequestException(
+        'Mindestens 1 Item muss in Original verbleiben (kein All-or-Nothing-Split).',
+      );
+    }
+    const moveItems = orig.shipment_package_items.filter((i) =>
+      moveSet.has(i.id),
+    );
+
+    // Aggregate-Recompute (per-row sum, decision 8A).
+    const sumKg = (rows: typeof orig.shipment_package_items) =>
+      rows.reduce((acc, r) => acc + Number(r.weight_kg ?? 0), 0);
+    const sumQty = (rows: typeof orig.shipment_package_items) =>
+      rows.reduce((acc, r) => acc + Number(r.quantity ?? 1), 0);
+
+    const newWeightOrig = sumKg(remainItems);
+    const newCountOrig = sumQty(remainItems);
+    const newWeightSplit = sumKg(moveItems);
+    const newCountSplit = sumQty(moveItems);
+
+    // Shipment-Nr per Sequence (mirror shipments.service Pattern:
+    // S{YY}-{seq6}, z.B. S26-001234).
+    const seqRows = await this.prisma.$queryRaw<[{ nextval: bigint }]>`
+      SELECT nextval('shipment_number_seq')
+    `;
+    const yr = new Date().getFullYear().toString().slice(-2);
+    const newNumber = `S${yr}-${seqRows[0].nextval.toString().padStart(6, '0')}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1) Original-Shipment Aggregate aktualisieren.
+      await tx.shipments.update({
+        where: { id: orig.id },
+        data: {
+          weight_kg: newWeightOrig,
+          package_count: newCountOrig,
+        },
+      });
+      // 2) Neue Shipment erzeugen (scalar-Felder inherit).
+      const newShipment = await tx.shipments.create({
+        data: {
+          shipment_number: newNumber,
+          customer_id: orig.customer_id,
+          customer_ref: orig.customer_ref,
+          status: orig.status,
+          loading_address_id: orig.loading_address_id,
+          delivery_address_id: orig.delivery_address_id,
+          loading_date: orig.loading_date,
+          loading_time_from: orig.loading_time_from,
+          loading_time_to: orig.loading_time_to,
+          delivery_date: orig.delivery_date,
+          delivery_time_from: orig.delivery_time_from,
+          delivery_time_to: orig.delivery_time_to,
+          package_type: orig.package_type,
+          package_count: newCountSplit,
+          weight_kg: newWeightSplit,
+          transport_type: orig.transport_type,
+          incoterm: orig.incoterm,
+          freight_payer: orig.freight_payer,
+          is_hazmat: orig.is_hazmat,
+          hazmat_class: orig.hazmat_class,
+          hazmat_un_number: orig.hazmat_un_number,
+          hazmat_packing_group: orig.hazmat_packing_group,
+          hazmat_description: orig.hazmat_description,
+          comment: orig.comment,
+          created_by: orig.created_by,
+          split_from_id: orig.id,
+        },
+      });
+      // 3) Items verschieben (shipment_id-Update + pos_*-Reset).
+      await tx.shipment_package_items.updateMany({
+        where: { id: { in: validMoveIds } },
+        data: {
+          shipment_id: newShipment.id,
+          pos_x_cm: null,
+          pos_y_cm: null,
+          pos_z_cm: null,
+        },
+      });
+      // 4) Nachfolgende Stops verschieben (position +1).
+      await tx.nv_tour_stops.updateMany({
+        where: {
+          nv_tour_id: tourId,
+          position: { gt: stop.position },
+        },
+        data: { position: { increment: 1 } },
+      });
+      // 5) Neuer Stop für neue Sendung — direkt nach current.
+      const newStop = await tx.nv_tour_stops.create({
+        data: {
+          nv_tour_id: tourId,
+          shipment_id: newShipment.id,
+          position: stop.position + 1,
+          stop_type: stop.stop_type,
+          servicezeit_min: stop.servicezeit_min,
+        },
+      });
+      return {
+        original_shipment_id: orig.id,
+        new_shipment_id: newShipment.id,
+        new_shipment_number: newNumber,
+        new_stop_id: newStop.id,
+        moved_item_count: validMoveIds.length,
+      };
+    });
+  }
+
   async splitTour(tourId: string, fromStopId: string) {
     const orig = await this.prisma.nv_touren.findUnique({
       where: { id: tourId },

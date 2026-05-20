@@ -125,3 +125,89 @@ describe('findBestToursForShipment', () => {
     expect(r[0].score).toBeLessThan(70);
   });
 });
+
+// ─── T-3.3.1 OSRM-Precise Tests ────────────────────────────────
+import {
+  findBestToursForShipmentPrecise,
+  _clearPreciseCacheForTests,
+} from './tourMatcher.lib';
+
+describe('findBestToursForShipmentPrecise', () => {
+  beforeEach(() => {
+    _clearPreciseCacheForTests();
+  });
+
+  const baseShip: MatchShipmentInput = {
+    id: 's1',
+    ldm: 2,
+    weight_kg: 500,
+    loading_date: '2026-05-19',
+    customer_id: 'c1',
+    loading_lat: heilbronn.lat,
+    loading_lng: heilbronn.lng,
+  };
+
+  it('verwendet OSRM-Distance wenn fn liefert', async () => {
+    const routeFn = jest.fn().mockResolvedValue(42);
+    const r = await findBestToursForShipmentPrecise(
+      baseShip,
+      [baseTour('t1', stuttgart)],
+      routeFn,
+    );
+    expect(routeFn).toHaveBeenCalledTimes(1);
+    expect(r).toHaveLength(1);
+  });
+
+  it('Cache hit bei wiederholtem Call (gleiche Coords)', async () => {
+    const routeFn = jest.fn().mockResolvedValue(42);
+    await findBestToursForShipmentPrecise(
+      baseShip,
+      [baseTour('t1', stuttgart)],
+      routeFn,
+    );
+    await findBestToursForShipmentPrecise(
+      baseShip,
+      [baseTour('t1', stuttgart)],
+      routeFn,
+    );
+    expect(routeFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('Fallback Haversine bei routeFn-null', async () => {
+    const routeFn = jest.fn().mockResolvedValue(null);
+    const r = await findBestToursForShipmentPrecise(
+      baseShip,
+      [baseTour('t1', stuttgart)],
+      routeFn,
+    );
+    expect(r).toHaveLength(1);
+    // Score bleibt finit (Haversine-Fallback hat funktioniert).
+    expect(Number.isFinite(r[0].score)).toBe(true);
+  });
+
+  it('Fallback Haversine bei routeFn-throw', async () => {
+    const routeFn = jest.fn().mockRejectedValue(new Error('OSRM down'));
+    const r = await findBestToursForShipmentPrecise(
+      baseShip,
+      [baseTour('t1', stuttgart)],
+      routeFn,
+    );
+    expect(r).toHaveLength(1);
+  });
+
+  it('parallel: N candidates → 1 Promise.allSettled-Pass', async () => {
+    const routeFn = jest.fn(async (coords: Array<[number, number]>) => {
+      // simulate latency, return distinct km per coords
+      await new Promise((r) => setTimeout(r, 10));
+      return coords[1][0] * 10; // arbitrary
+    });
+    const tours = [
+      baseTour('t1', stuttgart),
+      baseTour('t2', hamburg),
+      baseTour('t3', { lat: 50.11, lng: 8.68 }),
+    ];
+    const r = await findBestToursForShipmentPrecise(baseShip, tours, routeFn);
+    expect(routeFn).toHaveBeenCalledTimes(3);
+    expect(r.length).toBeGreaterThan(0);
+  });
+});

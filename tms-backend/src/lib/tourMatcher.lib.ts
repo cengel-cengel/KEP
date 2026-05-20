@@ -183,3 +183,123 @@ export function findBestToursForShipment(
   out.sort((a, b) => b.score - a.score);
   return out.slice(0, topN);
 }
+
+// ─── T-3.3.1 OSRM-PRECISE MATCHER ──────────────────────────────
+
+/**
+ * T-3.3.1: Precise-Variant nutzt OSRM-Route-Distanz statt Haversine.
+ *
+ * - Per-Candidate-OSRM-Aufruf (shipment-loading → tour-last-stop).
+ * - In-Memory-LRU-Cache (Map<shipKey|tourKey, {km, ts}>) mit TTL 5min.
+ * - Promise.allSettled (parallel) — N candidates → max(N)-Latenz.
+ * - Timeout 2s pro Call, Fallback Haversine bei OSRM-Fail/Timeout.
+ * - Caller-Pflicht: routeDistanceFn als Dependency injection
+ *   (testability).
+ */
+
+const PRECISE_CACHE = new Map<string, { km: number; ts: number }>();
+const PRECISE_TTL_MS = 5 * 60_000;
+const PRECISE_TIMEOUT_MS = 2000;
+
+function cacheKey(
+  shipLat: number,
+  shipLng: number,
+  tourLat: number,
+  tourLng: number,
+): string {
+  // 4 Nachkommastellen ≈ 11m Präzision — genug für City-Granularität.
+  return `${shipLat.toFixed(4)},${shipLng.toFixed(4)}|${tourLat.toFixed(4)},${tourLng.toFixed(4)}`;
+}
+
+export function _clearPreciseCacheForTests(): void {
+  PRECISE_CACHE.clear();
+}
+
+export type RouteDistanceFn = (
+  coords: Array<[number, number]>,
+  timeoutMs?: number,
+) => Promise<number | null>;
+
+export async function findBestToursForShipmentPrecise(
+  shipment: MatchShipmentInput,
+  candidates: MatchTourCandidate[],
+  routeDistanceFn: RouteDistanceFn,
+  topN = 3,
+): Promise<BestTourMatch[]> {
+  // Pre-pass: compute km via OSRM mit cache+fallback, parallel.
+  const kmPromises = candidates.map(async (t): Promise<number> => {
+    const sLat = shipment.loading_lat;
+    const sLng = shipment.loading_lng;
+    const tLat = t.last_stop_lat;
+    const tLng = t.last_stop_lng;
+    if (sLat == null || sLng == null || tLat == null || tLng == null) {
+      return 9999;
+    }
+    const key = cacheKey(sLat, sLng, tLat, tLng);
+    const cached = PRECISE_CACHE.get(key);
+    if (cached && Date.now() - cached.ts < PRECISE_TTL_MS) {
+      return cached.km;
+    }
+    try {
+      const km = await routeDistanceFn(
+        [
+          [sLng, sLat],
+          [tLng, tLat],
+        ],
+        PRECISE_TIMEOUT_MS,
+      );
+      if (km != null && Number.isFinite(km)) {
+        PRECISE_CACHE.set(key, { km, ts: Date.now() });
+        return km;
+      }
+    } catch {
+      /* fall through */
+    }
+    // Fallback Haversine.
+    return haversineKm({ lat: sLat, lng: sLng }, { lat: tLat, lng: tLng });
+  });
+  const settled = await Promise.allSettled(kmPromises);
+  const kms = settled.map((r, i) => {
+    if (r.status === 'fulfilled') return r.value;
+    // Hard-Fallback (sollte nicht passieren — kmPromises swallowed).
+    const sLat = shipment.loading_lat;
+    const sLng = shipment.loading_lng;
+    const tLat = candidates[i].last_stop_lat;
+    const tLng = candidates[i].last_stop_lng;
+    if (sLat != null && sLng != null && tLat != null && tLng != null) {
+      return haversineKm({ lat: sLat, lng: sLng }, { lat: tLat, lng: tLng });
+    }
+    return 9999;
+  });
+
+  // Re-use Sync-Score-Pipeline mit pre-computed km.
+  const out: BestTourMatch[] = [];
+  for (let i = 0; i < candidates.length; i++) {
+    const t = candidates[i];
+    const km = kms[i];
+    const geo = geoScore(km);
+    const cap = capacityScore(shipment, t);
+    const time = timeScore(shipment, t);
+    const cluster = clusterScore(shipment, t);
+    const factors = [
+      { name: 'Geo', value: geo, weight: W_GEO },
+      { name: 'Capacity-Fit', value: cap, weight: W_CAPACITY },
+      { name: 'Time', value: time, weight: W_TIME },
+      { name: 'Cluster', value: cluster, weight: W_CLUSTER },
+    ];
+    const score = Math.round(
+      geo * W_GEO + cap * W_CAPACITY + time * W_TIME + cluster * W_CLUSTER,
+    );
+    if (cap === 0) continue;
+    out.push({
+      tour_id: t.id,
+      mode: t.mode,
+      tour_number: t.tour_number,
+      score,
+      factors,
+      reason: buildReason(km, factors),
+    });
+  }
+  out.sort((a, b) => b.score - a.score);
+  return out.slice(0, topN);
+}

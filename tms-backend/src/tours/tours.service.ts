@@ -22,6 +22,7 @@ import {
 } from '../lib/stackable.lib';
 import {
   findBestToursForShipment,
+  findBestToursForShipmentPrecise,
   type MatchTourCandidate,
 } from '../lib/tourMatcher.lib';
 import { computeFvSchedule } from './fv-scheduler.lib';
@@ -856,19 +857,26 @@ export class ToursService {
       }),
     ];
 
-    return findBestToursForShipment(
-      {
-        id: ship.id,
-        ldm: ship.ldm ? Number(ship.ldm) : null,
-        weight_kg: ship.weight_kg ? Number(ship.weight_kg) : null,
-        loading_date: ship.loading_date,
-        customer_id: ship.customer_id,
-        loading_lat,
-        loading_lng,
-      },
-      candidates,
-      3,
-    );
+    const shipmentInput = {
+      id: ship.id,
+      ldm: ship.ldm ? Number(ship.ldm) : null,
+      weight_kg: ship.weight_kg ? Number(ship.weight_kg) : null,
+      loading_date: ship.loading_date,
+      customer_id: ship.customer_id,
+      loading_lat,
+      loading_lng,
+    };
+    // T-3.3.1: OSRM-Precise (Async). Bei route-fail Fallback
+    // intern Haversine. Env-Flag MATCHER_PRECISE für quick-Disable.
+    if (process.env.MATCHER_PRECISE !== 'false') {
+      return findBestToursForShipmentPrecise(
+        shipmentInput,
+        candidates,
+        routeDistanceKm,
+        3,
+      );
+    }
+    return findBestToursForShipment(shipmentInput, candidates, 3);
   }
 
   async eligibleShipmentsFv(filter: {

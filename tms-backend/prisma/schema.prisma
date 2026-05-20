@@ -238,6 +238,7 @@ model shipments {
   deleted_at                                         DateTime?                  @db.Timestamptz(6)
   transport_type                                     String                     @default("DIREKT") @db.VarChar(20)
   relation_id                                        String?                    @db.Uuid
+  split_from_id                                      String?                    @db.Uuid
   business_partner_id                                String?                    @db.Uuid
   chargeable_weight                                  Decimal?                   @db.Decimal(10, 2)
   cbm                                                Decimal?                   @db.Decimal(8, 3)
@@ -302,6 +303,8 @@ model shipments {
   outbound_routing                                   routing_rules?             @relation("shipments_outbound_routing", fields: [outbound_routing_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   relation                                           relations?                 @relation("shipments_relation", fields: [relation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   tours                                              tours?                     @relation(fields: [tour_id], references: [id], onUpdate: NoAction)
+  split_from                                         shipments?                 @relation("shipments_split_from", fields: [split_from_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  split_into                                         shipments[]                @relation("shipments_split_from")
   surplus_items                                      surplus_items[]
   nv_tour_stops                                      nv_tour_stops[]            @relation("nv_tour_stops_shipment")
   cost_components                                    shipment_cost_components[]

@@ -231,4 +231,22 @@ export class NvTourenController {
     this.realtime.emit('tour.updated', 'tour', tourId, clientId);
     return r;
   }
+
+  // C-2: Sendung-Splitten (split shipment-items into separate new
+  //      shipment + stop). Original-Stop bleibt mit Rest-Items.
+  @Post(':id/stops/:stopId/split')
+  async splitShipment(
+    @Param('id') tourId: string,
+    @Param('stopId') stopId: string,
+    @Body() dto: { splitItemIds: string[] },
+    @Headers('x-client-id') clientId?: string,
+  ) {
+    const r = await this.svc.splitShipmentAtStop(
+      tourId,
+      stopId,
+      dto.splitItemIds ?? [],
+    );
+    this.realtime.emit('tour.updated', 'tour', tourId, clientId);
+    return r;
+  }
 }

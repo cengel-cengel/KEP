@@ -39,6 +39,7 @@ import { toCSV, downloadCSV } from '../../lib/csv';
 import SplitTourDialog from './dialogs/SplitTourDialog';
 import SwapDriverDialog from './dialogs/SwapDriverDialog';
 import MoveStopDialog from './dialogs/MoveStopDialog';
+import SplitShipmentDialog from './dialogs/SplitShipmentDialog';
 
 interface TourDetail {
   id: string;
@@ -540,6 +541,11 @@ function NvTourBody({ tourId }: { tourId: string }) {
     label: string;
     shipmentId?: string;
   } | null>(null);
+  // C-2: SplitShipmentDialog state.
+  const [splitShipmentOpen, setSplitShipmentOpen] = useState<{
+    stopId: string;
+    shipmentId: string;
+  } | null>(null);
   const shiftMut = useMutation({
     mutationFn: async (stopId: string) => {
       await api.post(`/nv-touren/${tourId}/apply-action`, {
@@ -766,6 +772,7 @@ function NvTourBody({ tourId }: { tourId: string }) {
           onSetStopNotiz={(stopId, notizen) =>
             patchStopMut.mutate({ stopId, body: { notizen } })
           }
+          onSplitShipment={(payload) => setSplitShipmentOpen(payload)}
         />
 
         <CollapsibleSection
@@ -847,6 +854,14 @@ function NvTourBody({ tourId }: { tourId: string }) {
           onClose={() => setMoveOpen(null)}
         />
       )}
+      {splitShipmentOpen && (
+        <SplitShipmentDialog
+          tourId={t.id}
+          stopId={splitShipmentOpen.stopId}
+          shipmentId={splitShipmentOpen.shipmentId}
+          onClose={() => setSplitShipmentOpen(null)}
+        />
+      )}
     </>
   );
 }
@@ -911,6 +926,8 @@ interface NvStopsSubTabsProps {
   onSetStopStatus: (stopId: string, status: string) => void;
   /** Sprint C: Notiz-Popover PATCH stop.notizen. */
   onSetStopNotiz: (stopId: string, notizen: string | null) => void;
+  /** C-2: Sendung-Splitten → SplitShipmentDialog öffnen. */
+  onSplitShipment: (payload: { stopId: string; shipmentId: string }) => void;
 }
 
 function NvStopsSubTabs({
@@ -930,6 +947,7 @@ function NvStopsSubTabs({
   onMoveStop,
   onSetStopStatus,
   onSetStopNotiz,
+  onSplitShipment,
 }: NvStopsSubTabsProps) {
   // C' Sprint: gemeinsamer Search-State für Stoppliste + Sendungsliste
   // (decision 4B). Stopps-Tab nutzt Search nicht.
@@ -998,6 +1016,7 @@ function NvStopsSubTabs({
           onMoveStop={onMoveStop}
           onSetStopStatus={onSetStopStatus}
           onSetStopNotiz={onSetStopNotiz}
+          onSplitShipment={onSplitShipment}
         />
       )}
       {subTab === 'stoppliste' && (
@@ -1056,6 +1075,7 @@ function NvStopsView({
   onMoveStop,
   onSetStopStatus,
   onSetStopNotiz,
+  onSplitShipment,
 }: {
   stops: NonNullable<NvTourDetail['stops']>;
   selectedStopId: string | null;
@@ -1065,6 +1085,7 @@ function NvStopsView({
   onMoveStop: (stop: NonNullable<NvTourDetail['stops']>[number]) => void;
   onSetStopStatus: (stopId: string, status: string) => void;
   onSetStopNotiz: (stopId: string, notizen: string | null) => void;
+  onSplitShipment: (payload: { stopId: string; shipmentId: string }) => void;
 }) {
   const wt = isoToWochentag(tourDatum);
   const groupLabel = wt
@@ -1119,8 +1140,12 @@ function NvStopsView({
             {
               label: 'Sendung splitten',
               icon: <Scissors size={12} />,
-              disabled: true,
-              onClick: () => {},
+              disabled: !menu.stop.shipment?.id,
+              onClick: () => {
+                const sid = menu.stop.shipment?.id;
+                if (sid)
+                  onSplitShipment({ stopId: menu.stop.id, shipmentId: sid });
+              },
             },
             {
               label: 'Status setzen ▶',

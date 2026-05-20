@@ -90,9 +90,23 @@ export function registerHotkeys(
 /** Cheat-Sheet (visible via Cmd+? oder ?, future Sprint). */
 export const HOTKEYS_DOC: Array<{ keys: string; desc: string; scope: string }> =
   [
+    // Global
+    { keys: 'Cmd+K / Ctrl+K', desc: 'Command-Palette', scope: 'global' },
+    { keys: 'Esc', desc: 'Selection in Queue/Board clearen', scope: 'queue' },
+    { keys: 'Space', desc: 'Selection-Toggle (S-2.2)', scope: 'queue' },
+    { keys: 'Cmd/Ctrl+Click', desc: 'Multi-Select Toggle', scope: 'queue' },
+    { keys: 'Shift+Click', desc: 'Range-Select (Shift-Range)', scope: 'queue' },
+    // Panel
     { keys: 'Esc', desc: 'Panel schließen', scope: 'panel' },
     { keys: 'p', desc: 'Panel pin/unpin', scope: 'panel' },
+    { keys: '1 / 2 / 3', desc: 'Sub-Tab Stopps/Stoppliste/Sendungsliste (NV)', scope: 'panel' },
+    { keys: '1 / 2', desc: 'Sub-Tab Stops/Tabelle (FV — B\'-2)', scope: 'panel' },
+    // Timeline
     { keys: 'j / ↓', desc: 'nächster Stop', scope: 'timeline' },
     { keys: 'k / ↑', desc: 'vorheriger Stop', scope: 'timeline' },
     { keys: 'Enter', desc: 'Sendung öffnen', scope: 'timeline' },
+    // LoadingPlan
+    { keys: 'r / R', desc: '90°-Rotation während Box-Drag', scope: 'loadingplan' },
+    // Stop-Context
+    { keys: 'Rechtsklick / Long-Press', desc: 'Stop-ContextMenu (Sprint C)', scope: 'panel' },
   ];

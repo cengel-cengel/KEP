@@ -1360,6 +1360,7 @@ model nv_subunternehmer {
   max_ldm                     Decimal?         @db.Decimal(10, 2)
   notiz                       String?
   aktiv                       Boolean          @default(true)
+  has_adr_license             Boolean          @default(false)
   created_at                  DateTime         @default(now()) @db.Timestamptz(6)
   updated_at                  DateTime         @default(now()) @db.Timestamptz(6)
   nv_tour_gebiet              nv_tour_gebiete? @relation("nv_subunternehmer_tour_gebiet", fields: [nv_tour_gebiet_id], references: [id], onDelete: SetNull, onUpdate: NoAction)

@@ -8,15 +8,17 @@
  *                         (warning) / > 9h (critical)
  *   OVERLOAD_RISK       — capacity-Overload UND mind. 1 Stop
  *                         critical (kombinierter Risk)
- *
- * Hazmat-Konflikt für NV (HAZMAT_DRIVER) ist BACKLOG (T-3.2.1
- * + Migration 40 + has_adr_license auf nv_subunternehmer).
+ *   HAZMAT_DRIVER       — Tour enthält Hazmat-Sendung(en) und
+ *                         Subunternehmer hat keine ADR-Lizenz
+ *                         (T-3.2.1, has_adr_license auf
+ *                         subcontractors existiert bereits).
  */
 
 export type ConflictType =
   | 'TIME_OVERLAP'
   | 'WORKLOAD_EXCEEDED'
-  | 'OVERLOAD_RISK';
+  | 'OVERLOAD_RISK'
+  | 'HAZMAT_DRIVER';
 
 export type ConflictSeverity = 'warning' | 'critical';
 
@@ -42,10 +44,14 @@ export interface DetectInputTour {
   id: string;
   datum: Date;
   subunternehmer_id?: string | null;
+  /** T-3.2.1: Sub-ADR-Lizenz für HAZMAT_DRIVER-Konflikt. */
+  sub_has_adr_license?: boolean | null;
   overload?: { isOverloaded: boolean } | null;
   stops: Array<{
     id: string;
     risk_severity?: string | null;
+    /** T-3.2.1: shipment.is_hazmat propagiert für Detector. */
+    is_hazmat?: boolean | null;
     planned_arrival?: Date | null;
     planned_departure?: Date | null;
     loading_time_from?: Date | null;
@@ -116,6 +122,25 @@ export function detectConflictsForTour(
   allTours: DetectInputTour[],
 ): Conflict[] {
   const conflicts: Conflict[] = [];
+
+  // 0. HAZMAT_DRIVER (T-3.2.1)
+  //    Wenn mind. 1 Stop is_hazmat=true und Sub keine ADR-Lizenz →
+  //    critical Conflict mit SWAP_DRIVER als primary action.
+  if (tour.subunternehmer_id && tour.sub_has_adr_license === false) {
+    const hazmatStops = tour.stops.filter((s) => s.is_hazmat === true);
+    if (hazmatStops.length > 0) {
+      conflicts.push({
+        type: 'HAZMAT_DRIVER',
+        severity: 'critical',
+        msg: `${hazmatStops.length} Hazmat-Sendung(en), Sub hat keine ADR-Lizenz — Fahrer wechseln.`,
+        affected_stop_ids: hazmatStops.map((s) => s.id),
+        suggested_actions: [
+          { type: 'SWAP_DRIVER' },
+          { type: 'MOVE_STOP_TO_TOUR', stop_id: hazmatStops[0]?.id },
+        ],
+      });
+    }
+  }
 
   // 1. OVERLOAD_RISK
   if (tour.overload?.isOverloaded) {

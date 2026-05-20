@@ -41,6 +41,7 @@ export default function InlineEdit({
   label?: string;
 }) {
   const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<string>(value == null ? '' : String(value));
   const timerRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null>(null);
@@ -67,7 +68,10 @@ export default function InlineEdit({
       timerRef.current = null;
     }
     if (next !== originalRef.current) {
-      void onSave(next);
+      // S-2: Saving-Indicator visible bis onSave-Promise resolved.
+      setSaving(true);
+      Promise.resolve(onSave(next))
+        .finally(() => setSaving(false));
       originalRef.current = next;
     }
   };
@@ -128,19 +132,22 @@ export default function InlineEdit({
 
   if (!editing) {
     return (
-      <button
-        type="button"
-        onClick={startEdit}
-        disabled={readonly}
-        className={`inline-block min-h-[1.5rem] text-left ${
-          readonly
-            ? 'cursor-default text-gray-600'
-            : 'cursor-text hover:bg-blue-50 rounded px-1 -mx-1 text-gray-900'
-        } ${value == null || value === '' ? 'text-gray-400 italic' : ''}`}
-        aria-label={label}
-      >
-        {displayValue}
-      </button>
+      <span className="relative inline-block">
+        <button
+          type="button"
+          onClick={startEdit}
+          disabled={readonly}
+          className={`inline-block min-h-[1.5rem] text-left ${
+            readonly
+              ? 'cursor-default text-gray-600'
+              : 'cursor-text hover:bg-blue-50 rounded px-1 -mx-1 text-gray-900'
+          } ${value == null || value === '' ? 'text-gray-400 italic' : ''}`}
+          aria-label={label}
+        >
+          {displayValue}
+        </button>
+        {saving && <InlineEditSpinner />}
+      </span>
     );
   }
 
@@ -202,6 +209,18 @@ export default function InlineEdit({
         setDraft(e.target.value);
         scheduleSave(e.target.value);
       }}
+    />
+  );
+}
+
+
+// S-2: Inline-Saving-Spinner (klein, top-right).
+function InlineEditSpinner() {
+  return (
+    <span
+      className="absolute -top-1 -right-2 inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse"
+      aria-label="Speichert…"
+      role="status"
     />
   );
 }

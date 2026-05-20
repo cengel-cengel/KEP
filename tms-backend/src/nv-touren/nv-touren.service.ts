@@ -75,6 +75,7 @@ const TOUR_INCLUDE = {
       name: true,
       max_ldm: true,
       max_gewicht_kg: true,
+      has_adr_license: true,
       business_partner: {
         select: { id: true, partner_number: true, name: true },
       },
@@ -97,6 +98,7 @@ const TOUR_INCLUDE = {
           weight_kg: true,
           volume_m3: true,
           ldm: true,
+          is_hazmat: true,
           length_cm: true,
           width_cm: true,
           height_cm: true,
@@ -842,10 +844,12 @@ export class NvTourenService {
       id: t.id,
       datum: new Date(t.datum),
       subunternehmer_id: t.subunternehmer_id ?? t.subunternehmer?.id ?? null,
+      sub_has_adr_license: t.subunternehmer?.has_adr_license ?? null,
       overload: t.overload ? { isOverloaded: t.overload.isOverloaded } : null,
       stops: (t.stops ?? []).map((s: any) => ({
         id: s.id,
         risk_severity: s.risk_severity,
+        is_hazmat: s.shipment?.is_hazmat ?? null,
         planned_arrival: s.planned_arrival ? new Date(s.planned_arrival) : null,
         planned_departure: s.planned_departure
           ? new Date(s.planned_departure)

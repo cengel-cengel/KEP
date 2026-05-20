@@ -65,6 +65,10 @@ export interface MapPanelProps {
   selectedStopId?: string | null;
   /** A' Sprint: Stop-Marker-Click → setSelectedStopId (bidirektional). */
   onSelectStop?: (stopId: string | null) => void;
+  /** P0-12.1: Drop-Handler für DnD aus QueuePanel/BoardPanel.
+   *  payload.source='list' bzw. 'map'. Caller entscheidet was passiert
+   *  (add to activeTour, oder pending-bucket wenn keine). */
+  onDrop?: (shipmentIds: string[], source?: 'list' | 'map') => void;
 }
 
 export default function MapPanel({
@@ -75,11 +79,14 @@ export default function MapPanel({
   farbenMap,
   selectedStopId,
   onSelectStop,
+  onDrop,
 }: MapPanelProps) {
   const qc = useQueryClient();
   const { mode, datum } = useWorkspace();
   const { layout, setLayout } = useWorkspaceLayout();
   const { mapCollapsed } = layout;
+  // P0-12.1: DnD-Hover-State (ring-blue während Drag-Over).
+  const [dropHover, setDropHover] = useState(false);
 
   // === Pop-out-Window-Management ===================================
   const popupWindowRef = useRef<Window | null>(null);
@@ -284,7 +291,44 @@ export default function MapPanel({
         </button>
       </div>
 
-      <div className="flex-1 min-h-0 relative">
+      <div
+        className={`flex-1 min-h-0 relative ${
+          dropHover ? 'ring-2 ring-blue-500 ring-inset' : ''
+        }`}
+        onDragOver={(e) => {
+          if (!onDrop) return;
+          if (!Array.from(e.dataTransfer.types).includes('application/json'))
+            return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          setDropHover(true);
+        }}
+        onDragLeave={(e) => {
+          // nur reset wenn wir das Container-Element verlassen
+          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+          setDropHover(false);
+        }}
+        onDrop={(e) => {
+          setDropHover(false);
+          if (!onDrop) return;
+          try {
+            const raw = e.dataTransfer.getData('application/json');
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            const ids: string[] = Array.isArray(parsed.shipmentIds)
+              ? parsed.shipmentIds
+              : parsed.shipmentId
+                ? [parsed.shipmentId]
+                : [];
+            if (ids.length > 0) {
+              e.preventDefault();
+              onDrop(ids, parsed.source);
+            }
+          } catch {
+            /* ignore malformed payload */
+          }
+        }}
+      >
         {mapInPopup ? (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-400">
             Karte in Pop-out-Fenster.

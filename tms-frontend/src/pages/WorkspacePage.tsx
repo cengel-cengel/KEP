@@ -325,6 +325,23 @@ export default function WorkspacePage() {
               farbenMap={farbenMap}
               selectedStopId={selectedStopId}
               onSelectStop={setSelectedStopId}
+              onDrop={(ids) => {
+                // P0-12.1: Drop auf Map-Container.
+                // Aktive Tour vorhanden → add direkt.
+                // Sonst → erste ID als QuickAdd-Trigger.
+                if (mode !== 'nv') return;
+                if (activeTourViewId && ids.length > 0) {
+                  for (const sid of ids) {
+                    addStopNv.mutate({
+                      tourId: activeTourViewId,
+                      shipmentId: sid,
+                      stop_type: filter.pickupMode,
+                    });
+                  }
+                  return;
+                }
+                if (ids.length > 0) setPinAddShipmentId(ids[0]);
+              }}
             />
           </Panel>
         </Group>

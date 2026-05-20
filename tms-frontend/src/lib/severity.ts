@@ -74,6 +74,11 @@ export interface ShipmentSeverityInput {
   customers?: { priority_tier?: string | null } | null;
   /** 0..100 (T-3.3 priorityScore). Optional pre-computed. */
   priority_score?: number | null;
+  /** T-3.2.1: Hazmat-Flag. Wenn true UND zugewiesener Sub keine
+   *  ADR-Lizenz hat → L1 (Mismatch). */
+  is_hazmat?: boolean | null;
+  /** T-3.2.1: Sub-ADR-Status. null wenn keine Tour/Sub zugewiesen. */
+  sub_has_adr_license?: boolean | null;
 }
 
 export interface TourSeverityInput {
@@ -132,6 +137,9 @@ function resolveTier(
 export function getShipmentSeverity(s: ShipmentSeverityInput): SeverityLevel {
   // L1 — overdue (status='new' && loading_date < today)
   if (isOverdue(s.loading_date, s.status)) return 'L1';
+  // L1 — T-3.2.1: hazmat-Sendung && Sub explizit ohne ADR
+  // (sub_has_adr_license === false; null = noch nicht zugewiesen)
+  if (s.is_hazmat === true && s.sub_has_adr_license === false) return 'L1';
   // L2 — today OR risk=critical (BE-persisted NV oder FV)
   if (isToday(s.loading_date)) return 'L2';
   if (s.risk_severity === 'critical' || s.risk_severity_fv === 'critical') {

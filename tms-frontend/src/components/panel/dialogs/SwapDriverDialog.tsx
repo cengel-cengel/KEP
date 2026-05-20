@@ -7,19 +7,24 @@ interface Sub {
   id: string;
   name: string;
   aktiv?: boolean | null;
+  has_adr_license?: boolean | null;
 }
 
 export default function SwapDriverDialog({
   tourId,
   currentSubId,
+  requireAdr = false,
   onClose,
 }: {
   tourId: string;
   currentSubId?: string | null;
+  /** T-3.2.1: wenn tour Hazmat-Stops hat → nur ADR-Subs anzeigen. */
+  requireAdr?: boolean;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
   const [newSubId, setNewSubId] = useState<string>('');
+  const [showAll, setShowAll] = useState(false);
 
   const subsQ = useQuery<Sub[]>({
     queryKey: ['nv-subunternehmer'],
@@ -27,9 +32,13 @@ export default function SwapDriverDialog({
       (await api.get<Sub[]>('/nv-subunternehmer')).data,
     staleTime: 5 * 60_000,
   });
-  const subs = (subsQ.data ?? []).filter(
+  const subsAll = (subsQ.data ?? []).filter(
     (s) => s.aktiv !== false && s.id !== currentSubId,
   );
+  const subs =
+    requireAdr && !showAll
+      ? subsAll.filter((s) => s.has_adr_license === true)
+      : subsAll;
 
   const mut = useMutation({
     mutationFn: async () => {
@@ -56,6 +65,18 @@ export default function SwapDriverDialog({
           </button>
         </div>
         <div className="p-3 space-y-2 text-xs">
+          {requireAdr && (
+            <div className="flex items-center justify-between text-[10px] bg-amber-50 border border-amber-300 text-amber-800 rounded px-2 py-1">
+              <span>Tour enthält Hazmat — nur ADR-Subs gelistet.</span>
+              <button
+                type="button"
+                onClick={() => setShowAll((v) => !v)}
+                className="underline ml-2"
+              >
+                {showAll ? 'Nur ADR' : 'Alle zeigen'}
+              </button>
+            </div>
+          )}
           <label className="block">
             <span className="text-gray-600">Neuer Sub</span>
             <select
@@ -67,6 +88,7 @@ export default function SwapDriverDialog({
               {subs.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
+                  {s.has_adr_license ? ' · ADR' : ''}
                 </option>
               ))}
             </select>

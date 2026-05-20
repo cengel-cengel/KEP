@@ -62,10 +62,21 @@ interface TourDetail {
     zip?: string | null;
     city?: string | null;
   } | null;
+  total_kosten_eur?: string | number | null;
   shipments?: Array<{
     id: string;
     shipment_number?: string | null;
     tour_position?: number | null;
+    weight_kg?: string | number | null;
+    customers?: { id: string; name: string } | null;
+    addresses_shipments_loading_address_idToaddresses?: {
+      zip?: string | null;
+      city?: string | null;
+    } | null;
+    addresses_shipments_delivery_address_idToaddresses?: {
+      zip?: string | null;
+      city?: string | null;
+    } | null;
     planned_arrival_fv?: string | null;
     planned_departure_fv?: string | null;
     risk_severity_fv?: string | null;
@@ -180,11 +191,44 @@ export default function TourDetailsTab({
 
 function FvTourBody({ tourId }: { tourId: string }) {
   const qc = useQueryClient();
+  const panel = usePanel();
   const tourQ = useQuery<TourDetail>({
     queryKey: ['fv-tour-detail', tourId],
     queryFn: async () => (await api.get<TourDetail>(`/tours/${tourId}`)).data,
     staleTime: 30_000,
   });
+
+  // B'-2: 2 Sub-Tabs (Stops compact, Tabelle detail).
+  const [fvSubTab, setFvSubTab] = useState<'stops' | 'tabelle'>('stops');
+  useEffect(() => {
+    const unsubs = [
+      registerHotkey('1', () => setFvSubTab('stops'), { scope: 'panel' }),
+      registerHotkey('2', () => setFvSubTab('tabelle'), { scope: 'panel' }),
+    ];
+    return () => unsubs.forEach((u) => u());
+  }, []);
+
+  // B'-2: FV-Aggregates (Sendg./kg/km/€).
+  const fvAggregates = useMemo<TourAggregates>(() => {
+    const data = tourQ.data;
+    if (!data) {
+      return { shipmentCount: 0, weightKgSum: 0, kmTotal: null, euroTotal: null };
+    }
+    let weight = 0;
+    for (const s of data.shipments ?? []) {
+      if (s.weight_kg != null) {
+        const w = Number(s.weight_kg);
+        if (Number.isFinite(w)) weight += w;
+      }
+    }
+    return {
+      shipmentCount: (data.shipments ?? []).length,
+      weightKgSum: weight,
+      kmTotal: data.geplante_km != null ? Number(data.geplante_km) : null,
+      euroTotal:
+        data.total_kosten_eur != null ? Number(data.total_kosten_eur) : null,
+    };
+  }, [tourQ.data]);
 
   const patchMut = useMutation({
     mutationFn: async (body: Record<string, unknown>) => {
@@ -282,6 +326,7 @@ function FvTourBody({ tourId }: { tourId: string }) {
         severity={severity}
         quickActions={quickActions}
       />
+      <TourAggregateStrip aggregates={fvAggregates} />
       <div className="p-3 space-y-3">
         <AcuteSection items={fvAcuteItems} />
 
@@ -293,19 +338,12 @@ function FvTourBody({ tourId }: { tourId: string }) {
           <FvTourTimelineSection shipments={t.shipments ?? []} />
         </CollapsibleSection>
 
-        <section>
-          <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1">
-            Stops ({t.shipments?.length ?? 0})
-          </h3>
-          {(t.shipments ?? []).map((s, i) => (
-            <div key={s.id} className="text-xs flex items-center gap-2 py-0.5">
-              <span className="text-gray-400 font-mono w-5 text-right">
-                {(s.tour_position ?? i + 1)}.
-              </span>
-              <span className="font-mono">{s.shipment_number ?? '—'}</span>
-            </div>
-          ))}
-        </section>
+        <FvShipmentsSubTabs
+          shipments={t.shipments ?? []}
+          subTab={fvSubTab}
+          setSubTab={setFvSubTab}
+          onShipmentClick={(id) => panel.selectShipment(id)}
+        />
 
         <CollapsibleSection
           title="Hub-Adressen"
@@ -794,6 +832,9 @@ function NvTourBody({ tourId }: { tourId: string }) {
         <SwapDriverDialog
           tourId={t.id}
           currentSubId={t.subunternehmer?.id ?? t.subunternehmer_id ?? null}
+          requireAdr={
+            t.conflicts?.some((c) => c.type === 'HAZMAT_DRIVER') ?? false
+          }
           onClose={() => setSwapOpen(false)}
         />
       )}
@@ -1540,6 +1581,130 @@ function NvSendungslisteView({
             <td className="truncate text-gray-700">{r.customer}</td>
             <td className="text-right font-mono">
               {r.weight ? Math.round(r.weight) : '—'}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+// ─── B'-2: FV SHIPMENTS SUB-TABS (2 Tabs: Stops, Tabelle) ──────
+
+type FvShipmentItem = NonNullable<TourDetail['shipments']>[number];
+
+function FvShipmentsSubTabs({
+  shipments,
+  subTab,
+  setSubTab,
+  onShipmentClick,
+}: {
+  shipments: NonNullable<TourDetail['shipments']>;
+  subTab: 'stops' | 'tabelle';
+  setSubTab: (t: 'stops' | 'tabelle') => void;
+  onShipmentClick: (id: string) => void;
+}) {
+  return (
+    <section>
+      <div className="flex items-center gap-1 mb-2 text-xs">
+        <SubTabBtn n="1" active={subTab === 'stops'} onClick={() => setSubTab('stops')}>
+          Stops
+        </SubTabBtn>
+        <SubTabBtn n="2" active={subTab === 'tabelle'} onClick={() => setSubTab('tabelle')}>
+          Tabelle
+        </SubTabBtn>
+      </div>
+      {subTab === 'stops' && (
+        <FvStopsListView shipments={shipments} onShipmentClick={onShipmentClick} />
+      )}
+      {subTab === 'tabelle' && (
+        <FvShipmentsTableView shipments={shipments} onShipmentClick={onShipmentClick} />
+      )}
+    </section>
+  );
+}
+
+function FvStopsListView({
+  shipments,
+  onShipmentClick,
+}: {
+  shipments: NonNullable<TourDetail['shipments']>;
+  onShipmentClick: (id: string) => void;
+}) {
+  return (
+    <div>
+      <div className="text-[10px] font-mono uppercase text-gray-500 mb-1 border-b border-gray-200 pb-0.5">
+        Stops · {shipments.length}
+      </div>
+      {shipments.map((s, i) => (
+        <button
+          key={s.id}
+          type="button"
+          onClick={() => onShipmentClick(s.id)}
+          className="w-full text-left text-xs flex items-center gap-2 py-0.5 px-1 rounded hover:bg-gray-50"
+        >
+          <span className="text-gray-400 font-mono w-5 text-right">
+            {(s.tour_position ?? i + 1)}.
+          </span>
+          <span className="font-mono">{s.shipment_number ?? '—'}</span>
+          <span className="truncate text-gray-600 ml-2">
+            {s.customers?.name ?? ''}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function fvShipmentOrt(s: FvShipmentItem): string {
+  const addr =
+    s.addresses_shipments_delivery_address_idToaddresses ??
+    s.addresses_shipments_loading_address_idToaddresses;
+  if (!addr) return '—';
+  return `${addr.zip ?? ''} ${addr.city ?? ''}`.trim() || '—';
+}
+
+function fvShipmentZeit(s: FvShipmentItem): string {
+  if (!s.planned_arrival_fv) return '—';
+  return new Date(s.planned_arrival_fv).toLocaleTimeString('de', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function FvShipmentsTableView({
+  shipments,
+  onShipmentClick,
+}: {
+  shipments: NonNullable<TourDetail['shipments']>;
+  onShipmentClick: (id: string) => void;
+}) {
+  return (
+    <table className="w-full text-xs">
+      <thead>
+        <tr className="text-[10px] uppercase text-gray-500 border-b">
+          <th className="text-left py-0.5 w-6">#</th>
+          <th className="text-left py-0.5">Sendung</th>
+          <th className="text-left py-0.5">Kunde</th>
+          <th className="text-left py-0.5">Ort</th>
+          <th className="text-left py-0.5 w-12">Zeit</th>
+          <th className="text-right py-0.5 w-10">kg</th>
+        </tr>
+      </thead>
+      <tbody>
+        {shipments.map((s, i) => (
+          <tr
+            key={s.id}
+            onClick={() => onShipmentClick(s.id)}
+            className="cursor-pointer hover:bg-blue-50"
+          >
+            <td className="font-mono text-gray-500">{s.tour_position ?? i + 1}</td>
+            <td className="font-mono truncate">{s.shipment_number ?? '—'}</td>
+            <td className="truncate text-gray-700">{s.customers?.name ?? '—'}</td>
+            <td className="truncate text-gray-700">{fvShipmentOrt(s)}</td>
+            <td className="text-gray-600 font-mono text-[10px]">{fvShipmentZeit(s)}</td>
+            <td className="text-right font-mono">
+              {s.weight_kg != null ? Math.round(Number(s.weight_kg)) : '—'}
             </td>
           </tr>
         ))}

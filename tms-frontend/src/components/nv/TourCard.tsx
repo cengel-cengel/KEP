@@ -130,20 +130,38 @@ export default function TourCard({
     }
   };
 
+  // S-2: Invalid-Drop-Target wenn Tour COMPLETED/CANCELLED.
+  // Visual: red-ring + cursor-not-allowed während Drag-Over.
+  const isInvalidTarget =
+    tour.status === 'COMPLETED' || tour.status === 'CANCELLED';
+
   return (
     <div
       onDragOver={(e) => {
         if (Array.from(e.dataTransfer.types).includes('application/json')) {
           e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
+          if (isInvalidTarget) {
+            e.dataTransfer.dropEffect = 'none';
+          } else {
+            e.dataTransfer.dropEffect = 'move';
+          }
           setHovered(true);
         }
       }}
       onDragLeave={() => setHovered(false)}
-      onDrop={handleDrop}
+      onDrop={(e) => {
+        if (isInvalidTarget) {
+          e.preventDefault();
+          setHovered(false);
+          return;
+        }
+        handleDrop(e);
+      }}
       className={`rounded-lg ${
         hovered
-          ? 'border-2 border-blue-500 bg-blue-50 shadow-md'
+          ? isInvalidTarget
+            ? 'border-2 border-red-500 bg-red-50 shadow-md cursor-not-allowed'
+            : 'border-2 border-blue-500 bg-blue-50 shadow-md'
           : isActive
             ? 'border-2 bg-white shadow-md'
             : 'border border-gray-200 bg-white shadow-sm'

@@ -34,6 +34,32 @@ describe('getShipmentSeverity', () => {
     ).not.toBe('L1');
   });
 
+  // T-3.2.1 Hazmat-Mismatch
+  it('hazmat + sub ohne ADR → L1', () => {
+    expect(
+      getShipmentSeverity({
+        is_hazmat: true,
+        sub_has_adr_license: false,
+      }),
+    ).toBe('L1');
+  });
+  it('hazmat + sub MIT ADR → kein L1 für hazmat-Regel', () => {
+    expect(
+      getShipmentSeverity({
+        is_hazmat: true,
+        sub_has_adr_license: true,
+      }),
+    ).not.toBe('L1');
+  });
+  it('hazmat ohne sub-Zuweisung (null) → kein L1 (noch in Pending)', () => {
+    expect(
+      getShipmentSeverity({
+        is_hazmat: true,
+        sub_has_adr_license: null,
+      }),
+    ).not.toBe('L1');
+  });
+
   it('today + status=new → L2', () => {
     expect(
       getShipmentSeverity({ loading_date: TODAY, status: 'new' }),

@@ -161,6 +161,28 @@ export default function QueuePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter.pickupMode]);
 
+  // S-2: Global Esc → clear-selection (skip wenn focus in
+  // input/textarea/contenteditable).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      const tag = (e.target as HTMLElement | null)?.tagName ?? '';
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        (e.target as HTMLElement | null)?.isContentEditable
+      ) {
+        return;
+      }
+      if (selected.size === 0) return;
+      setSelected(new Set());
+      lastClickedRef.current = null;
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
+
   // === Group-Collapse (NV-Mode) ==================================
   const [expandedGroup, setExpandedGroup] = useState<string | null>(
     loadExpanded,

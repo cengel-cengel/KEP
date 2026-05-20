@@ -174,4 +174,52 @@ describe('detectConflictsForTour', () => {
       ),
     ).toBeUndefined();
   });
+
+  // ─── T-3.2.1 HAZMAT_DRIVER ─────────────────────────────────
+  describe('HAZMAT_DRIVER', () => {
+    const baseHazmatTour: DetectInputTour = {
+      id: 'h1',
+      datum: day,
+      subunternehmer_id: 'sub-a',
+      sub_has_adr_license: false,
+      stops: [
+        { ...baseStop('s1', 8, 9), is_hazmat: true },
+        { ...baseStop('s2', 10, 11), is_hazmat: false },
+      ],
+    };
+
+    it('feuert wenn hazmat-stop + sub ohne ADR-Lizenz', () => {
+      const cs = detectConflictsForTour(baseHazmatTour, [baseHazmatTour]);
+      const hz = cs.find((c) => c.type === 'HAZMAT_DRIVER');
+      expect(hz).toBeDefined();
+      expect(hz!.severity).toBe('critical');
+      expect(hz!.affected_stop_ids).toEqual(['s1']);
+      expect(hz!.suggested_actions.map((a) => a.type)).toContain('SWAP_DRIVER');
+    });
+
+    it('feuert NICHT wenn sub ADR-Lizenz hat', () => {
+      const tour = { ...baseHazmatTour, sub_has_adr_license: true };
+      const cs = detectConflictsForTour(tour, [tour]);
+      expect(cs.find((c) => c.type === 'HAZMAT_DRIVER')).toBeUndefined();
+    });
+
+    it('feuert NICHT wenn kein hazmat-stop', () => {
+      const tour: DetectInputTour = {
+        ...baseHazmatTour,
+        stops: baseHazmatTour.stops.map((s) => ({ ...s, is_hazmat: false })),
+      };
+      const cs = detectConflictsForTour(tour, [tour]);
+      expect(cs.find((c) => c.type === 'HAZMAT_DRIVER')).toBeUndefined();
+    });
+
+    it('feuert NICHT wenn kein Sub zugewiesen', () => {
+      const tour: DetectInputTour = {
+        ...baseHazmatTour,
+        subunternehmer_id: null,
+        sub_has_adr_license: null,
+      };
+      const cs = detectConflictsForTour(tour, [tour]);
+      expect(cs.find((c) => c.type === 'HAZMAT_DRIVER')).toBeUndefined();
+    });
+  });
 });

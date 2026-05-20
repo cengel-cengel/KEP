@@ -20,6 +20,7 @@ import TourAggregateStrip, {
 } from './TourAggregateStrip';
 import { isoToWochentag, wochentagLabel } from '../../lib/wochentage';
 import { registerHotkey } from '../../lib/hotkeys';
+import { toCSV, downloadCSV } from '../../lib/csv';
 import SplitTourDialog from './dialogs/SplitTourDialog';
 import SwapDriverDialog from './dialogs/SwapDriverDialog';
 import MoveStopDialog from './dialogs/MoveStopDialog';
@@ -665,6 +666,7 @@ function NvTourBody({ tourId }: { tourId: string }) {
           geocodeMutData={geocodeMut.data}
           geocodePending={geocodeMut.isPending}
           tourDatum={t.datum}
+          tourTitle={titleStr}
         />
 
         <CollapsibleSection
@@ -796,6 +798,7 @@ interface NvStopsSubTabsProps {
   } | null;
   geocodePending: boolean;
   tourDatum: string;
+  tourTitle: string;
 }
 
 function NvStopsSubTabs({
@@ -810,7 +813,12 @@ function NvStopsSubTabs({
   geocodeMutData,
   geocodePending,
   tourDatum,
+  tourTitle,
 }: NvStopsSubTabsProps) {
+  // C' Sprint: gemeinsamer Search-State für Stoppliste + Sendungsliste
+  // (decision 4B). Stopps-Tab nutzt Search nicht.
+  const [search, setSearch] = useState('');
+  const showSearch = subTab === 'stoppliste' || subTab === 'sendungsliste';
   return (
     <section>
       <div className="flex items-center gap-1 mb-2 text-xs">
@@ -842,6 +850,27 @@ function NvStopsSubTabs({
           {geocodeMutData.skipped} bereits
         </div>
       )}
+      {showSearch && (
+        <div className="flex items-center gap-1 mb-1">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Suchen…"
+            className="flex-1 text-[11px] px-2 py-0.5 border border-gray-300 rounded"
+          />
+          {subTab === 'stoppliste' && (
+            <button
+              type="button"
+              onClick={() => downloadStoppListeCsv(stops, tourTitle, tourDatum)}
+              className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-700 border border-gray-300 rounded hover:bg-gray-200"
+              title="CSV-Export (DE-Locale)"
+            >
+              CSV
+            </button>
+          )}
+        </div>
+      )}
 
       {subTab === 'stopps' && (
         <NvStopsView
@@ -856,12 +885,14 @@ function NvStopsSubTabs({
           stops={stops}
           selectedStopId={selectedStopId}
           setSelectedStopId={setSelectedStopId}
+          search={search}
         />
       )}
       {subTab === 'sendungsliste' && (
         <NvSendungslisteView
           stops={stops}
           onShipmentClick={(id) => panel.selectShipment(id)}
+          search={search}
         />
       )}
     </section>
@@ -945,57 +976,187 @@ function NvStopsView({
   );
 }
 
+type StoppSortKey = 'pos' | 'sendung' | 'ort' | 'zeit' | 'kg';
+type SendungsSortKey = 'sendung' | 'kunde' | 'kg';
+type SortDir = 'asc' | 'desc';
+
+function toggleSort<T extends string>(
+  prev: { key: T; dir: SortDir },
+  next: T,
+): { key: T; dir: SortDir } {
+  if (prev.key === next) return { key: next, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+  return { key: next, dir: 'asc' };
+}
+
+function sortArrow(active: boolean, dir: SortDir): string {
+  if (!active) return '';
+  return dir === 'asc' ? ' ↑' : ' ↓';
+}
+
+interface StoppRow {
+  id: string;
+  position: number;
+  sendung: string;
+  ort: string;
+  zeit: string;
+  zeitSort: number;
+  kg: number | null;
+}
+
+export function buildStoppRows(
+  stops: NonNullable<NvTourDetail['stops']>,
+): StoppRow[] {
+  return stops.map((s) => {
+    const sh = s.shipment;
+    const addr =
+      s.stop_type === 'DELIVERY'
+        ? sh?.addresses_shipments_delivery_address_idToaddresses
+        : sh?.addresses_shipments_loading_address_idToaddresses;
+    const ort = addr
+      ? `${addr.zip ?? ''} ${addr.city ?? ''}`.trim() || '—'
+      : '—';
+    const zeitDate = s.planned_arrival ? new Date(s.planned_arrival) : null;
+    const zeit = zeitDate
+      ? zeitDate.toLocaleTimeString('de', {
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : '—';
+    return {
+      id: s.id,
+      position: s.position,
+      sendung: sh?.shipment_number ?? '—',
+      ort,
+      zeit,
+      zeitSort: zeitDate ? zeitDate.getTime() : Number.POSITIVE_INFINITY,
+      kg: sh?.weight_kg != null ? Number(sh.weight_kg) : null,
+    };
+  });
+}
+
+export function sortStoppRows(
+  rows: StoppRow[],
+  key: StoppSortKey,
+  dir: SortDir,
+): StoppRow[] {
+  const sign = dir === 'asc' ? 1 : -1;
+  const cmp = (a: StoppRow, b: StoppRow): number => {
+    switch (key) {
+      case 'pos':
+        return (a.position - b.position) * sign;
+      case 'sendung':
+        return a.sendung.localeCompare(b.sendung) * sign;
+      case 'ort':
+        return a.ort.localeCompare(b.ort) * sign;
+      case 'zeit':
+        return (a.zeitSort - b.zeitSort) * sign;
+      case 'kg':
+        return ((a.kg ?? -Infinity) - (b.kg ?? -Infinity)) * sign;
+    }
+  };
+  return [...rows].sort(cmp);
+}
+
+export function filterStoppRows(rows: StoppRow[], search: string): StoppRow[] {
+  const q = search.trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter(
+    (r) =>
+      r.sendung.toLowerCase().includes(q) ||
+      r.ort.toLowerCase().includes(q),
+  );
+}
+
+export function downloadStoppListeCsv(
+  stops: NonNullable<NvTourDetail['stops']>,
+  tourTitle: string,
+  tourDatum: string,
+): void {
+  const rows = buildStoppRows(stops);
+  const csv = toCSV([
+    ['#', 'Sendung', 'Ort', 'Zeit', 'kg'],
+    ...rows.map((r) => [r.position, r.sendung, r.ort, r.zeit, r.kg]),
+  ]);
+  const safeTitle = tourTitle.replace(/[^A-Za-z0-9_-]/g, '_') || 'tour';
+  const safeDate = tourDatum?.slice(0, 10) ?? '';
+  downloadCSV(`stoppliste-${safeTitle}-${safeDate}.csv`, csv);
+}
+
 function NvStoppListeView({
   stops,
   selectedStopId,
   setSelectedStopId,
+  search,
 }: {
   stops: NonNullable<NvTourDetail['stops']>;
   selectedStopId: string | null;
   setSelectedStopId: (id: string | null) => void;
+  search: string;
 }) {
+  const [sort, setSort] = useState<{ key: StoppSortKey; dir: SortDir }>({
+    key: 'pos',
+    dir: 'asc',
+  });
+  const rows = useMemo(() => {
+    const base = buildStoppRows(stops);
+    const filtered = filterStoppRows(base, search);
+    return sortStoppRows(filtered, sort.key, sort.dir);
+  }, [stops, search, sort]);
+  const onSort = (k: StoppSortKey) => setSort((prev) => toggleSort(prev, k));
+  const arrow = (k: StoppSortKey) => sortArrow(sort.key === k, sort.dir);
   return (
     <table className="w-full text-xs">
       <thead>
-        <tr className="text-[10px] uppercase text-gray-500 border-b">
-          <th className="text-left py-0.5 w-6">#</th>
-          <th className="text-left py-0.5">Sendung</th>
-          <th className="text-left py-0.5">Ort</th>
-          <th className="text-left py-0.5 w-12">Zeit</th>
-          <th className="text-right py-0.5 w-10">kg</th>
+        <tr className="text-[10px] uppercase text-gray-500 border-b select-none">
+          <th
+            className="text-left py-0.5 w-6 cursor-pointer hover:text-gray-700"
+            onClick={() => onSort('pos')}
+          >
+            #{arrow('pos')}
+          </th>
+          <th
+            className="text-left py-0.5 cursor-pointer hover:text-gray-700"
+            onClick={() => onSort('sendung')}
+          >
+            Sendung{arrow('sendung')}
+          </th>
+          <th
+            className="text-left py-0.5 cursor-pointer hover:text-gray-700"
+            onClick={() => onSort('ort')}
+          >
+            Ort{arrow('ort')}
+          </th>
+          <th
+            className="text-left py-0.5 w-12 cursor-pointer hover:text-gray-700"
+            onClick={() => onSort('zeit')}
+          >
+            Zeit{arrow('zeit')}
+          </th>
+          <th
+            className="text-right py-0.5 w-10 cursor-pointer hover:text-gray-700"
+            onClick={() => onSort('kg')}
+          >
+            kg{arrow('kg')}
+          </th>
         </tr>
       </thead>
       <tbody>
-        {stops.map((s) => {
-          const sh = s.shipment;
-          const addr =
-            s.stop_type === 'DELIVERY'
-              ? sh?.addresses_shipments_delivery_address_idToaddresses
-              : sh?.addresses_shipments_loading_address_idToaddresses;
-          const ort = addr
-            ? `${addr.zip ?? ''} ${addr.city ?? ''}`.trim() || '—'
-            : '—';
-          const zeit = s.planned_arrival
-            ? new Date(s.planned_arrival).toLocaleTimeString('de', {
-                hour: '2-digit',
-                minute: '2-digit',
-              })
-            : '—';
-          const isSelected = selectedStopId === s.id;
+        {rows.map((r) => {
+          const isSelected = selectedStopId === r.id;
           return (
             <tr
-              key={s.id}
-              onClick={() => setSelectedStopId(isSelected ? null : s.id)}
+              key={r.id}
+              onClick={() => setSelectedStopId(isSelected ? null : r.id)}
               className={`cursor-pointer ${
                 isSelected ? 'bg-amber-50' : 'hover:bg-gray-50'
               }`}
             >
-              <td className="font-mono text-gray-500">{s.position}</td>
-              <td className="font-mono truncate">{sh?.shipment_number ?? '—'}</td>
-              <td className="truncate text-gray-700">{ort}</td>
-              <td className="text-gray-600 font-mono text-[10px]">{zeit}</td>
+              <td className="font-mono text-gray-500">{r.position}</td>
+              <td className="font-mono truncate">{r.sendung}</td>
+              <td className="truncate text-gray-700">{r.ort}</td>
+              <td className="text-gray-600 font-mono text-[10px]">{r.zeit}</td>
               <td className="text-right font-mono">
-                {sh?.weight_kg != null ? Math.round(Number(sh.weight_kg)) : '—'}
+                {r.kg != null ? Math.round(r.kg) : '—'}
               </td>
             </tr>
           );
@@ -1005,24 +1166,17 @@ function NvStoppListeView({
   );
 }
 
-function NvSendungslisteView({
-  stops,
-  onShipmentClick,
-}: {
-  stops: NonNullable<NvTourDetail['stops']>;
-  onShipmentClick: (id: string) => void;
-}) {
-  // Dedupe nach shipment.id (1 stop = 1 shipment, aber falls
-  // doppelt in Tour, deduplicate).
-  const map = new Map<
-    string,
-    {
-      id: string;
-      number: string;
-      customer: string;
-      weight: number;
-    }
-  >();
+interface SendungRow {
+  id: string;
+  number: string;
+  customer: string;
+  weight: number;
+}
+
+export function buildSendungRows(
+  stops: NonNullable<NvTourDetail['stops']>,
+): SendungRow[] {
+  const map = new Map<string, SendungRow>();
   for (const s of stops) {
     const sh = s.shipment;
     if (!sh?.id) continue;
@@ -1034,14 +1188,83 @@ function NvSendungslisteView({
       weight: sh.weight_kg != null ? Number(sh.weight_kg) : 0,
     });
   }
-  const rows = [...map.values()];
+  return [...map.values()];
+}
+
+export function sortSendungRows(
+  rows: SendungRow[],
+  key: SendungsSortKey,
+  dir: SortDir,
+): SendungRow[] {
+  const sign = dir === 'asc' ? 1 : -1;
+  const cmp = (a: SendungRow, b: SendungRow): number => {
+    switch (key) {
+      case 'sendung':
+        return a.number.localeCompare(b.number) * sign;
+      case 'kunde':
+        return a.customer.localeCompare(b.customer) * sign;
+      case 'kg':
+        return (a.weight - b.weight) * sign;
+    }
+  };
+  return [...rows].sort(cmp);
+}
+
+export function filterSendungRows(
+  rows: SendungRow[],
+  search: string,
+): SendungRow[] {
+  const q = search.trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter(
+    (r) =>
+      r.number.toLowerCase().includes(q) ||
+      r.customer.toLowerCase().includes(q),
+  );
+}
+
+function NvSendungslisteView({
+  stops,
+  onShipmentClick,
+  search,
+}: {
+  stops: NonNullable<NvTourDetail['stops']>;
+  onShipmentClick: (id: string) => void;
+  search: string;
+}) {
+  const [sort, setSort] = useState<{ key: SendungsSortKey; dir: SortDir }>({
+    key: 'sendung',
+    dir: 'asc',
+  });
+  const rows = useMemo(() => {
+    const base = buildSendungRows(stops);
+    const filtered = filterSendungRows(base, search);
+    return sortSendungRows(filtered, sort.key, sort.dir);
+  }, [stops, search, sort]);
+  const onSort = (k: SendungsSortKey) => setSort((prev) => toggleSort(prev, k));
+  const arrow = (k: SendungsSortKey) => sortArrow(sort.key === k, sort.dir);
   return (
     <table className="w-full text-xs">
       <thead>
-        <tr className="text-[10px] uppercase text-gray-500 border-b">
-          <th className="text-left py-0.5">Sendung</th>
-          <th className="text-left py-0.5">Kunde</th>
-          <th className="text-right py-0.5 w-12">kg</th>
+        <tr className="text-[10px] uppercase text-gray-500 border-b select-none">
+          <th
+            className="text-left py-0.5 cursor-pointer hover:text-gray-700"
+            onClick={() => onSort('sendung')}
+          >
+            Sendung{arrow('sendung')}
+          </th>
+          <th
+            className="text-left py-0.5 cursor-pointer hover:text-gray-700"
+            onClick={() => onSort('kunde')}
+          >
+            Kunde{arrow('kunde')}
+          </th>
+          <th
+            className="text-right py-0.5 w-12 cursor-pointer hover:text-gray-700"
+            onClick={() => onSort('kg')}
+          >
+            kg{arrow('kg')}
+          </th>
         </tr>
       </thead>
       <tbody>

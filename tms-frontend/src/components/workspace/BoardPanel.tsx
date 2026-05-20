@@ -55,6 +55,7 @@ import CostDrillDownModal from '../nv/CostDrillDownModal';
 import BulkTourPicker from '../nv/BulkTourPicker';
 import type { NvTour, StammTour } from '../../lib/nvTypes';
 import type { NvTourMutableStatus } from '../../lib/nvTourStatus';
+import MultiTourAggregateStrip from './MultiTourAggregateStrip';
 
 interface FvTourListItem {
   id: string;
@@ -450,6 +451,11 @@ export default function BoardPanel({
           </button>
         )}
       </div>
+
+      {/* C' Sprint: Multi-Tour Aggregate-Strip (NV-only, ≥2 Touren). */}
+      {mode === 'nv' && (
+        <MultiTourAggregateStrip tours={filteredTouren as NvTour[]} />
+      )}
 
       {/* Touren-Liste */}
       <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2">

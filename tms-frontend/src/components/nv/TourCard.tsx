@@ -78,7 +78,9 @@ export default function TourCard({
     // pro Stop). Gleicher Algo wie computeStopGroups in stop-list.
     const seen = new Set<string>();
     let sumErloes = 0;
-    for (const s of tour.stops) {
+    // P0-13: defensive null-guard (tour.stops kann fehlen direkt nach
+    // tour-create, vor first refetch).
+    for (const s of tour.stops ?? []) {
       const sh: any = s.shipment;
       const addr =
         s.stop_type === 'DELIVERY'
@@ -293,7 +295,7 @@ export default function TourCard({
           {tour.status === 'IN_PROGRESS' && (
             <button
               onClick={() => {
-                const open = tour.stops.filter(
+                const open = (tour.stops ?? []).filter(
                   (s) => s.status === 'PLANNED' || s.status === 'ARRIVED',
                 ).length;
                 onSetTourStatus('COMPLETED', open, open);
@@ -349,7 +351,7 @@ export default function TourCard({
           const groups: Group[] = [];
           let currentNr = 0;
           let lastKey: string | null = null;
-          tour.stops.forEach((s, idx) => {
+          (tour.stops ?? []).forEach((s, idx) => {
             const sh = s.shipment;
             const addr =
               s.stop_type === 'DELIVERY'
@@ -406,7 +408,7 @@ export default function TourCard({
                 </button>
                 <button
                   onClick={() => onMoveStop(g.lastIdx, 1)}
-                  disabled={g.lastIdx === tour.stops.length - 1}
+                  disabled={g.lastIdx === (tour.stops ?? []).length - 1}
                   className="text-gray-500 hover:text-gray-700 disabled:opacity-30"
                   title="Stop nach unten"
                 >

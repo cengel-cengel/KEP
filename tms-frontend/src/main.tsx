@@ -15,6 +15,7 @@ import {
 } from './realtime/realtimeClient'
 import { invalidateForEvent } from './realtime/queryInvalidator'
 import { PanelProvider } from './state/panel'
+import { WorkspaceProvider } from './state/workspace'
 
 // PERF-2: Cache-first Defaults für instant-Feel.
 // staleTime 30s → kein Auto-Refetch in dieser Zeit.
@@ -51,7 +52,9 @@ createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <AuthProvider>
           <PanelProvider>
-            <App />
+            <WorkspaceProvider>
+              <App />
+            </WorkspaceProvider>
           </PanelProvider>
         </AuthProvider>
       </BrowserRouter>

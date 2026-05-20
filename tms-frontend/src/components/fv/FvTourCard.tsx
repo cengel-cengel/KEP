@@ -97,8 +97,8 @@ export default function FvTourCard({
 
   const handleDragOver = (e: React.DragEvent) => {
     if (status !== 'planned') return;
-    const types = e.dataTransfer.types;
-    if (!types.includes('application/x-fv-shipment-id')) return;
+    // W-3.2.C DnD-Unify: 'application/json' Payload-Format.
+    if (!Array.from(e.dataTransfer.types).includes('application/json')) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     if (!dragOver) setDragOver(true);
@@ -112,8 +112,25 @@ export default function FvTourCard({
     e.preventDefault();
     setDragOver(false);
     if (status !== 'planned') return;
-    const shipmentId = e.dataTransfer.getData('application/x-fv-shipment-id');
-    if (shipmentId) onDropShipment(tourId, shipmentId);
+    const json = e.dataTransfer.getData('application/json');
+    if (!json) return;
+    try {
+      const parsed = JSON.parse(json) as {
+        shipmentId?: string;
+        shipmentIds?: string[];
+      };
+      const ids = Array.isArray(parsed.shipmentIds)
+        ? parsed.shipmentIds
+        : parsed.shipmentId
+          ? [parsed.shipmentId]
+          : [];
+      // FvTourCard onDropShipment ist single-id. Multi-Select-Drag
+      // wird per ID einzeln durchgereicht (Parent kann optional
+      // batchen). Status-Quo: erstes Element.
+      for (const id of ids) onDropShipment(tourId, id);
+    } catch {
+      /* invalid JSON-Payload — silent */
+    }
   };
 
   const km = tour?.geplante_km != null ? Number(tour.geplante_km) : null;

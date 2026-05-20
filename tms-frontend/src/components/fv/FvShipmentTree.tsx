@@ -363,9 +363,15 @@ export default function FvShipmentTree({
                 <div
                   draggable
                   onDragStart={(e) => {
+                    // W-3.2.C DnD-Unify: 'application/json' Payload-Format
+                    // (vorher 'application/x-fv-shipment-id').
+                    // Format-Shape mirror NV-DnD: {shipmentIds[], source}.
                     e.dataTransfer.setData(
-                      'application/x-fv-shipment-id',
-                      r.s.id,
+                      'application/json',
+                      JSON.stringify({
+                        shipmentIds: [r.s.id],
+                        source: 'list',
+                      }),
                     );
                     e.dataTransfer.effectAllowed = 'move';
                   }}

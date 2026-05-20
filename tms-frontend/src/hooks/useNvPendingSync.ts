@@ -200,12 +200,6 @@ export function useNvPendingSync(
   const onPinClick = useCallback(
     (shipmentId: string) => {
       const targetTourId = activeTourViewId ?? selectedTourId;
-      // P0-12 BUG-3c TEMPORARY DEBUG (entfernt in P0-12.1 cleanup).
-      // eslint-disable-next-line no-console
-      console.info(
-        '[useNvPendingSync.onPinClick]',
-        { shipmentId, activeTourViewId, selectedTourId, targetTourId },
-      );
       if (!targetTourId) {
         setPinAddRef.current(shipmentId);
         return;

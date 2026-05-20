@@ -1,6 +1,12 @@
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useFrame, type ThreeElements } from '@react-three/fiber';
 import { OrbitControls, GizmoHelper, GizmoViewport, Edges, Html, Line } from '@react-three/drei';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { Mesh } from 'three';
+import {
+  LERP_FACTOR_PER_FRAME,
+  lerpStep,
+  prefersReducedMotion,
+} from '../lib/animationLerp';
 import {
   computeAxleLoads,
   VEHICLE_AXLES,
@@ -653,9 +659,10 @@ export default function LoadingPlan3D({
           const isHover = hoveredId === p.id && !dragActive;
           const dragInvalid = isDragging && !dragValid;
           return (
-            <mesh
+            <AnimatedBoxMesh
               key={p.id}
               position={[cx, cy, cz]}
+              snap={isDragging}
               castShadow
               receiveShadow
               onPointerEnter={(e) => {
@@ -729,7 +736,7 @@ export default function LoadingPlan3D({
                 }
                 threshold={1}
               />
-            </mesh>
+            </AnimatedBoxMesh>
           );
         })}
 
@@ -1088,3 +1095,58 @@ export default function LoadingPlan3D({
     </div>
   );
 }
+
+// ─── B-1.1: ANIMATED-MESH (Re-Pack Tween 300ms ease-out) ──────
+
+interface AnimatedBoxMeshProps
+  extends Omit<ThreeElements['mesh'], 'position' | 'ref'> {
+  /** Ziel-Position in Three-Units (m). */
+  position: [number, number, number];
+  /** Wenn true → kein Tween (Drag-Aktiv-Fall, snap). */
+  snap?: boolean;
+}
+
+/**
+ * Wrap-Komponente für Box-Meshes mit per-Frame Position-Lerp.
+ * useFrame ist rAF-driven von R3F. Honors prefers-reduced-motion.
+ */
+function AnimatedBoxMesh({
+  position,
+  snap = false,
+  children,
+  ...rest
+}: AnimatedBoxMeshProps) {
+  const meshRef = useRef<Mesh>(null);
+  const targetRef = useRef(position);
+  targetRef.current = position;
+  const reduceRef = useRef(prefersReducedMotion());
+
+  // Seed initial position einmal beim Mount (vermeidet 1-Frame
+  // Flash from [0,0,0] → target).
+  useEffect(() => {
+    if (meshRef.current) {
+      meshRef.current.position.set(...position);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useFrame(() => {
+    const m = meshRef.current;
+    if (!m) return;
+    const [tx, ty, tz] = targetRef.current;
+    if (snap || reduceRef.current) {
+      m.position.set(tx, ty, tz);
+      return;
+    }
+    m.position.x = lerpStep(m.position.x, tx, LERP_FACTOR_PER_FRAME);
+    m.position.y = lerpStep(m.position.y, ty, LERP_FACTOR_PER_FRAME);
+    m.position.z = lerpStep(m.position.z, tz, LERP_FACTOR_PER_FRAME);
+  });
+
+  return (
+    <mesh ref={meshRef} {...rest}>
+      {children}
+    </mesh>
+  );
+}
+

@@ -135,7 +135,14 @@ export default function NvEligibleTree({
                   },
                   onDragEnd: () => setDraggingId(null),
                   onClick: (e: React.MouseEvent<HTMLDivElement>) => {
-                    onSelect(s.id, e.shiftKey);
+                    // P0-11: Plain-Click öffnet Panel.
+                    // Cmd/Ctrl+Click = Toggle-Select.
+                    // Shift+Click   = Range-Select.
+                    if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                      onSelect(s.id, e.shiftKey);
+                    } else {
+                      onOpenDetail(s.id);
+                    }
                   },
                   className: `cursor-pointer ${
                     selected.has(s.id) ? 'bg-blue-50' : ''

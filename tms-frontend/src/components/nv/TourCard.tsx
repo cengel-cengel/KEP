@@ -19,6 +19,7 @@ import { prefetchNvLoadingTour } from '../../lib/prefetchHelpers';
 import type { NvTourMutableStatus } from '../../lib/nvTourStatus';
 import type { NvTour, Stop } from '../../lib/nvTypes';
 import type { CostComponent } from './CostDrillDownModal';
+import { usePanel } from '../../state/panel';
 import CapacityBars, { type CapacityData } from './CapacityBars';
 
 export default function TourCard({
@@ -51,6 +52,7 @@ export default function TourCard({
   isActive: boolean;
 }) {
   const qc = useQueryClient();
+  const { selectNvTour } = usePanel();
   const costsQ = useQuery<CostComponent[]>({
     queryKey: ['nv-tour-cost-comp', tour.id],
     queryFn: async () =>
@@ -158,7 +160,14 @@ export default function TourCard({
     >
       <div
         className="px-3 py-2 border-b bg-gray-50 flex items-center justify-between cursor-pointer hover:bg-gray-100"
-        onClick={onToggleTourView}
+        onClick={(e) => {
+          // P0-11: Plain-Click öffnet Panel + togglet Map-Highlight.
+          // Cmd/Ctrl+Click NUR Map-Highlight (keine Panel-Änderung).
+          if (!e.metaKey && !e.ctrlKey) {
+            selectNvTour(tour.id);
+          }
+          onToggleTourView();
+        }}
         title={isActive ? 'Tour-Karte schließen' : 'Tour-Karte anzeigen'}
       >
         <div>

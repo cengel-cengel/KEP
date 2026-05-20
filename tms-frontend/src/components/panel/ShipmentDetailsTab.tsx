@@ -1,9 +1,17 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pencil, Sparkles } from 'lucide-react';
 import { api } from '../../lib/api';
 import InlineEdit from './InlineEdit';
 import ShipmentEditModal from '../ShipmentEditModal';
+import StickyHead, { type QuickAction } from './StickyHead';
+import AcuteSection, { type AcuteItem } from './AcuteSection';
+import CollapsibleSection from './CollapsibleSection';
+import {
+  getShipmentSeverity,
+  severityRank,
+  type SeverityLevel,
+} from '../../lib/severity';
 
 interface ShipmentDetail {
   id: string;
@@ -18,6 +26,10 @@ interface ShipmentDetail {
   ldm?: string | number | null;
   loading_date?: string | null;
   delivery_date?: string | null;
+  is_hazmat?: boolean | null;
+  /** Persisted Risk-Severity (NV oder FV). */
+  risk_severity?: string | null;
+  risk_severity_fv?: string | null;
   /** M-1: priority_tier wird inline via Customer-Section editierbar. */
   customers?: {
     id: string;
@@ -62,6 +74,14 @@ function addrLine(
   return parts || '—';
 }
 
+const TIER_OPTIONS = [
+  { value: '', label: '— neutral —' },
+  { value: 'VIP', label: 'VIP' },
+  { value: 'A', label: 'A' },
+  { value: 'B', label: 'B' },
+  { value: 'C', label: 'C' },
+];
+
 export default function ShipmentDetailsTab({ shipmentId }: { shipmentId: string }) {
   const qc = useQueryClient();
   const [showEditModal, setShowEditModal] = useState(false);
@@ -73,7 +93,6 @@ export default function ShipmentDetailsTab({ shipmentId }: { shipmentId: string 
     staleTime: 30_000,
   });
 
-  // Generischer PATCH-Mutation für Inline-Edits.
   const patchMut = useMutation({
     mutationFn: async (body: Record<string, unknown>) => {
       const { data } = await api.patch(`/shipments/${shipmentId}`, body);
@@ -102,6 +121,17 @@ export default function ShipmentDetailsTab({ shipmentId }: { shipmentId: string 
     },
   });
 
+  const severity = useMemo<SeverityLevel>(() => {
+    if (!detailQ.data) return null;
+    return getShipmentSeverity({
+      loading_date: detailQ.data.loading_date,
+      status: detailQ.data.status,
+      risk_severity: detailQ.data.risk_severity,
+      risk_severity_fv: detailQ.data.risk_severity_fv,
+      customer: detailQ.data.customers,
+    });
+  }, [detailQ.data]);
+
   const s = detailQ.data;
   if (detailQ.isLoading) {
     return <div className="p-3 text-xs text-gray-400">Lädt…</div>;
@@ -110,119 +140,169 @@ export default function ShipmentDetailsTab({ shipmentId }: { shipmentId: string 
     return <div className="p-3 text-xs text-gray-400">Sendung nicht gefunden.</div>;
   }
 
+  const titleStr = s.shipment_number ?? s.id.slice(0, 8);
+  const subLabel = [s.status, s.transport_type, s.customers?.name]
+    .filter(Boolean)
+    .join(' · ');
+
+  const quickActions: QuickAction[] = [
+    {
+      label: 'Vollständig bearbeiten…',
+      icon: <Pencil size={11} />,
+      onClick: () => setShowEditModal(true),
+    },
+  ];
+
+  // S-3 AcuteSection: 0 oder 1 Item aus shipment-Severity.
+  const acuteItems: AcuteItem[] = useMemo(() => {
+    if (!severity || severityRank(severity) === 0) return [];
+    const label =
+      severity === 'L1'
+        ? 'Lade-Datum überschritten — Sendung noch nicht disponiert'
+        : severity === 'L2'
+          ? s.risk_severity === 'critical' || s.risk_severity_fv === 'critical'
+            ? 'Stop außerhalb Zeitfenster (kritisch)'
+            : 'Lade-Datum heute'
+          : 'VIP-Kunde oder hohe Priorität';
+    return [
+      {
+        id: 'shipment-sev',
+        severity,
+        icon: severity === 'L3' ? 'alert' : 'alert',
+        label,
+        primaryAction: {
+          label: 'Edit',
+          onClick: () => setShowEditModal(true),
+        },
+      },
+    ];
+  }, [severity, s.risk_severity, s.risk_severity_fv]);
+
   return (
-    <div className="p-3 space-y-3">
-      <section>
-        <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1">
-          Stammdaten
-        </h3>
-        <Row label="Nummer">
-          <span className="font-mono text-gray-800">
-            {s.shipment_number ?? '—'}
-          </span>
-        </Row>
-        <Row label="Status">
-          <span className="text-gray-700">{s.status ?? '—'}</span>
-        </Row>
-        <Row label="Transport">
-          <span className="text-gray-700">{s.transport_type ?? '—'}</span>
-        </Row>
-        <Row label="Kunde">
-          <span className="text-gray-700">{s.customers?.name ?? '—'}</span>
-        </Row>
-        <Row label="Kunden-Ref">
-          <InlineEdit
-            value={s.customer_ref}
-            onSave={(v) => patchMut.mutateAsync({ customer_ref: v || null })}
-            type="text"
-            label="Kunden-Ref"
-          />
-        </Row>
-        {s.customers?.id && (
-          <CustomerTierRow
-            customerId={s.customers.id}
-            tier={s.customers.priority_tier ?? null}
-            shipmentId={shipmentId}
-          />
-        )}
-      </section>
+    <>
+      <StickyHead
+        title={titleStr}
+        subLabel={subLabel || undefined}
+        severity={severity}
+        quickActions={quickActions}
+      />
+      <div className="p-3 space-y-3">
+        <AcuteSection items={acuteItems} />
 
-      <section>
-        <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1">
-          Adressen
-        </h3>
-        <Row label="Versender">
-          <span className="text-gray-700 text-xs">
-            {addrLine(s.addresses_shipments_loading_address_idToaddresses)}
-          </span>
-        </Row>
-        <Row label="Empfänger">
-          <span className="text-gray-700 text-xs">
-            {addrLine(s.addresses_shipments_delivery_address_idToaddresses)}
-          </span>
-        </Row>
-      </section>
+        <BestTourSection shipmentId={shipmentId} />
 
-      <section>
-        <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1">
-          Fracht
-        </h3>
-        <Row label="Gewicht">
-          <span className="text-gray-700">
-            {s.weight_kg != null ? `${Number(s.weight_kg).toFixed(0)} kg` : '—'}
-          </span>
-        </Row>
-        <Row label="LDM">
-          <span className="text-gray-700">
-            {s.ldm != null ? `${Number(s.ldm).toFixed(1)}` : '—'}
-          </span>
-        </Row>
-        <Row label="Lade-Datum">
-          <span className="text-gray-700">
-            {s.loading_date ? s.loading_date.slice(0, 10) : '—'}
-          </span>
-        </Row>
-        <Row label="Liefer-Datum">
-          <span className="text-gray-700">
-            {s.delivery_date ? s.delivery_date.slice(0, 10) : '—'}
-          </span>
-        </Row>
-      </section>
+        <section>
+          <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1">
+            Adressen
+          </h3>
+          <Row label="Versender">
+            <span className="text-gray-700 text-xs">
+              {addrLine(s.addresses_shipments_loading_address_idToaddresses)}
+            </span>
+          </Row>
+          <Row label="Empfänger">
+            <span className="text-gray-700 text-xs">
+              {addrLine(s.addresses_shipments_delivery_address_idToaddresses)}
+            </span>
+          </Row>
+        </section>
 
-      <section>
-        <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1">
-          Notizen
-        </h3>
-        <Row label="Dispo-Notiz">
-          <InlineEdit
-            value={s.comment}
-            onSave={(v) => patchMut.mutateAsync({ comment: v || null })}
-            type="textarea"
-            placeholder="Klick zum Editieren…"
-            label="Dispo-Notiz"
-          />
-        </Row>
-        <Row label="Kunden-Notiz">
-          <InlineEdit
-            value={s.customer_note}
-            onSave={(v) => patchMut.mutateAsync({ customer_note: v || null })}
-            type="textarea"
-            placeholder="Klick zum Editieren…"
-            label="Kunden-Notiz"
-          />
-        </Row>
-      </section>
-
-      <BestTourSection shipmentId={shipmentId} />
-
-      <div className="pt-2 border-t">
-        <button
-          onClick={() => setShowEditModal(true)}
-          className="w-full flex items-center justify-center gap-1.5 text-xs text-blue-600 hover:bg-blue-50 py-1.5 rounded"
+        <CollapsibleSection
+          title="Priorität & Tier"
+          defaultOpen={severity === 'L3'}
+          storageKey="shipment.prio"
         >
-          <Pencil size={12} />
-          Vollständig bearbeiten…
-        </button>
+          {s.customers?.id && (
+            <CustomerTierRow
+              customerId={s.customers.id}
+              tier={s.customers.priority_tier ?? null}
+              shipmentId={shipmentId}
+            />
+          )}
+          {!s.customers?.id && (
+            <div className="text-[11px] text-gray-400 italic px-1">
+              Kein Customer-Tier (keine Stammdaten verknüpft).
+            </div>
+          )}
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Stammdaten"
+          storageKey="shipment.stamm"
+        >
+          <Row label="Nummer">
+            <span className="font-mono text-gray-800">
+              {s.shipment_number ?? '—'}
+            </span>
+          </Row>
+          <Row label="Status">
+            <span className="text-gray-700">{s.status ?? '—'}</span>
+          </Row>
+          <Row label="Transport">
+            <span className="text-gray-700">{s.transport_type ?? '—'}</span>
+          </Row>
+          <Row label="Kunde">
+            <span className="text-gray-700">{s.customers?.name ?? '—'}</span>
+          </Row>
+          <Row label="Kunden-Ref">
+            <InlineEdit
+              value={s.customer_ref}
+              onSave={(v) => patchMut.mutateAsync({ customer_ref: v || null })}
+              type="text"
+              label="Kunden-Ref"
+            />
+          </Row>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Fracht-Details"
+          storageKey="shipment.fracht"
+        >
+          <Row label="Gewicht">
+            <span className="text-gray-700">
+              {s.weight_kg != null ? `${Number(s.weight_kg).toFixed(0)} kg` : '—'}
+            </span>
+          </Row>
+          <Row label="LDM">
+            <span className="text-gray-700">
+              {s.ldm != null ? `${Number(s.ldm).toFixed(1)}` : '—'}
+            </span>
+          </Row>
+          <Row label="Lade-Datum">
+            <span className="text-gray-700">
+              {s.loading_date ? s.loading_date.slice(0, 10) : '—'}
+            </span>
+          </Row>
+          <Row label="Liefer-Datum">
+            <span className="text-gray-700">
+              {s.delivery_date ? s.delivery_date.slice(0, 10) : '—'}
+            </span>
+          </Row>
+        </CollapsibleSection>
+
+        <section>
+          <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1">
+            Notizen
+          </h3>
+          <Row label="Dispo-Notiz">
+            <InlineEdit
+              value={s.comment}
+              onSave={(v) => patchMut.mutateAsync({ comment: v || null })}
+              type="textarea"
+              placeholder="Klick zum Editieren…"
+              label="Dispo-Notiz"
+            />
+          </Row>
+          <Row label="Kunden-Notiz">
+            <InlineEdit
+              value={s.customer_note}
+              onSave={(v) => patchMut.mutateAsync({ customer_note: v || null })}
+              type="textarea"
+              placeholder="Klick zum Editieren…"
+              label="Kunden-Notiz"
+            />
+          </Row>
+        </section>
       </div>
 
       {showEditModal && s && (
@@ -239,21 +319,13 @@ export default function ShipmentDetailsTab({ shipmentId }: { shipmentId: string 
           }}
         />
       )}
-    </div>
+    </>
   );
 }
 
-const TIER_OPTIONS = [
-  { value: '', label: '— neutral —' },
-  { value: 'VIP', label: 'VIP' },
-  { value: 'A', label: 'A' },
-  { value: 'B', label: 'B' },
-  { value: 'C', label: 'C' },
-];
-
 /**
  * M-1: Customer-Tier-Inline-Edit. Schreibt auf PATCH /customers/:id,
- * invalidiert shipments-detail + eligible-trees + best-match (Score-Refresh).
+ * invalidiert shipments-detail + eligible-trees + best-match.
  */
 function CustomerTierRow({
   customerId,

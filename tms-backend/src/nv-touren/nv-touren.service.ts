@@ -57,6 +57,7 @@ const TOUR_INCLUDE = {
       id: true,
       code: true,
       name: true,
+      wochentage: true,
       nv_tour_gebiet: {
         select: {
           id: true,
@@ -87,6 +88,9 @@ const TOUR_INCLUDE = {
           id: true,
           shipment_number: true,
           customer_id: true,
+          customers: {
+            select: { id: true, name: true, customer_number: true },
+          },
           loading_date: true,
           delivery_date: true,
           package_count: true,

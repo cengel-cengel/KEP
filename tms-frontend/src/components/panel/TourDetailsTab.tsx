@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, ExternalLink, Warehouse } from 'lucide-react';
 import { api } from '../../lib/api';
@@ -15,6 +15,11 @@ import CollapsibleSection from './CollapsibleSection';
 import { getTourSeverity, type SeverityLevel } from '../../lib/severity';
 import { useWorkspace } from '../../state/workspace';
 import { Sparkles } from 'lucide-react';
+import TourAggregateStrip, {
+  type TourAggregates,
+} from './TourAggregateStrip';
+import { isoToWochentag, wochentagLabel } from '../../lib/wochentage';
+import { registerHotkey } from '../../lib/hotkeys';
 import SplitTourDialog from './dialogs/SplitTourDialog';
 import SwapDriverDialog from './dialogs/SwapDriverDialog';
 import MoveStopDialog from './dialogs/MoveStopDialog';
@@ -75,10 +80,15 @@ interface NvTourDetail {
   status: string;
   fahrzeug_typ?: string | null;
   notizen?: string | null;
-  nv_stamm_tour?: { code: string; name: string } | null;
+  nv_stamm_tour?: {
+    code: string;
+    name: string;
+    wochentage?: string[];
+  } | null;
   subunternehmer?: { id: string; name: string } | null;
   subunternehmer_id?: string | null;
   geplante_km?: string | number | null;
+  total_kosten_eur?: string | number | null;
   overload?: {
     isOverloaded?: boolean;
     ldm?: number;
@@ -102,10 +112,20 @@ interface NvTourDetail {
     shipment?: {
       id: string;
       shipment_number?: string | null;
+      weight_kg?: string | number | null;
+      customers?: { id: string; name: string } | null;
       loading_time_from?: string | null;
       loading_time_to?: string | null;
       delivery_time_from?: string | null;
       delivery_time_to?: string | null;
+      addresses_shipments_loading_address_idToaddresses?: {
+        zip?: string | null;
+        city?: string | null;
+      } | null;
+      addresses_shipments_delivery_address_idToaddresses?: {
+        zip?: string | null;
+        city?: string | null;
+      } | null;
     };
   }>;
 }
@@ -353,6 +373,7 @@ function FvTourTimelineSection({
 
 function NvTourBody({ tourId }: { tourId: string }) {
   const qc = useQueryClient();
+  const panel = usePanel();
   // A' Sprint: selectedStopId aus workspace.tsx (bidirektionale
   // Hervorhebung mit MapPanel-Marker).
   const { selectedStopId, setSelectedStopId } = useWorkspace();
@@ -373,6 +394,48 @@ function NvTourBody({ tourId }: { tourId: string }) {
       qc.invalidateQueries({ queryKey: ['nv-touren'] });
     },
   });
+
+  // B' Sprint: Sub-Tab-State (Stopps / Stoppliste / Sendungsliste).
+  // Session-only, kein localStorage (UI-Convenience, kein User-Setting).
+  const [subTab, setSubTab] = useState<
+    'stopps' | 'stoppliste' | 'sendungsliste'
+  >('stopps');
+
+  // B' Sprint: Hotkeys 1/2/3 für Sub-Tab-Wechsel.
+  // scope='panel' (W-2 Convention), skip-in-Inputs default true.
+  useEffect(() => {
+    const unsubs = [
+      registerHotkey('1', () => setSubTab('stopps'), { scope: 'panel' }),
+      registerHotkey('2', () => setSubTab('stoppliste'), { scope: 'panel' }),
+      registerHotkey('3', () => setSubTab('sendungsliste'), { scope: 'panel' }),
+    ];
+    return () => unsubs.forEach((u) => u());
+  }, []);
+
+  // B' Sprint: Aggregates für Strip (Sendung-count, kg, km, €).
+  const aggregates = useMemo<TourAggregates>(() => {
+    const data = tourQ.data;
+    if (!data) {
+      return { shipmentCount: 0, weightKgSum: 0, kmTotal: null, euroTotal: null };
+    }
+    const shipmentIds = new Set<string>();
+    let weight = 0;
+    for (const s of data.stops ?? []) {
+      const sh = s.shipment;
+      if (sh?.id) shipmentIds.add(sh.id);
+      if (sh?.weight_kg != null) {
+        const w = Number(sh.weight_kg);
+        if (Number.isFinite(w)) weight += w;
+      }
+    }
+    return {
+      shipmentCount: shipmentIds.size,
+      weightKgSum: weight,
+      kmTotal: data.geplante_km != null ? Number(data.geplante_km) : null,
+      euroTotal:
+        data.total_kosten_eur != null ? Number(data.total_kosten_eur) : null,
+    };
+  }, [tourQ.data]);
 
   // A' Sprint: missing-Geocode-Count berechnen für conditional Sparkles-Btn.
   // tour.stops.shipment.addresses_*.lat/lng — addresses sind in
@@ -558,6 +621,12 @@ function NvTourBody({ tourId }: { tourId: string }) {
     },
   ];
 
+  // B' Sprint: Aggregate-Strip date-label (Wochentag · ISO-Datum).
+  const datumWochentag = t.datum ? isoToWochentag(t.datum) : null;
+  const dateLabel = datumWochentag
+    ? `${wochentagLabel(datumWochentag)} · ${t.datum.slice(0, 10)}`
+    : t.datum?.slice(0, 10);
+
   return (
     <>
       <StickyHead
@@ -565,6 +634,11 @@ function NvTourBody({ tourId }: { tourId: string }) {
         subLabel={subLabel || undefined}
         severity={severity}
         quickActions={quickActions}
+      />
+      <TourAggregateStrip
+        aggregates={aggregates}
+        stammSchedule={t.nv_stamm_tour?.wochentage ?? null}
+        dateLabel={dateLabel}
       />
       <div className="p-3 space-y-3">
         <AcuteSection items={acuteItems} />
@@ -579,53 +653,19 @@ function NvTourBody({ tourId }: { tourId: string }) {
           <NvTourTimelineSection stops={t.stops ?? []} />
         </CollapsibleSection>
 
-        <section>
-          <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1 flex items-center gap-2">
-            <span>Stops ({t.stops?.length ?? 0})</span>
-            {missingGeocodeCount > 0 && (
-              <button
-                type="button"
-                onClick={() => geocodeMut.mutate()}
-                disabled={geocodeMut.isPending}
-                className="ml-auto inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-300 rounded hover:bg-blue-100 disabled:opacity-50 normal-case"
-                title={`${missingGeocodeCount} Adressen ohne Koordinaten`}
-              >
-                <Sparkles size={10} />
-                {geocodeMut.isPending
-                  ? 'Geocodieren…'
-                  : `${missingGeocodeCount} geocodieren`}
-              </button>
-            )}
-          </h3>
-          {geocodeMut.data && (
-            <div className="text-[10px] text-green-700 bg-green-50 border border-green-200 rounded px-1.5 py-0.5 mb-1">
-              {geocodeMut.data.geocoded} geocoded · {geocodeMut.data.failed} fehl · {geocodeMut.data.skipped} bereits
-            </div>
-          )}
-          {(t.stops ?? []).map((s) => {
-            const isSelected = selectedStopId === s.id;
-            return (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() =>
-                  setSelectedStopId(isSelected ? null : s.id)
-                }
-                className={`w-full text-left text-xs flex items-center gap-2 py-0.5 px-1 rounded ${
-                  isSelected
-                    ? 'bg-amber-50 border-l-2 border-amber-500'
-                    : 'hover:bg-gray-50 border-l-2 border-transparent'
-                }`}
-              >
-                <span className="text-gray-400 font-mono w-5 text-right">
-                  {s.position}.
-                </span>
-                <span className="font-mono">{s.shipment?.shipment_number ?? '—'}</span>
-                <span className="text-[10px] text-gray-500">{s.stop_type ?? ''}</span>
-              </button>
-            );
-          })}
-        </section>
+        <NvStopsSubTabs
+          stops={t.stops ?? []}
+          selectedStopId={selectedStopId}
+          setSelectedStopId={setSelectedStopId}
+          panel={panel}
+          subTab={subTab}
+          setSubTab={setSubTab}
+          missingGeocodeCount={missingGeocodeCount}
+          onGeocode={() => geocodeMut.mutate()}
+          geocodeMutData={geocodeMut.data}
+          geocodePending={geocodeMut.isPending}
+          tourDatum={t.datum}
+        />
 
         <CollapsibleSection
           title="Status-Wechsel"
@@ -735,5 +775,290 @@ function NvTourTimelineSection({
         if (found?.shipment?.id) panel.selectShipment(found.shipment.id);
       }}
     />
+  );
+}
+
+// ─── B' SPRINT: NV-STOPS-SUB-TABS ────────────────────────────────────
+
+interface NvStopsSubTabsProps {
+  stops: NonNullable<NvTourDetail['stops']>;
+  selectedStopId: string | null;
+  setSelectedStopId: (id: string | null) => void;
+  panel: ReturnType<typeof usePanel>;
+  subTab: 'stopps' | 'stoppliste' | 'sendungsliste';
+  setSubTab: (t: 'stopps' | 'stoppliste' | 'sendungsliste') => void;
+  missingGeocodeCount: number;
+  onGeocode: () => void;
+  geocodeMutData?: {
+    geocoded: number;
+    failed: number;
+    skipped: number;
+  } | null;
+  geocodePending: boolean;
+  tourDatum: string;
+}
+
+function NvStopsSubTabs({
+  stops,
+  selectedStopId,
+  setSelectedStopId,
+  panel,
+  subTab,
+  setSubTab,
+  missingGeocodeCount,
+  onGeocode,
+  geocodeMutData,
+  geocodePending,
+  tourDatum,
+}: NvStopsSubTabsProps) {
+  return (
+    <section>
+      <div className="flex items-center gap-1 mb-2 text-xs">
+        <SubTabBtn n="1" active={subTab === 'stopps'} onClick={() => setSubTab('stopps')}>
+          Stopps
+        </SubTabBtn>
+        <SubTabBtn n="2" active={subTab === 'stoppliste'} onClick={() => setSubTab('stoppliste')}>
+          Stoppliste
+        </SubTabBtn>
+        <SubTabBtn n="3" active={subTab === 'sendungsliste'} onClick={() => setSubTab('sendungsliste')}>
+          Sendungsliste
+        </SubTabBtn>
+        {missingGeocodeCount > 0 && (
+          <button
+            type="button"
+            onClick={onGeocode}
+            disabled={geocodePending}
+            className="ml-auto inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-300 rounded hover:bg-blue-100 disabled:opacity-50"
+            title={`${missingGeocodeCount} Adressen ohne Koordinaten`}
+          >
+            <Sparkles size={10} />
+            {geocodePending ? 'Geocodieren…' : `${missingGeocodeCount} geo`}
+          </button>
+        )}
+      </div>
+      {geocodeMutData && (
+        <div className="text-[10px] text-green-700 bg-green-50 border border-green-200 rounded px-1.5 py-0.5 mb-1">
+          {geocodeMutData.geocoded} geocoded · {geocodeMutData.failed} fehl ·{' '}
+          {geocodeMutData.skipped} bereits
+        </div>
+      )}
+
+      {subTab === 'stopps' && (
+        <NvStopsView
+          stops={stops}
+          selectedStopId={selectedStopId}
+          setSelectedStopId={setSelectedStopId}
+          tourDatum={tourDatum}
+        />
+      )}
+      {subTab === 'stoppliste' && (
+        <NvStoppListeView
+          stops={stops}
+          selectedStopId={selectedStopId}
+          setSelectedStopId={setSelectedStopId}
+        />
+      )}
+      {subTab === 'sendungsliste' && (
+        <NvSendungslisteView
+          stops={stops}
+          onShipmentClick={(id) => panel.selectShipment(id)}
+        />
+      )}
+    </section>
+  );
+}
+
+function SubTabBtn({
+  n,
+  active,
+  onClick,
+  children,
+}: {
+  n: string;
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${
+        active
+          ? 'bg-blue-600 text-white border-blue-600'
+          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+      }`}
+      title={`Hotkey: ${n}`}
+    >
+      <span className="font-mono text-[9px] opacity-70">{n}</span>
+      {children}
+    </button>
+  );
+}
+
+function NvStopsView({
+  stops,
+  selectedStopId,
+  setSelectedStopId,
+  tourDatum,
+}: {
+  stops: NonNullable<NvTourDetail['stops']>;
+  selectedStopId: string | null;
+  setSelectedStopId: (id: string | null) => void;
+  tourDatum: string;
+}) {
+  const wt = isoToWochentag(tourDatum);
+  const groupLabel = wt
+    ? `${wochentagLabel(wt)} · ${tourDatum.slice(0, 10)}`
+    : tourDatum.slice(0, 10);
+  return (
+    <div>
+      <div className="text-[10px] font-mono uppercase text-gray-500 mb-1 border-b border-gray-200 pb-0.5">
+        {groupLabel} · {stops.length}
+      </div>
+      {stops.map((s) => {
+        const isSelected = selectedStopId === s.id;
+        return (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => setSelectedStopId(isSelected ? null : s.id)}
+            className={`w-full text-left text-xs flex items-center gap-2 py-0.5 px-1 rounded ${
+              isSelected
+                ? 'bg-amber-50 border-l-2 border-amber-500'
+                : 'hover:bg-gray-50 border-l-2 border-transparent'
+            }`}
+          >
+            <span className="text-gray-400 font-mono w-5 text-right">
+              {s.position}.
+            </span>
+            <span className="font-mono">
+              {s.shipment?.shipment_number ?? '—'}
+            </span>
+            <span className="text-[10px] text-gray-500">
+              {s.stop_type ?? ''}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function NvStoppListeView({
+  stops,
+  selectedStopId,
+  setSelectedStopId,
+}: {
+  stops: NonNullable<NvTourDetail['stops']>;
+  selectedStopId: string | null;
+  setSelectedStopId: (id: string | null) => void;
+}) {
+  return (
+    <table className="w-full text-xs">
+      <thead>
+        <tr className="text-[10px] uppercase text-gray-500 border-b">
+          <th className="text-left py-0.5 w-6">#</th>
+          <th className="text-left py-0.5">Sendung</th>
+          <th className="text-left py-0.5">Ort</th>
+          <th className="text-left py-0.5 w-12">Zeit</th>
+          <th className="text-right py-0.5 w-10">kg</th>
+        </tr>
+      </thead>
+      <tbody>
+        {stops.map((s) => {
+          const sh = s.shipment;
+          const addr =
+            s.stop_type === 'DELIVERY'
+              ? sh?.addresses_shipments_delivery_address_idToaddresses
+              : sh?.addresses_shipments_loading_address_idToaddresses;
+          const ort = addr
+            ? `${addr.zip ?? ''} ${addr.city ?? ''}`.trim() || '—'
+            : '—';
+          const zeit = s.planned_arrival
+            ? new Date(s.planned_arrival).toLocaleTimeString('de', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : '—';
+          const isSelected = selectedStopId === s.id;
+          return (
+            <tr
+              key={s.id}
+              onClick={() => setSelectedStopId(isSelected ? null : s.id)}
+              className={`cursor-pointer ${
+                isSelected ? 'bg-amber-50' : 'hover:bg-gray-50'
+              }`}
+            >
+              <td className="font-mono text-gray-500">{s.position}</td>
+              <td className="font-mono truncate">{sh?.shipment_number ?? '—'}</td>
+              <td className="truncate text-gray-700">{ort}</td>
+              <td className="text-gray-600 font-mono text-[10px]">{zeit}</td>
+              <td className="text-right font-mono">
+                {sh?.weight_kg != null ? Math.round(Number(sh.weight_kg)) : '—'}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function NvSendungslisteView({
+  stops,
+  onShipmentClick,
+}: {
+  stops: NonNullable<NvTourDetail['stops']>;
+  onShipmentClick: (id: string) => void;
+}) {
+  // Dedupe nach shipment.id (1 stop = 1 shipment, aber falls
+  // doppelt in Tour, deduplicate).
+  const map = new Map<
+    string,
+    {
+      id: string;
+      number: string;
+      customer: string;
+      weight: number;
+    }
+  >();
+  for (const s of stops) {
+    const sh = s.shipment;
+    if (!sh?.id) continue;
+    if (map.has(sh.id)) continue;
+    map.set(sh.id, {
+      id: sh.id,
+      number: sh.shipment_number ?? '—',
+      customer: sh.customers?.name ?? '—',
+      weight: sh.weight_kg != null ? Number(sh.weight_kg) : 0,
+    });
+  }
+  const rows = [...map.values()];
+  return (
+    <table className="w-full text-xs">
+      <thead>
+        <tr className="text-[10px] uppercase text-gray-500 border-b">
+          <th className="text-left py-0.5">Sendung</th>
+          <th className="text-left py-0.5">Kunde</th>
+          <th className="text-right py-0.5 w-12">kg</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr
+            key={r.id}
+            onClick={() => onShipmentClick(r.id)}
+            className="cursor-pointer hover:bg-blue-50"
+          >
+            <td className="font-mono truncate">{r.number}</td>
+            <td className="truncate text-gray-700">{r.customer}</td>
+            <td className="text-right font-mono">
+              {r.weight ? Math.round(r.weight) : '—'}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

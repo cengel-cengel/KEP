@@ -13,6 +13,8 @@ import AcuteSection, {
 } from './AcuteSection';
 import CollapsibleSection from './CollapsibleSection';
 import { getTourSeverity, type SeverityLevel } from '../../lib/severity';
+import { useWorkspace } from '../../state/workspace';
+import { Sparkles } from 'lucide-react';
 import SplitTourDialog from './dialogs/SplitTourDialog';
 import SwapDriverDialog from './dialogs/SwapDriverDialog';
 import MoveStopDialog from './dialogs/MoveStopDialog';
@@ -351,6 +353,9 @@ function FvTourTimelineSection({
 
 function NvTourBody({ tourId }: { tourId: string }) {
   const qc = useQueryClient();
+  // A' Sprint: selectedStopId aus workspace.tsx (bidirektionale
+  // Hervorhebung mit MapPanel-Marker).
+  const { selectedStopId, setSelectedStopId } = useWorkspace();
   const tourQ = useQuery<NvTourDetail>({
     queryKey: ['nv-tour-detail', tourId],
     queryFn: async () =>
@@ -364,6 +369,45 @@ function NvTourBody({ tourId }: { tourId: string }) {
       return data;
     },
     onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['nv-tour-detail', tourId] });
+      qc.invalidateQueries({ queryKey: ['nv-touren'] });
+    },
+  });
+
+  // A' Sprint: missing-Geocode-Count berechnen für conditional Sparkles-Btn.
+  // tour.stops.shipment.addresses_*.lat/lng — addresses sind in
+  // TOUR_INCLUDE eingeschlossen (s. nv-touren.service.ts:101+112).
+  const missingGeocodeCount = useMemo(() => {
+    if (!tourQ.data) return 0;
+    const seen = new Set<string>();
+    let n = 0;
+    for (const s of tourQ.data.stops ?? []) {
+      const sh: any = s.shipment;
+      const addr =
+        s.stop_type === 'DELIVERY'
+          ? sh?.addresses_shipments_delivery_address_idToaddresses
+          : sh?.addresses_shipments_loading_address_idToaddresses;
+      if (!addr?.id) continue;
+      if (seen.has(addr.id)) continue;
+      seen.add(addr.id);
+      if (addr.lat == null || addr.lng == null) n++;
+    }
+    return n;
+  }, [tourQ.data]);
+
+  // A' Sprint: Geocode-Stops Mutation.
+  const geocodeMut = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post<{
+        total: number;
+        candidates: number;
+        geocoded: number;
+        failed: number;
+        skipped: number;
+      }>(`/nv-touren/${tourId}/geocode-stops`);
+      return data;
+    },
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['nv-tour-detail', tourId] });
       qc.invalidateQueries({ queryKey: ['nv-touren'] });
     },
@@ -536,18 +580,51 @@ function NvTourBody({ tourId }: { tourId: string }) {
         </CollapsibleSection>
 
         <section>
-          <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1">
-            Stops ({t.stops?.length ?? 0})
+          <h3 className="text-[11px] font-semibold uppercase text-gray-500 mb-1 flex items-center gap-2">
+            <span>Stops ({t.stops?.length ?? 0})</span>
+            {missingGeocodeCount > 0 && (
+              <button
+                type="button"
+                onClick={() => geocodeMut.mutate()}
+                disabled={geocodeMut.isPending}
+                className="ml-auto inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-300 rounded hover:bg-blue-100 disabled:opacity-50 normal-case"
+                title={`${missingGeocodeCount} Adressen ohne Koordinaten`}
+              >
+                <Sparkles size={10} />
+                {geocodeMut.isPending
+                  ? 'Geocodieren…'
+                  : `${missingGeocodeCount} geocodieren`}
+              </button>
+            )}
           </h3>
-          {(t.stops ?? []).map((s) => (
-            <div key={s.id} className="text-xs flex items-center gap-2 py-0.5">
-              <span className="text-gray-400 font-mono w-5 text-right">
-                {s.position}.
-              </span>
-              <span className="font-mono">{s.shipment?.shipment_number ?? '—'}</span>
-              <span className="text-[10px] text-gray-500">{s.stop_type ?? ''}</span>
+          {geocodeMut.data && (
+            <div className="text-[10px] text-green-700 bg-green-50 border border-green-200 rounded px-1.5 py-0.5 mb-1">
+              {geocodeMut.data.geocoded} geocoded · {geocodeMut.data.failed} fehl · {geocodeMut.data.skipped} bereits
             </div>
-          ))}
+          )}
+          {(t.stops ?? []).map((s) => {
+            const isSelected = selectedStopId === s.id;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() =>
+                  setSelectedStopId(isSelected ? null : s.id)
+                }
+                className={`w-full text-left text-xs flex items-center gap-2 py-0.5 px-1 rounded ${
+                  isSelected
+                    ? 'bg-amber-50 border-l-2 border-amber-500'
+                    : 'hover:bg-gray-50 border-l-2 border-transparent'
+                }`}
+              >
+                <span className="text-gray-400 font-mono w-5 text-right">
+                  {s.position}.
+                </span>
+                <span className="font-mono">{s.shipment?.shipment_number ?? '—'}</span>
+                <span className="text-[10px] text-gray-500">{s.stop_type ?? ''}</span>
+              </button>
+            );
+          })}
         </section>
 
         <CollapsibleSection

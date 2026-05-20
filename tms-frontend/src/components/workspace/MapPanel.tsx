@@ -61,6 +61,10 @@ export interface MapPanelProps {
   onError?: (msg: string) => void;
   /** Optional farben-Map aus tour_gebiete (für NV-Pin-Colors). */
   farbenMap?: Map<string, string>;
+  /** A' Sprint: Selected-Stop für visuelles Highlight (Cross-Panel). */
+  selectedStopId?: string | null;
+  /** A' Sprint: Stop-Marker-Click → setSelectedStopId (bidirektional). */
+  onSelectStop?: (stopId: string | null) => void;
 }
 
 export default function MapPanel({
@@ -69,6 +73,8 @@ export default function MapPanel({
   onTourStopClick,
   onError,
   farbenMap,
+  selectedStopId,
+  onSelectStop,
 }: MapPanelProps) {
   const qc = useQueryClient();
   const { mode, datum } = useWorkspace();
@@ -290,10 +296,22 @@ export default function MapPanel({
             tourPolyline={tourPolyline as FvTourDetail['polyline_geometry']}
             clickedSequence={clickedSequence}
             onPinClick={handlePinClick}
-            onTourStopClick={onTourStopClick}
+            onTourStopClick={(stopId) => {
+              // A' Sprint: Marker-Click → Selected-Sync (Bidirektional)
+              //                       + Pending-Remove-Toggle (existing).
+              onSelectStop?.(stopId);
+              onTourStopClick?.(stopId);
+            }}
             tourMode={mode === 'nv' ? 'PICKUP' : undefined}
             onReset={() => setClickedSequence([])}
             onRouteError={(msg) => onError?.(msg)}
+            selectedStopId={selectedStopId}
+            tourStopColor={
+              mode === 'nv'
+                ? (activeTour as NvTour | undefined)?.nv_stamm_tour?.nv_tour_gebiet
+                    ?.farbe ?? undefined
+                : undefined
+            }
           />
         )}
       </div>

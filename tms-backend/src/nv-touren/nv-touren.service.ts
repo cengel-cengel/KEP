@@ -43,6 +43,7 @@ import {
   computeEffectiveLdm,
   isShipmentFullyStackable,
 } from '../lib/stackable.lib';
+import { buildAddressQuery, nominatimGeocode } from '../lib/nominatim.lib';
 
 function timeToDate(hhmm?: string | null): Date | null | undefined {
   if (hhmm === undefined) return undefined;
@@ -2324,5 +2325,104 @@ export class NvTourenService {
       },
       orderBy: { computed_at: 'desc' },
     });
+  }
+
+  /**
+   * A' Sprint: Geocoding-Backfill per Tour.
+   * Iteriert über tour.stops, sammelt addresses-IDs (loading +
+   * delivery je nach stop_type), filtert die mit lat=null,
+   * geocoded via Nominatim (1.1s throttle), updated addresses.lat/lng.
+   *
+   * Idempotent: bereits-geocodete Adressen werden geskippt.
+   * Sequential (kein Parallel) wegen Nominatim Fair-Use 1req/sec.
+   */
+  async geocodeTourStops(tourId: string) {
+    const tour = await this.prisma.nv_touren.findUnique({
+      where: { id: tourId },
+      select: {
+        id: true,
+        stops: {
+          select: {
+            id: true,
+            stop_type: true,
+            shipment: {
+              select: {
+                addresses_shipments_loading_address_idToaddresses: {
+                  select: { id: true, lat: true, lng: true, street: true,
+                            zip: true, city: true, country_code: true },
+                },
+                addresses_shipments_delivery_address_idToaddresses: {
+                  select: { id: true, lat: true, lng: true, street: true,
+                            zip: true, city: true, country_code: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!tour) throw new NotFoundException(`Tour ${tourId} nicht gefunden`);
+
+    // Adressen sammeln (deduplicate by address.id).
+    const addrMap = new Map<
+      string,
+      {
+        id: string;
+        street: string | null;
+        zip: string | null;
+        city: string | null;
+        country_code: string | null;
+        lat: unknown;
+        lng: unknown;
+      }
+    >();
+    for (const s of tour.stops) {
+      const addr =
+        s.stop_type === 'DELIVERY'
+          ? s.shipment.addresses_shipments_delivery_address_idToaddresses
+          : s.shipment.addresses_shipments_loading_address_idToaddresses;
+      if (!addr) continue;
+      if (!addrMap.has(addr.id)) addrMap.set(addr.id, addr);
+    }
+
+    const candidates = [...addrMap.values()].filter(
+      (a) => a.lat == null || a.lng == null,
+    );
+
+    let geocoded = 0;
+    let failed = 0;
+    for (const a of candidates) {
+      const query = buildAddressQuery({
+        street: a.street,
+        zip: a.zip,
+        city: a.city,
+        country: a.country_code,
+      });
+      if (!query) {
+        failed++;
+        continue;
+      }
+      const result = await nominatimGeocode(query);
+      if (!result) {
+        failed++;
+        continue;
+      }
+      await this.prisma.addresses.update({
+        where: { id: a.id },
+        data: {
+          lat: result.lat.toString(),
+          lng: result.lng.toString(),
+        },
+      });
+      geocoded++;
+    }
+
+    return {
+      total: addrMap.size,
+      candidates: candidates.length,
+      geocoded,
+      failed,
+      skipped: addrMap.size - candidates.length,
+    };
   }
 }

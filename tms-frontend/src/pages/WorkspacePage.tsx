@@ -47,7 +47,8 @@ interface Banner {
 const BANNER_AUTO_CLEAR_MS = 5000;
 
 export default function WorkspacePage() {
-  const { mode, setMode, datum, filter } = useWorkspace();
+  const { mode, setMode, datum, filter, selectedStopId, setSelectedStopId } =
+    useWorkspace();
   const { layout, setLayout } = useWorkspaceLayout();
 
   // Default-Layout für PanelGroup (flexGrow-Map keyed auf Panel-id).
@@ -142,6 +143,7 @@ export default function WorkspacePage() {
       setPendingPinShipmentId(null);
       setPendingBulk(null);
       setSelected(new Set());
+      setSelectedStopId(null); // A' — reset Session-only Selection
       lastModeRef.current = mode;
     }
   }, [mode]);
@@ -321,6 +323,8 @@ export default function WorkspacePage() {
               onTourStopClick={pendingSync.onTourStopClick}
               onError={(msg) => setBanner({ kind: 'err', msg })}
               farbenMap={farbenMap}
+              selectedStopId={selectedStopId}
+              onSelectStop={setSelectedStopId}
             />
           </Panel>
         </Group>

@@ -85,6 +85,14 @@ export interface WorkspaceContextValue {
   setFilter: (next: Partial<WorkspaceFilter>) => void;
   resetFilter: () => void;
   setLayout: (next: Partial<WorkspaceLayout>) => void;
+  /**
+   * A' Sprint: selectedStopId — bidirektionale Hervorhebung
+   * MapPanel-Marker ↔ TourDetailsTab-Stop-Row.
+   * Nicht persistiert (Session-State). NICHT in snapshot/restore
+   * (UI-Selection, kein User-Setting).
+   */
+  selectedStopId: string | null;
+  setSelectedStopId: (id: string | null) => void;
   /** Komplettes State-Snapshot (für SavedView-Persistenz). */
   snapshot: () => WorkspaceState;
   /** Restore aus SavedView-Snapshot. */
@@ -269,6 +277,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return init;
   });
   const [layout, setLayoutState] = useState<WorkspaceLayout>(loadInitialLayout);
+  // A' Sprint: selectedStopId — Session-only, nicht persistiert.
+  const [selectedStopId, setSelectedStopIdState] = useState<string | null>(
+    null,
+  );
 
   // Persistenz
   useEffect(() => {
@@ -312,6 +324,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const setMode = useCallback((m: WorkspaceMode) => setModeState(m), []);
   const setDatum = useCallback((iso: string) => setDatumState(iso), []);
+  const setSelectedStopId = useCallback(
+    (id: string | null) => setSelectedStopIdState(id),
+    [],
+  );
 
   const setFilter = useCallback((next: Partial<WorkspaceFilter>) => {
     setFilterState((prev) => normalizeFilter({ ...prev, ...next }));
@@ -347,6 +363,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setFilter,
       resetFilter,
       setLayout,
+      selectedStopId,
+      setSelectedStopId,
       snapshot,
       restore,
     }),
@@ -360,6 +378,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setFilter,
       resetFilter,
       setLayout,
+      selectedStopId,
+      setSelectedStopId,
       snapshot,
       restore,
     ],

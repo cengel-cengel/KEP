@@ -178,6 +178,17 @@ export class NvTourenController {
     return { ok: km != null, geplante_km: km };
   }
 
+  /**
+   * A' Sprint: Geocoding-Backfill per Tour.
+   * Iteriert tour.stops.shipment.{loading,delivery}_address, geocoded
+   * Adressen mit lat=null. Schreibt addresses.lat/lng. Returns
+   * { geocoded, skipped, failed }.
+   */
+  @Post(':id/geocode-stops')
+  async geocodeStops(@Param('id') tourId: string) {
+    return this.svc.geocodeTourStops(tourId);
+  }
+
   @Get(':id/cost-components')
   costComponentsByTour(@Param('id') tourId: string) {
     return this.svc.getCostComponentsByTour(tourId);

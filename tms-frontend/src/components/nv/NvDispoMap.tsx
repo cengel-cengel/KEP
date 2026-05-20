@@ -31,9 +31,23 @@ function toLatLng(
   return [lat, lng];
 }
 
-function makeIcon(active: boolean, label?: string | number, color?: string) {
+/**
+ * A' Sprint: Marker-Polish.
+ * - active=true → bg-green (#16a34a) für "active eligible pin"
+ * - color override → per-Gebiet-Farbe ODER hardcoded color
+ * - selected=true → amber-ring (visual highlight bei selectedStopId)
+ */
+function makeIcon(
+  active: boolean,
+  label?: string | number,
+  color?: string,
+  selected: boolean = false,
+) {
   const bg = active ? '#16a34a' : color ?? '#1e40af';
   const text = label != null ? String(label) : '';
+  const ringStroke = selected
+    ? `<circle cx="14" cy="14" r="13" fill="none" stroke="#f59e0b" stroke-width="3"/>`
+    : '';
   const html = `
     <div style="
       width:28px;height:36px;position:relative;
@@ -42,6 +56,7 @@ function makeIcon(active: boolean, label?: string | number, color?: string) {
       <svg viewBox="0 0 28 36" width="28" height="36">
         <path d="M14 0 C 22 0 28 6 28 14 C 28 22 14 36 14 36 C 14 36 0 22 0 14 C 0 6 6 0 14 0 Z"
               fill="${bg}" stroke="white" stroke-width="2"/>
+        ${ringStroke}
       </svg>
       <div style="
         position:absolute;top:5px;left:0;right:0;
@@ -105,6 +120,8 @@ export default function NvDispoMap({
   onTourStopClick,
   tourMode,
   tourPolyline,
+  selectedStopId,
+  tourStopColor,
 }: {
   shipments: MapShipment[];
   clickedSequence: string[];
@@ -124,6 +141,10 @@ export default function NvDispoMap({
     type: 'LineString';
     coordinates: Array<[number, number]>;
   } | null;
+  /** A' Sprint: Stop-ID mit visueller Hervorhebung (amber ring). */
+  selectedStopId?: string | null;
+  /** A' Sprint: per-Tour-Gebiet-Color für tour-stops (hex). */
+  tourStopColor?: string;
 }) {
   // Subscribe to external pending store — re-rendert NUR diesen
   // Component bei Pending-Mutation (kein Page-Wide-Re-Render).
@@ -449,9 +470,12 @@ export default function NvDispoMap({
     const seenIds = new Set<string>();
     for (const s of visibleStops) {
       seenIds.add(s.id);
+      // A' Sprint: per-Gebiet-Color + Selected-State (amber ring).
+      const isSelected = selectedStopId === s.id;
+      const stopColor = tourStopColor ?? '#16a34a';
       const icon = s.isWarehouse
         ? makeWarehouseIcon()
-        : makeIcon(true, s.position, '#16a34a');
+        : makeIcon(true, s.position, stopColor, isSelected);
       const tip = s.isWarehouse
         ? s.label ?? 'Lager'
         : `Stop ${s.position}${
@@ -587,7 +611,17 @@ export default function NvDispoMap({
         }).addTo(map);
       })
       .finally(() => window.clearTimeout(timeoutId));
-  }, [tourStops, onTourStopClick, pendingRemoveStopIds, tourMode, tourPolyline]);
+  }, [
+    tourStops,
+    onTourStopClick,
+    pendingRemoveStopIds,
+    tourMode,
+    tourPolyline,
+    // A' Sprint: re-render markers wenn Selection oder Gebiet-Color
+    // ändern (Icon-Update via setIcon).
+    selectedStopId,
+    tourStopColor,
+  ]);
 
   return (
     <div className="relative w-full h-full">

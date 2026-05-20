@@ -1,11 +1,29 @@
 /**
  * Nominatim Geocoding-Helper.
  * Public-Demo-Endpoint, Fair-Use ~1 req/s.
+ *
+ * Throttle: module-level Mutex (lastRequestAt) erzwingt 1100ms
+ * Mindestabstand zwischen Calls — gilt für ALLE Konsumenten
+ * (admin-backfill + nv-tour-geocode + warehouses).
  */
 import { Logger } from '@nestjs/common';
 
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 const logger = new Logger('NominatimLib');
+
+/** OSM Fair-Use-Policy: max 1 req/sec. Wir lassen 1.1s Sicherheits-
+ * marge — gilt module-global für alle nominatimGeocode-Aufrufer. */
+const THROTTLE_MIN_MS = 1100;
+let lastRequestAt = 0;
+
+async function throttle(): Promise<void> {
+  const now = Date.now();
+  const wait = lastRequestAt + THROTTLE_MIN_MS - now;
+  if (wait > 0) {
+    await new Promise<void>((resolve) => setTimeout(resolve, wait));
+  }
+  lastRequestAt = Date.now();
+}
 
 export interface GeoCoord {
   lat: number;
@@ -20,6 +38,7 @@ export async function nominatimGeocode(
     logger.warn(`skip: query too short ("${query}")`);
     return null;
   }
+  await throttle();
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const url = `${NOMINATIM_URL}?q=${encodeURIComponent(query)}&format=json&limit=1`;

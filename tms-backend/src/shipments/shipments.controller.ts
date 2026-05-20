@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   Param,
   Patch,
   Post,
@@ -21,6 +22,7 @@ import { BulkPatchShipmentsDto } from './dto/bulk-patch-shipments.dto';
 import { CreatePackageItemDto, UpdatePackageItemDto } from './dto/package-item.dto';
 import { ListShipmentsQueryDto } from './dto/list-shipments-query.dto';
 import { ShipmentPricePreviewDto } from './dto/price-preview.dto';
+import { RealtimeService } from '../realtime/realtime.service';
 
 @ApiTags('shipments')
 @ApiBearerAuth()
@@ -30,6 +32,7 @@ export class ShipmentsController {
   constructor(
     private readonly shipmentsService: ShipmentsService,
     private readonly nvTourenService: NvTourenService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   @Get(':id/cost-components')
@@ -80,8 +83,11 @@ export class ShipmentsController {
     @Param('id') id: string,
     @Body() dto: UpdateShipmentDto,
     @Request() req: any,
+    @Headers('x-client-id') clientId?: string,
   ) {
-    return this.shipmentsService.update(id, dto, req.user.userId);
+    const r = await this.shipmentsService.update(id, dto, req.user.userId);
+    this.realtime.emit('shipment.updated', 'shipment', id, clientId);
+    return r;
   }
 
   @Delete(':id')

@@ -90,6 +90,16 @@ export class CustomersService {
     });
   }
 
+  /** PERF-1.2: Liefert IDs aller Shipments für einen Customer.
+   *  Für Realtime-Cascade nach Customer-PATCH (M-1.1 Tier-Change). */
+  async getShipmentIdsForCustomer(customerId: string): Promise<string[]> {
+    const rows = await this.prisma.shipments.findMany({
+      where: { customer_id: customerId, deleted_at: null },
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
+  }
+
   private async ensureExists(id: string) {
     const exists = await this.prisma.customers.findUnique({
       where: { id },

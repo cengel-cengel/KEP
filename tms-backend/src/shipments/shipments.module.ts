@@ -10,6 +10,7 @@ import { StatusModule } from '../status/status.module';
 import { CostsModule } from '../costs/costs.module';
 import { PricingHubModule } from '../pricing-hub/pricing-hub.module';
 import { NvTourenModule } from '../nv-touren/nv-touren.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { NvTourenModule } from '../nv-touren/nv-touren.module';
     CostsModule,
     PricingHubModule,
     NvTourenModule,
+    RealtimeModule,
   ],
   controllers: [ShipmentsController, ShipmentPackageItemsController],
   providers: [ShipmentsService],

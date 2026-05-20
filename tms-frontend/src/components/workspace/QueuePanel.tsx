@@ -183,6 +183,33 @@ export default function QueuePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
+  // S-2.2: Space-Key → Toggle lastClicked-Item-Selection.
+  // Default-Browser-Scroll bei <body>-Fokus unterdrücken wenn
+  // lastClicked existiert. Skip wenn focus in input/contenteditable.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== ' ' && e.code !== 'Space') return;
+      const tag = (e.target as HTMLElement | null)?.tagName ?? '';
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        (e.target as HTMLElement | null)?.isContentEditable
+      ) {
+        return;
+      }
+      const cur = lastClickedRef.current;
+      if (!cur) return;
+      e.preventDefault();
+      const next = new Set(selected);
+      if (next.has(cur)) next.delete(cur);
+      else next.add(cur);
+      setSelected(next);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
+
   // === Group-Collapse (NV-Mode) ==================================
   const [expandedGroup, setExpandedGroup] = useState<string | null>(
     loadExpanded,

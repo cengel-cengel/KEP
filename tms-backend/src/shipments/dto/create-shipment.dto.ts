@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsDateString,
@@ -15,41 +16,51 @@ import { ShipmentPackageLineDto } from './shipment-package-line.dto';
 
 export class CreateShipmentDto {
   /** Klassischer Kunde (customers) */
+  @ApiPropertyOptional({ format: 'uuid', description: 'Customer-ID (alternativ zu partnerId)' })
   @IsOptional()
   @IsUUID()
   customerId?: string;
 
   /** Stammdaten-Geschäftspartner (business_partners, z. B. type CUSTOMER) */
+  @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
   @IsUUID()
   partnerId?: string;
 
+  @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
   @IsUUID()
   loadingAddressId?: string;
 
   /** Wenn gesetzt: Server legt Snapshot-Adresse (loading) aus partner_locations an */
+  @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
   @IsUUID()
   loadingPartnerLocationId?: string;
 
+  @ApiPropertyOptional({ example: 'FTL' })
   @IsOptional()
   @IsString()
   transportType?: string;
 
+  @ApiPropertyOptional({ description: 'Kunden-eigene Referenz' })
   @IsOptional()
   @IsString()
   customerRef?: string;
 
+  @ApiProperty({ format: 'uuid', description: 'Zielladestelle' })
   @IsUUID()
   deliveryAddressId!: string;
 
+  @ApiProperty({ example: 'DE', minLength: 2, maxLength: 2 })
   @IsString()
   loadingCountryCode!: string;
 
+  @ApiProperty({ example: 'DE', minLength: 2, maxLength: 2 })
   @IsString()
   deliveryCountryCode!: string;
 
+  @ApiProperty({ format: 'date', example: '2026-05-20' })
   @IsDateString()
   loadingDate!: string;
 
@@ -61,6 +72,7 @@ export class CreateShipmentDto {
   @IsString()
   loadingTimeTo?: string;
 
+  @ApiProperty({ format: 'date' })
   @IsDateString()
   deliveryDate!: string;
 
@@ -114,6 +126,7 @@ export class CreateShipmentDto {
   @Min(0)
   widthCm?: number;
 
+  @ApiPropertyOptional({ description: 'Gefahrgut-Flag — Sub muss ADR-Lizenz haben (T-3.2.1)' })
   @IsOptional()
   @IsBoolean()
   isHazmat?: boolean;

@@ -16,7 +16,10 @@ const TOKEN_KEY = 'tms_token';
 const CLIENT_ID_KEY = 'tms_client_id';
 const DEDUP_CAPACITY = 100;
 
-export type RealtimeEventType = 'tour.updated' | 'shipment.assigned';
+export type RealtimeEventType =
+  | 'tour.updated'
+  | 'shipment.assigned'
+  | 'shipment.updated';
 
 export interface RealtimeEvent {
   event: RealtimeEventType;

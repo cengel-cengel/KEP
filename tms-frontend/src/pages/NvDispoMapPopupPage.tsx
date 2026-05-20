@@ -210,7 +210,7 @@ export default function NvDispoMapPopupPage() {
   const activeTourStopPins = useMemo<TourStopPin[]>(() => {
     if (!activeTour) return [];
     const stops: TourStopPin[] = [];
-    for (const s of [...activeTour.stops].sort(
+    for (const s of [...(activeTour.stops ?? [])].sort(
       (a, b) => a.position - b.position,
     )) {
       const sh = s.shipment;
@@ -268,7 +268,7 @@ export default function NvDispoMapPopupPage() {
   const activeTourPlzSet = useMemo(() => {
     if (!activeTour) return null;
     const set = new Set<string>();
-    for (const s of activeTour.stops) {
+    for (const s of activeTour.stops ?? []) {
       const sh = s.shipment;
       const addr =
         s.stop_type === 'DELIVERY'
@@ -295,7 +295,7 @@ export default function NvDispoMapPopupPage() {
   const activeTourStopCoords = useMemo<Array<[number, number]>>(() => {
     if (!activeTour) return [];
     const out: Array<[number, number]> = [];
-    for (const s of activeTour.stops) {
+    for (const s of activeTour.stops ?? []) {
       const sh = s.shipment;
       const addr =
         s.stop_type === 'DELIVERY'
@@ -635,7 +635,7 @@ export default function NvDispoMapPopupPage() {
           <option value="">— Ziel-Tour —</option>
           {(tourenQ.data ?? []).map((t) => (
             <option key={t.id} value={t.id}>
-              {t.nv_stamm_tour?.code ?? '—'} ({t.stops.length})
+              {t.nv_stamm_tour?.code ?? '—'} ({(t.stops ?? []).length})
             </option>
           ))}
         </select>

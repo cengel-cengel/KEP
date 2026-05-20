@@ -98,7 +98,7 @@ function flattenPackages(
     if (l > rowMaxLength) rowMaxLength = l;
     return { posX, posY };
   };
-  for (const stop of tour.stops) {
+  for (const stop of tour.stops ?? []) {
     const ship = stop.shipment;
     const color = SHIPMENT_COLORS[shipIdx % SHIPMENT_COLORS.length];
     shipIdx++;

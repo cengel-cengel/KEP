@@ -39,4 +39,13 @@ export function invalidateForEvent(
     qc.invalidateQueries({ queryKey: ['nv-loading', evt.entityId] });
     return;
   }
+  // PERF-1.2: shipment.updated — Detail-Refresh + Eligibles-Re-Score.
+  // Triggert M-1.1 Customer-PATCH (Tier-Change) und Status-Updates.
+  if (evt.event === 'shipment.updated') {
+    qc.invalidateQueries({ queryKey: ['shipments', 'detail', evt.entityId] });
+    qc.invalidateQueries({ queryKey: ['shipment-best-match', evt.entityId] });
+    qc.invalidateQueries({ queryKey: ['fv-eligible'] });
+    qc.invalidateQueries({ queryKey: ['nv-elig'] });
+    return;
+  }
 }

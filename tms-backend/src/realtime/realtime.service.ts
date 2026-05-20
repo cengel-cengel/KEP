@@ -10,7 +10,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { RealtimeGateway, resolveRoom } from './realtime.gateway';
 
-export type RealtimeEventType = 'tour.updated' | 'shipment.assigned';
+export type RealtimeEventType =
+  | 'tour.updated'
+  | 'shipment.assigned'
+  | 'shipment.updated';
 
 export interface RealtimeEvent {
   event: RealtimeEventType;

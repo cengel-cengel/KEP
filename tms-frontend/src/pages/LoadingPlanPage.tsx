@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
+import { Trash2 } from 'lucide-react';
 import LoadingPlan3D from '../components/LoadingPlan3D';
 import AxleLoadPanel from '../components/AxleLoadPanel';
 import SecurementPanel from '../components/SecurementPanel';
+import ContextMenu, {
+  type ContextMenuItem,
+} from '../components/loadingplan/ContextMenu';
 import { api } from '../lib/api';
 import { computeSecurement } from '../lib/loadSecurement';
 import { computeStackingLdmMetrics } from '../lib/loadingLdm';
@@ -306,6 +310,36 @@ function findPreferredStackSlot(
   return { posX: c.x, posY: c.y, posZ: c.posZ };
 }
 
+/**
+ * B-1 SCHRITT 4 Carlos-Stack-Rule Sort.
+ *
+ * Sortiert Packstücke optimal für FFDH-Bin-Packing:
+ *   1. non-stackable zuerst (kommen auf Boden, kein Top-Stack)
+ *   2. weight desc (schwer-unten-leicht-oben)
+ *   3. volume desc (groß-zuerst, kleine Pakete füllen Lücken)
+ *
+ * Stabile Sortierung (Tie-breaker = original-Index).
+ */
+export function sortPackagesForOptimalPack(packages: Package[]): Package[] {
+  const indexed = packages.map((p, idx) => ({ p, idx }));
+  indexed.sort((a, b) => {
+    // 1. non-stackable first
+    if (a.p.isStackable !== b.p.isStackable) {
+      return a.p.isStackable ? 1 : -1;
+    }
+    // 2. weight desc
+    const dw = b.p.weightKg - a.p.weightKg;
+    if (Math.abs(dw) > 0.5) return dw;
+    // 3. volume desc
+    const va = a.p.lengthCm * a.p.widthCm * a.p.heightCm;
+    const vb = b.p.lengthCm * b.p.widthCm * b.p.heightCm;
+    if (va !== vb) return vb - va;
+    // Tie-Breaker: Stabil
+    return a.idx - b.idx;
+  });
+  return indexed.map((x) => x.p);
+}
+
 function placePackages(packages: Package[], trailerL: number, trailerW: number, trailerH: number): PlacedPackage[] {
   const placed: PlacedPackage[] = [];
 
@@ -455,6 +489,10 @@ export default function LoadingPlanPage() {
   const [selectedVehicleType, setSelectedVehicleType] = useState<string>('Jumbo');
   const [securementMu, setSecurementMu] = useState<number>(0.4);
   const [removedShipmentIds, setRemovedShipmentIds] = useState<string[]>([]);
+  // B-1 SCHRITT 3: Right-Click Context-Menu State (Pkg-Mesh-Right-Click).
+  const [ctxMenu, setCtxMenu] = useState<
+    { shipmentId: string; x: number; y: number } | null
+  >(null);
 
   const optimizeQuery = useQuery({
     queryKey: ['loading', 'optimize', tourId],
@@ -665,6 +703,101 @@ export default function LoadingPlanPage() {
     },
     onError: () => {
       showToast('Reset fehlgeschlagen', 'err');
+    },
+  });
+
+  // B-1 SCHRITT 4: "Neu optimal beladen" — Re-Pack mit Carlos-Stack-Rule.
+  //   Sort: non-stackable first (Boden), weight-desc, volume-desc
+  //   Run placePackages mit neuer Order, PATCH alle Positionen,
+  //   Reset storedPos via /reset-positions vorher (Cache-clear BE).
+  const repackOptimalMutation = useMutation({
+    mutationFn: async () => {
+      if (!tourId) throw new Error('Keine Tour-ID');
+      // 1. Reset BE-Positionen → Auto-Placer-Cache leeren.
+      await api.post(`/loading/tour/${tourId}/reset-positions`);
+      // 2. Sort packagesFlat per Carlos-Rule (non-stackable→Boden,
+      //    weight-desc, volume-desc).
+      const sorted = sortPackagesForOptimalPack(packagesFlat);
+      // 3. Re-Pack mit neuer Sortierung.
+      const repacked = placePackages(
+        sorted,
+        vehicleDims.lengthCm,
+        vehicleDims.widthCm,
+        vehicleDims.heightCm,
+      );
+      // 4. PATCH jede neue Position auf BE.
+      for (const pkg of repacked) {
+        if (!pkg.dbItemId) continue; // synth-pkgs nicht persistierbar
+        await api.patch(`/loading/package-item/${pkg.dbItemId}/position`, {
+          posXCm: Math.round(pkg.posX),
+          posYCm: Math.round(pkg.posY),
+          posZCm: Math.round(pkg.posZ),
+          rotationDeg: 0,
+        });
+      }
+      return { count: repacked.length };
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({
+        queryKey: ['loading', 'optimize', tourId],
+      });
+      showToast(`Optimal beladen: ${res.count} Packstücke`);
+    },
+    onError: (e) => {
+      // eslint-disable-next-line no-console
+      console.warn('repackOptimal failed:', e);
+      showToast('Optimal-Pack fehlgeschlagen', 'err');
+    },
+  });
+
+  // B-1 SCHRITT 2: Stapelbarkeit-Toggle pro Sendung.
+  // Optimistic: setQueryData mit invertiertem isStackable + alle
+  // packageItems.stackable. BE PATCH /shipments/:id/stackable
+  // setzt alle pkg-items der Sendung (Carlos-Konvention).
+  // Auto-Recompute: placePackages-useMemo re-runs auf packages-Change.
+  const setShipmentStackableMutation = useMutation({
+    mutationFn: async (vars: { shipmentId: string; stackable: boolean }) => {
+      await api.patch(`/shipments/${vars.shipmentId}/stackable`, {
+        stackable: vars.stackable,
+      });
+    },
+    onMutate: async (vars) => {
+      const key = ['loading', 'optimize', tourId];
+      await queryClient.cancelQueries({ queryKey: key });
+      const prev = queryClient.getQueryData<OptimizeResponse>(key);
+      if (prev) {
+        const next: OptimizeResponse = {
+          ...prev,
+          loadingOrder: prev.loadingOrder.map((s) =>
+            s.id === vars.shipmentId
+              ? {
+                  ...s,
+                  isStackable: vars.stackable,
+                  packageItems: s.packageItems?.map((p) => ({
+                    ...p,
+                    stackable: vars.stackable,
+                  })),
+                }
+              : s,
+          ),
+        };
+        queryClient.setQueryData(key, next);
+      }
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) {
+        queryClient.setQueryData(['loading', 'optimize', tourId], ctx.prev);
+      }
+      showToast('Stapelbarkeit speichern fehlgeschlagen', 'err');
+    },
+    onSuccess: () => {
+      showToast('Stapelbarkeit aktualisiert');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['loading', 'optimize', tourId],
+      });
     },
   });
 
@@ -973,7 +1106,29 @@ export default function LoadingPlanPage() {
                   }
                   return (
                     <>
-                      <div className="flex justify-end mb-2">
+                      <div className="flex justify-end gap-2 mb-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                'Tour optimal beladen? Alle Positionen werden ersetzt (Carlos-Stack-Rule: non-stackable→Boden, schwer-unten, groß-zuerst).',
+                              )
+                            ) {
+                              repackOptimalMutation.mutate();
+                            }
+                          }}
+                          disabled={
+                            repackOptimalMutation.isPending ||
+                            placedPackages.length === 0
+                          }
+                          className="text-xs rounded border border-blue-300 bg-blue-50 px-3 py-1 hover:bg-blue-100 disabled:opacity-50 text-blue-700 font-medium"
+                          title="Optimaler Stapel-Algorithmus (FFDH mit Carlos-Stack-Rule)"
+                        >
+                          {repackOptimalMutation.isPending
+                            ? 'Berechne…'
+                            : '🔄 Neu optimal beladen'}
+                        </button>
                         <button
                           type="button"
                           onClick={handleResetPositions}
@@ -995,6 +1150,15 @@ export default function LoadingPlanPage() {
                         vehicleType={selectedVehicle?.type ?? selectedVehicleType}
                         securementStraps={totalStraps}
                         onPositionChange={handlePackagePosition}
+                        onPackageContextMenu={(pkgId, x, y) => {
+                          const pkg = placedPackages.find((p) => p.id === pkgId);
+                          if (!pkg) return;
+                          setCtxMenu({
+                            shipmentId: pkg.shipmentId,
+                            x,
+                            y,
+                          });
+                        }}
                         packages={placedPackages.map((p) => ({
                           id: p.id,
                           lengthCm: p.lengthCm,
@@ -1103,14 +1267,38 @@ export default function LoadingPlanPage() {
                             />
                             {s.shipmentNumber} · {pkgs.length} Pakete · {(Number(s.ldm) || 0).toFixed(2)} ldm
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => removeShipment(s.id)}
-                            className="text-red-500 hover:text-red-700"
-                            title="Sendung von Tour entfernen"
-                          >
-                            ✕
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setShipmentStackableMutation.mutate({
+                                  shipmentId: s.id,
+                                  stackable: !s.isStackable,
+                                })
+                              }
+                              disabled={setShipmentStackableMutation.isPending}
+                              className={`text-[10px] px-1.5 py-0.5 rounded border disabled:opacity-50 ${
+                                s.isStackable
+                                  ? 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100'
+                                  : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
+                              }`}
+                              title={
+                                s.isStackable
+                                  ? 'Stapelbar (Klick: nicht-stapelbar)'
+                                  : 'Nicht stapelbar (Klick: stapelbar)'
+                              }
+                            >
+                              {s.isStackable ? '⇈ stapelbar' : '⊘ nicht'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeShipment(s.id)}
+                              className="text-red-500 hover:text-red-700"
+                              title="Sendung von Tour entfernen"
+                            >
+                              ✕
+                            </button>
+                          </div>
                         </div>
                         <ul className="mt-1 pl-2 border-l border-gray-200 ml-1.5 space-y-0.5">
                           {pkgs.map((pkg, i) => (
@@ -1339,6 +1527,43 @@ export default function LoadingPlanPage() {
           </div>
         )}
       </main>
+      {ctxMenu && (() => {
+        const ship = activeOrder.find((s) => s.id === ctxMenu.shipmentId);
+        const isStackable = ship?.isStackable ?? true;
+        const items: ContextMenuItem[] = [
+          {
+            label: isStackable ? 'Nicht stapelbar setzen' : 'Stapelbar setzen',
+            onClick: () =>
+              setShipmentStackableMutation.mutate({
+                shipmentId: ctxMenu.shipmentId,
+                stackable: !isStackable,
+              }),
+            separator: true,
+          },
+          {
+            label: 'Sendung aus Tour entfernen',
+            danger: true,
+            icon: <Trash2 size={12} />,
+            onClick: () => {
+              if (
+                window.confirm(
+                  `Sendung ${ship?.shipmentNumber ?? ''} von Tour entfernen?`,
+                )
+              ) {
+                removeShipmentsMutation.mutate([ctxMenu.shipmentId]);
+              }
+            },
+          },
+        ];
+        return (
+          <ContextMenu
+            x={ctxMenu.x}
+            y={ctxMenu.y}
+            items={items}
+            onClose={() => setCtxMenu(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

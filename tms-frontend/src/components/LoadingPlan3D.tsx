@@ -74,6 +74,16 @@ interface Props {
     posZCm: number,
     rotationDeg?: number,
   ) => void;
+  /**
+   * B-1: Right-Click auf Packstück-Mesh.
+   * Caller bekommt Pkg-ID + Viewport-Coords (clientX/clientY) und
+   * rendert eigenen ContextMenu absolut darüber.
+   */
+  onPackageContextMenu?: (
+    pkgId: string,
+    screenX: number,
+    screenY: number,
+  ) => void;
 }
 
 const AXLE_COLOR: Record<AxleStatus, string> = {
@@ -88,6 +98,7 @@ export default function LoadingPlan3D({
   vehicleType,
   securementStraps = 0,
   onPositionChange,
+  onPackageContextMenu,
 }: Props) {
   const trailer = useMemo(() => {
     const L = vehicle.lengthCm / 100;
@@ -661,6 +672,8 @@ export default function LoadingPlan3D({
               }}
               onPointerDown={(e) => {
                 if (dragActive) return;
+                // B-1: Right-Click (button=2) startet KEIN Drag.
+                if (e.nativeEvent.button === 2) return;
                 e.stopPropagation();
                 setOrbit(false); // synchron, vor React-Render
                 offsetRef.current = {
@@ -677,6 +690,17 @@ export default function LoadingPlan3D({
                 setDragValid(true);
                 setDragActive(p.id);
                 document.body.style.cursor = 'grabbing';
+              }}
+              onContextMenu={(e) => {
+                // B-1: Right-Click auf Mesh → Context-Menu via Callback.
+                // Default-Browser-Menu unterdrücken.
+                e.nativeEvent.preventDefault();
+                e.stopPropagation();
+                onPackageContextMenu?.(
+                  p.id,
+                  e.nativeEvent.clientX,
+                  e.nativeEvent.clientY,
+                );
               }}
             >
               <boxGeometry args={[lx, ly, lz]} />

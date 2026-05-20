@@ -209,6 +209,9 @@ function FvTourBody({ tourId }: { tourId: string }) {
     return () => unsubs.forEach((u) => u());
   }, []);
 
+  // C-2.1 FV: SplitShipmentDialog state.
+  const [fvSplitOpen, setFvSplitOpen] = useState<string | null>(null);
+
   // B'-2: FV-Aggregates (Sendg./kg/km/€).
   const fvAggregates = useMemo<TourAggregates>(() => {
     const data = tourQ.data;
@@ -344,6 +347,7 @@ function FvTourBody({ tourId }: { tourId: string }) {
           subTab={fvSubTab}
           setSubTab={setFvSubTab}
           onShipmentClick={(id) => panel.selectShipment(id)}
+          onSplitShipment={(id) => setFvSplitOpen(id)}
         />
 
         <CollapsibleSection
@@ -377,6 +381,14 @@ function FvTourBody({ tourId }: { tourId: string }) {
           />
         </section>
       </div>
+      {fvSplitOpen && (
+        <SplitShipmentDialog
+          tourId={tourId}
+          shipmentId={fvSplitOpen}
+          mode="fv"
+          onClose={() => setFvSplitOpen(null)}
+        />
+      )}
     </>
   );
 }
@@ -1623,11 +1635,13 @@ function FvShipmentsSubTabs({
   subTab,
   setSubTab,
   onShipmentClick,
+  onSplitShipment,
 }: {
   shipments: NonNullable<TourDetail['shipments']>;
   subTab: 'stops' | 'tabelle';
   setSubTab: (t: 'stops' | 'tabelle') => void;
   onShipmentClick: (id: string) => void;
+  onSplitShipment: (shipmentId: string) => void;
 }) {
   return (
     <section>
@@ -1643,7 +1657,11 @@ function FvShipmentsSubTabs({
         <FvStopsListView shipments={shipments} onShipmentClick={onShipmentClick} />
       )}
       {subTab === 'tabelle' && (
-        <FvShipmentsTableView shipments={shipments} onShipmentClick={onShipmentClick} />
+        <FvShipmentsTableView
+          shipments={shipments}
+          onShipmentClick={onShipmentClick}
+          onSplitShipment={onSplitShipment}
+        />
       )}
     </section>
   );
@@ -1700,9 +1718,11 @@ function fvShipmentZeit(s: FvShipmentItem): string {
 function FvShipmentsTableView({
   shipments,
   onShipmentClick,
+  onSplitShipment,
 }: {
   shipments: NonNullable<TourDetail['shipments']>;
   onShipmentClick: (id: string) => void;
+  onSplitShipment: (shipmentId: string) => void;
 }) {
   return (
     <table className="w-full text-xs">
@@ -1714,6 +1734,7 @@ function FvShipmentsTableView({
           <th className="text-left py-0.5">Ort</th>
           <th className="text-left py-0.5 w-12">Zeit</th>
           <th className="text-right py-0.5 w-10">kg</th>
+          <th className="text-center py-0.5 w-6"></th>
         </tr>
       </thead>
       <tbody>
@@ -1730,6 +1751,20 @@ function FvShipmentsTableView({
             <td className="text-gray-600 font-mono text-[10px]">{fvShipmentZeit(s)}</td>
             <td className="text-right font-mono">
               {s.weight_kg != null ? Math.round(Number(s.weight_kg)) : '—'}
+            </td>
+            <td>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSplitShipment(s.id);
+                }}
+                className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-blue-700 hover:bg-blue-50 rounded"
+                aria-label="Sendung splitten"
+                title="Sendung splitten"
+              >
+                <Scissors size={11} />
+              </button>
             </td>
           </tr>
         ))}

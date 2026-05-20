@@ -1622,31 +1622,25 @@ export class NvTourenService {
   }
 
   /**
-   * T-3.2 splitTour: erstellt neue Tour mit denselben Tour-Daten
-   * (Datum, Sub, Fahrzeug) und transferiert alle Stops ab from_stop
-   * (inkl.) in die neue Tour. Original-Tour behält die Stops davor.
-   */
-
   /**
-   * C-2 Sendung-Splitten:
-   *   - Original-Shipment behält Items NICHT in splitItemIds[].
-   *   - Neue Shipment klont scalar-Felder (customer, addresses, dates,
-   *     hazmat, etc.) und übernimmt die splitItemIds-Items per
-   *     UPDATE shipment_id (move, kein clone — decision 1A).
+   * C-2 Sendung-Splitten (mit C-2.1 Partial-Quantity-Support):
+   *   - itemSplits: { itemId, quantity }[]
+   *     · quantity == orig.quantity → Item komplett moved
+   *     · quantity <  orig.quantity → Item geklont mit reduzierter
+   *       qty (pro-rata kg), Original behält Rest-qty
+   *   - Neue Shipment klont scalar-Felder + split_from_id.
    *   - weight_kg + package_count beider Shipments rekomputiert
    *     aus SUM(items.weight_kg) bzw. SUM(quantity).
-   *   - pos_x_cm/y/z der gemoveten Items auf NULL (re-pack-Bedarf).
-   *   - Neuer Stop direkt nach current (position+1, übrige Stops
-   *     verschoben). Beide Stops in derselben Tour.
-   *   - split_from_id auf neuem Shipment für Audit-Trail.
+   *   - pos_x_cm/y/z der gemoveten/geklonten Items auf NULL.
+   *   - Neuer Stop direkt nach current (position+1).
    */
   async splitShipmentAtStop(
     tourId: string,
     stopId: string,
-    splitItemIds: string[],
+    itemSplits: Array<{ itemId: string; quantity: number }>,
   ) {
-    if (!splitItemIds || splitItemIds.length === 0) {
-      throw new BadRequestException('splitItemIds darf nicht leer sein.');
+    if (!itemSplits || itemSplits.length === 0) {
+      throw new BadRequestException('itemSplits darf nicht leer sein.');
     }
     const stop = await this.prisma.nv_tour_stops.findUnique({
       where: { id: stopId },
@@ -1672,6 +1666,7 @@ export class NvTourenService {
             delivery_time_from: true,
             delivery_time_to: true,
             package_type: true,
+            package_count: true,
             transport_type: true,
             incoterm: true,
             freight_payer: true,
@@ -1683,7 +1678,18 @@ export class NvTourenService {
             comment: true,
             created_by: true,
             shipment_package_items: {
-              select: { id: true, quantity: true, weight_kg: true },
+              orderBy: { line_index: 'asc' as const },
+              select: {
+                id: true,
+                line_index: true,
+                package_type: true,
+                quantity: true,
+                length_cm: true,
+                width_cm: true,
+                height_cm: true,
+                weight_kg: true,
+                stackable: true,
+              },
             },
           },
         },
@@ -1695,96 +1701,12 @@ export class NvTourenService {
     }
     const orig = stop.shipment;
     if (!orig) throw new NotFoundException('Stop hat keine Sendung.');
-    const allItemIds = orig.shipment_package_items.map((i) => i.id);
-    const moveSet = new Set(splitItemIds);
-    const validMoveIds = splitItemIds.filter((id) => allItemIds.includes(id));
-    if (validMoveIds.length !== splitItemIds.length) {
-      throw new BadRequestException(
-        'splitItemIds enthält IDs die nicht zur Original-Sendung gehören.',
-      );
-    }
-    const remainItems = orig.shipment_package_items.filter(
-      (i) => !moveSet.has(i.id),
-    );
-    if (remainItems.length === 0 || validMoveIds.length === orig.shipment_package_items.length) {
-      throw new BadRequestException(
-        'Mindestens 1 Item muss in Original verbleiben (kein All-or-Nothing-Split).',
-      );
-    }
-    const moveItems = orig.shipment_package_items.filter((i) =>
-      moveSet.has(i.id),
-    );
 
-    // Aggregate-Recompute (per-row sum, decision 8A).
-    const sumKg = (rows: typeof orig.shipment_package_items) =>
-      rows.reduce((acc, r) => acc + Number(r.weight_kg ?? 0), 0);
-    const sumQty = (rows: typeof orig.shipment_package_items) =>
-      rows.reduce((acc, r) => acc + Number(r.quantity ?? 1), 0);
-
-    const newWeightOrig = sumKg(remainItems);
-    const newCountOrig = sumQty(remainItems);
-    const newWeightSplit = sumKg(moveItems);
-    const newCountSplit = sumQty(moveItems);
-
-    // Shipment-Nr per Sequence (mirror shipments.service Pattern:
-    // S{YY}-{seq6}, z.B. S26-001234).
-    const seqRows = await this.prisma.$queryRaw<[{ nextval: bigint }]>`
-      SELECT nextval('shipment_number_seq')
-    `;
-    const yr = new Date().getFullYear().toString().slice(-2);
-    const newNumber = `S${yr}-${seqRows[0].nextval.toString().padStart(6, '0')}`;
+    const result = await this.executeShipmentSplit(orig, itemSplits);
 
     return this.prisma.$transaction(async (tx) => {
-      // 1) Original-Shipment Aggregate aktualisieren.
-      await tx.shipments.update({
-        where: { id: orig.id },
-        data: {
-          weight_kg: newWeightOrig,
-          package_count: newCountOrig,
-        },
-      });
-      // 2) Neue Shipment erzeugen (scalar-Felder inherit).
-      const newShipment = await tx.shipments.create({
-        data: {
-          shipment_number: newNumber,
-          customer_id: orig.customer_id,
-          customer_ref: orig.customer_ref,
-          status: orig.status,
-          loading_address_id: orig.loading_address_id,
-          delivery_address_id: orig.delivery_address_id,
-          loading_date: orig.loading_date,
-          loading_time_from: orig.loading_time_from,
-          loading_time_to: orig.loading_time_to,
-          delivery_date: orig.delivery_date,
-          delivery_time_from: orig.delivery_time_from,
-          delivery_time_to: orig.delivery_time_to,
-          package_type: orig.package_type,
-          package_count: newCountSplit,
-          weight_kg: newWeightSplit,
-          transport_type: orig.transport_type,
-          incoterm: orig.incoterm,
-          freight_payer: orig.freight_payer,
-          is_hazmat: orig.is_hazmat,
-          hazmat_class: orig.hazmat_class,
-          hazmat_un_number: orig.hazmat_un_number,
-          hazmat_packing_group: orig.hazmat_packing_group,
-          hazmat_description: orig.hazmat_description,
-          comment: orig.comment,
-          created_by: orig.created_by,
-          split_from_id: orig.id,
-        },
-      });
-      // 3) Items verschieben (shipment_id-Update + pos_*-Reset).
-      await tx.shipment_package_items.updateMany({
-        where: { id: { in: validMoveIds } },
-        data: {
-          shipment_id: newShipment.id,
-          pos_x_cm: null,
-          pos_y_cm: null,
-          pos_z_cm: null,
-        },
-      });
-      // 4) Nachfolgende Stops verschieben (position +1).
+      const exec = await this.applyShipmentSplit(tx, orig.id, result);
+      // Nachfolgende Stops verschieben (position +1).
       await tx.nv_tour_stops.updateMany({
         where: {
           nv_tour_id: tourId,
@@ -1792,11 +1714,11 @@ export class NvTourenService {
         },
         data: { position: { increment: 1 } },
       });
-      // 5) Neuer Stop für neue Sendung — direkt nach current.
+      // Neuer Stop für neue Sendung — direkt nach current.
       const newStop = await tx.nv_tour_stops.create({
         data: {
           nv_tour_id: tourId,
-          shipment_id: newShipment.id,
+          shipment_id: exec.newShipmentId,
           position: stop.position + 1,
           stop_type: stop.stop_type,
           servicezeit_min: stop.servicezeit_min,
@@ -1804,13 +1726,287 @@ export class NvTourenService {
       });
       return {
         original_shipment_id: orig.id,
-        new_shipment_id: newShipment.id,
-        new_shipment_number: newNumber,
+        new_shipment_id: exec.newShipmentId,
+        new_shipment_number: exec.newShipmentNumber,
         new_stop_id: newStop.id,
-        moved_item_count: validMoveIds.length,
+        moved_item_count: result.movedItemCount,
+        cloned_item_count: result.clonedItemCount,
       };
     });
   }
+
+  /**
+   * C-2.1 Helper: plant Split (Validation + Move/Clone-Berechnung)
+   * vor der Transaction. Wirft BadRequestException bei Constraint-
+   * Verletzungen. Reusable für FV-Split-Service.
+   */
+  async executeShipmentSplit(
+    orig: {
+      id: string;
+      package_count: number | null;
+      shipment_package_items: Array<{
+        id: string;
+        line_index: number;
+        package_type: string;
+        quantity: number;
+        length_cm: number;
+        width_cm: number;
+        height_cm: number;
+        weight_kg: any;
+        stackable: boolean;
+      }>;
+    },
+    itemSplits: Array<{ itemId: string; quantity: number }>,
+  ): Promise<{
+    moves: Array<{ itemId: string }>;
+    clones: Array<{
+      origItemId: string;
+      cloneQty: number;
+      cloneKg: number;
+      remainQty: number;
+      remainKg: number;
+      template: typeof orig.shipment_package_items[number];
+    }>;
+    movedItemCount: number;
+    clonedItemCount: number;
+    weightRemain: number;
+    weightSplit: number;
+    countRemain: number;
+    countSplit: number;
+  }> {
+    const itemMap = new Map(orig.shipment_package_items.map((i) => [i.id, i]));
+    const moves: Array<{ itemId: string }> = [];
+    const clones: Array<{
+      origItemId: string;
+      cloneQty: number;
+      cloneKg: number;
+      remainQty: number;
+      remainKg: number;
+      template: typeof orig.shipment_package_items[number];
+    }> = [];
+    for (const split of itemSplits) {
+      const it = itemMap.get(split.itemId);
+      if (!it) {
+        throw new BadRequestException(
+          `Item ${split.itemId} gehört nicht zur Sendung.`,
+        );
+      }
+      const q = Math.floor(split.quantity);
+      if (q <= 0 || q > it.quantity) {
+        throw new BadRequestException(
+          `quantity ${split.quantity} ungültig für Item ${split.itemId} (max ${it.quantity}).`,
+        );
+      }
+      if (q === it.quantity) {
+        moves.push({ itemId: it.id });
+      } else {
+        const origKg = Number(it.weight_kg ?? 0);
+        const cloneKg = (origKg * q) / it.quantity;
+        const remainKg = origKg - cloneKg;
+        clones.push({
+          origItemId: it.id,
+          cloneQty: q,
+          cloneKg,
+          remainQty: it.quantity - q,
+          remainKg,
+          template: it,
+        });
+      }
+    }
+    if (moves.length === 0 && clones.length === 0) {
+      throw new BadRequestException('Keine Items für Split angegeben.');
+    }
+    // Constraint: Mindestens 1 Item-quantity muss in Original bleiben.
+    const moveIds = new Set(moves.map((m) => m.itemId));
+    const remainItems = orig.shipment_package_items.filter(
+      (i) => !moveIds.has(i.id),
+    );
+    const totalRemainQty = remainItems.reduce((acc, r) => {
+      const c = clones.find((cl) => cl.origItemId === r.id);
+      return acc + (c ? c.remainQty : r.quantity);
+    }, 0);
+    if (totalRemainQty <= 0) {
+      throw new BadRequestException(
+        'Mindestens 1 Stück muss in Original-Sendung verbleiben.',
+      );
+    }
+    // Aggregate-Recompute.
+    const sumKg = (
+      rows: typeof orig.shipment_package_items,
+      cloneMap?: Map<string, { remainKg: number; remainQty: number }>,
+    ) =>
+      rows.reduce((acc, r) => {
+        const cl = cloneMap?.get(r.id);
+        if (cl) return acc + cl.remainKg;
+        return acc + Number(r.weight_kg ?? 0);
+      }, 0);
+    const sumQty = (
+      rows: typeof orig.shipment_package_items,
+      cloneMap?: Map<string, { remainKg: number; remainQty: number }>,
+    ) =>
+      rows.reduce((acc, r) => {
+        const cl = cloneMap?.get(r.id);
+        if (cl) return acc + cl.remainQty;
+        return acc + r.quantity;
+      }, 0);
+    const cloneMap = new Map(
+      clones.map((cl) => [
+        cl.origItemId,
+        { remainKg: cl.remainKg, remainQty: cl.remainQty },
+      ]),
+    );
+    const weightRemain = sumKg(remainItems, cloneMap);
+    const countRemain = sumQty(remainItems, cloneMap);
+    const weightSplit =
+      moves.reduce(
+        (acc, m) => acc + Number(itemMap.get(m.itemId)?.weight_kg ?? 0),
+        0,
+      ) + clones.reduce((acc, c) => acc + c.cloneKg, 0);
+    const countSplit =
+      moves.reduce((acc, m) => acc + (itemMap.get(m.itemId)?.quantity ?? 0), 0) +
+      clones.reduce((acc, c) => acc + c.cloneQty, 0);
+
+    return {
+      moves,
+      clones,
+      movedItemCount: moves.length,
+      clonedItemCount: clones.length,
+      weightRemain,
+      weightSplit,
+      countRemain,
+      countSplit,
+    };
+  }
+
+  /**
+   * C-2.1 Helper: führt Split-Transaction aus.
+   * - Original-Aggregate updaten
+   * - Neue Shipment erstellen (scalar-Inherit)
+   * - Move-Items via updateMany shipment_id wechseln
+   * - Clone-Items: tx.shipment_package_items.create + updateMany
+   *   für orig.quantity-Reduktion
+   */
+  async applyShipmentSplit(
+    tx: any,
+    origShipmentId: string,
+    plan: Awaited<ReturnType<NvTourenService['executeShipmentSplit']>>,
+  ): Promise<{ newShipmentId: string; newShipmentNumber: string }> {
+    const orig = await tx.shipments.findUnique({
+      where: { id: origShipmentId },
+      select: {
+        id: true,
+        customer_id: true,
+        customer_ref: true,
+        status: true,
+        loading_address_id: true,
+        delivery_address_id: true,
+        loading_date: true,
+        loading_time_from: true,
+        loading_time_to: true,
+        delivery_date: true,
+        delivery_time_from: true,
+        delivery_time_to: true,
+        package_type: true,
+        transport_type: true,
+        incoterm: true,
+        freight_payer: true,
+        is_hazmat: true,
+        hazmat_class: true,
+        hazmat_un_number: true,
+        hazmat_packing_group: true,
+        hazmat_description: true,
+        comment: true,
+        created_by: true,
+      },
+    });
+    if (!orig) throw new NotFoundException('Original-Sendung weg.');
+
+    // 1) Original-Shipment Aggregate.
+    await tx.shipments.update({
+      where: { id: origShipmentId },
+      data: {
+        weight_kg: plan.weightRemain,
+        package_count: plan.countRemain,
+      },
+    });
+    // 2) Shipment-Nr per Sequence.
+    const seqRows = await tx.$queryRaw<[{ nextval: bigint }]>`
+      SELECT nextval('shipment_number_seq')
+    `;
+    const yr = new Date().getFullYear().toString().slice(-2);
+    const newNumber = `S${yr}-${seqRows[0].nextval.toString().padStart(6, '0')}`;
+    // 3) Neue Shipment erzeugen.
+    const newShipment = await tx.shipments.create({
+      data: {
+        shipment_number: newNumber,
+        customer_id: orig.customer_id,
+        customer_ref: orig.customer_ref,
+        status: orig.status,
+        loading_address_id: orig.loading_address_id,
+        delivery_address_id: orig.delivery_address_id,
+        loading_date: orig.loading_date,
+        loading_time_from: orig.loading_time_from,
+        loading_time_to: orig.loading_time_to,
+        delivery_date: orig.delivery_date,
+        delivery_time_from: orig.delivery_time_from,
+        delivery_time_to: orig.delivery_time_to,
+        package_type: orig.package_type,
+        package_count: plan.countSplit,
+        weight_kg: plan.weightSplit,
+        transport_type: orig.transport_type,
+        incoterm: orig.incoterm,
+        freight_payer: orig.freight_payer,
+        is_hazmat: orig.is_hazmat,
+        hazmat_class: orig.hazmat_class,
+        hazmat_un_number: orig.hazmat_un_number,
+        hazmat_packing_group: orig.hazmat_packing_group,
+        hazmat_description: orig.hazmat_description,
+        comment: orig.comment,
+        created_by: orig.created_by,
+        split_from_id: origShipmentId,
+      },
+    });
+    // 4) Move-Items (volle Items) — shipment_id wechseln, pos zurücksetzen.
+    if (plan.moves.length > 0) {
+      await tx.shipment_package_items.updateMany({
+        where: { id: { in: plan.moves.map((m) => m.itemId) } },
+        data: {
+          shipment_id: newShipment.id,
+          pos_x_cm: null,
+          pos_y_cm: null,
+          pos_z_cm: null,
+        },
+      });
+    }
+    // 5) Clone-Items (partial-qty) — orig.quantity reduzieren, neuer Row.
+    for (const cl of plan.clones) {
+      // Neuer Line-Index in new shipment: line_index muss unique sein
+      // per shipment. Wir nutzen template.line_index 1:1 (FK gilt).
+      await tx.shipment_package_items.update({
+        where: { id: cl.origItemId },
+        data: {
+          quantity: cl.remainQty,
+          weight_kg: cl.remainKg,
+        },
+      });
+      await tx.shipment_package_items.create({
+        data: {
+          shipment_id: newShipment.id,
+          line_index: cl.template.line_index,
+          package_type: cl.template.package_type,
+          quantity: cl.cloneQty,
+          length_cm: cl.template.length_cm,
+          width_cm: cl.template.width_cm,
+          height_cm: cl.template.height_cm,
+          weight_kg: cl.cloneKg,
+          stackable: cl.template.stackable,
+          // pos_x/y/z bleiben NULL (Default).
+        },
+      });
+    }
+    return { newShipmentId: newShipment.id, newShipmentNumber: newNumber };
+  }
+
 
   async splitTour(tourId: string, fromStopId: string) {
     const orig = await this.prisma.nv_touren.findUnique({

@@ -3,6 +3,8 @@ import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { api } from '../lib/api';
+import { useInsertMode } from '../hooks/useInsertMode';
+import InsertModeBanner from '../components/loadingplan/InsertModeBanner';
 import LoadingPlan3D, {
   type Plan3DPackage,
 } from '../components/LoadingPlan3D';
@@ -155,6 +157,8 @@ function flattenPackages(
 export default function NvLoadingPlanPage() {
   const qc = useQueryClient();
   const { tourId } = useParams<{ tourId: string }>();
+  // B-2 Insert-Mode page-local state.
+  const insertMode = useInsertMode();
 
   const tourQ = useQuery<NvLoadingDetail | null>({
     queryKey: ['nv-loading', tourId],
@@ -261,6 +265,12 @@ export default function NvLoadingPlanPage() {
         </button>
       </div>
       <div className="flex-1 p-3 overflow-auto">
+        <div className="mb-3">
+          <InsertModeBanner
+            active={insertMode.active}
+            onCancel={insertMode.cancel}
+          />
+        </div>
         {tourQ.isLoading && (
           <div className="text-sm text-gray-400">Lädt Tour…</div>
         )}

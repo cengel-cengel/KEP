@@ -232,19 +232,23 @@ export class NvTourenController {
     return r;
   }
 
-  // C-2: Sendung-Splitten (split shipment-items into separate new
-  //      shipment + stop). Original-Stop bleibt mit Rest-Items.
+  // C-2 + C-2.1 Sendung-Splitten mit Partial-Quantity-Support.
+  // body: { itemSplits: [{ itemId, quantity }] }
+  //   quantity == orig.quantity → Item komplett moved
+  //   quantity <  orig.quantity → Item geklont (partial-clone)
   @Post(':id/stops/:stopId/split')
   async splitShipment(
     @Param('id') tourId: string,
     @Param('stopId') stopId: string,
-    @Body() dto: { splitItemIds: string[] },
+    @Body() dto: {
+      itemSplits: Array<{ itemId: string; quantity: number }>;
+    },
     @Headers('x-client-id') clientId?: string,
   ) {
     const r = await this.svc.splitShipmentAtStop(
       tourId,
       stopId,
-      dto.splitItemIds ?? [],
+      dto.itemSplits ?? [],
     );
     this.realtime.emit('tour.updated', 'tour', tourId, clientId);
     return r;

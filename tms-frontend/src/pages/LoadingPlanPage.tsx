@@ -12,6 +12,8 @@ import { api } from '../lib/api';
 import { computeSecurement } from '../lib/loadSecurement';
 import { computeStackingLdmMetrics } from '../lib/loadingLdm';
 import { canStackOn } from '../lib/stackingRules';
+import { useInsertMode } from '../hooks/useInsertMode';
+import InsertModeBanner from '../components/loadingplan/InsertModeBanner';
 
 /** Sattelzug-Standard, falls API keine Werte liefert */
 const DEFAULT_TRAILER_CM = { lengthCm: 1360, widthCm: 240, heightCm: 270 };
@@ -463,6 +465,8 @@ export default function LoadingPlanPage() {
   const { tourId } = useParams<{ tourId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // B-2 Insert-Mode page-local state.
+  const insertMode = useInsertMode();
   const [manualOrder, setManualOrder] = useState<string[] | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [manualPosById, setManualPosById] = useState<
@@ -949,6 +953,10 @@ export default function LoadingPlanPage() {
           </div>
         ) : (
           <div className="space-y-4">
+            <InsertModeBanner
+              active={insertMode.active}
+              onCancel={insertMode.cancel}
+            />
             <div className="space-y-2">
               <div className="flex items-center gap-4 bg-gray-100 p-2 rounded border border-gray-200 text-sm flex-wrap">
                 <div className="flex items-center gap-2">

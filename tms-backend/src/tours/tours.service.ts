@@ -12,6 +12,7 @@ import { CreateTourDto } from './dto/create-tour.dto';
 import { UpdateTourDto } from './dto/update-tour.dto';
 import { DocumentsService } from '../documents/documents.service';
 import { LockService } from '../status/lock.service';
+import { NvTourenService } from '../nv-touren/nv-touren.service';
 import { StatusService } from '../status/status.service';
 import { routeDistanceKm, routeOnly, routeTrip } from '../lib/osrm.lib';
 import { getNvPlzSet } from '../lib/nv-plz.lib';
@@ -54,6 +55,7 @@ export class ToursService {
     private readonly documents: DocumentsService,
     private readonly locks: LockService,
     private readonly statusSvc: StatusService,
+    private readonly nvTouren: NvTourenService,
   ) {}
 
   async findAll(filters: { status?: string; date?: Date }) {
@@ -1560,5 +1562,86 @@ export class ToursService {
       }),
     ]);
     return result.distanceKm;
+  }
+
+  /**
+   * C-2.1 FV Sendung-Splitten:
+   *   - FV hat keine stops — direkte tour.shipments[]-Relation.
+   *   - Original-Shipment hat tour_id == tourId; neue Shipment
+   *     wird mit gleicher tour_id + tour_position+1 angelegt.
+   *   - Items werden über NvTourenService.executeShipmentSplit
+   *     + applyShipmentSplit verteilt (geteilte Logik).
+   */
+  async splitShipmentInTour(
+    tourId: string,
+    shipmentId: string,
+    itemSplits: Array<{ itemId: string; quantity: number }>,
+  ) {
+    if (!itemSplits || itemSplits.length === 0) {
+      throw new BadRequestException('itemSplits darf nicht leer sein.');
+    }
+    const ship = await this.prisma.shipments.findUnique({
+      where: { id: shipmentId },
+      select: {
+        id: true,
+        tour_id: true,
+        tour_position: true,
+        package_count: true,
+        shipment_package_items: {
+          orderBy: { line_index: 'asc' },
+          select: {
+            id: true,
+            line_index: true,
+            package_type: true,
+            quantity: true,
+            length_cm: true,
+            width_cm: true,
+            height_cm: true,
+            weight_kg: true,
+            stackable: true,
+          },
+        },
+      },
+    });
+    if (!ship) throw new NotFoundException('Sendung nicht gefunden');
+    if (ship.tour_id !== tourId) {
+      throw new BadRequestException(
+        'Sendung gehört nicht zur angegebenen Tour.',
+      );
+    }
+    const plan = await this.nvTouren.executeShipmentSplit(ship, itemSplits);
+
+    return this.prisma.$transaction(async (tx) => {
+      const exec = await this.nvTouren.applyShipmentSplit(
+        tx,
+        ship.id,
+        plan,
+      );
+      // Neue Shipment in dieselbe Tour einfügen, position+1.
+      // Nachfolgende shipments shiften.
+      const nextPos = (ship.tour_position ?? 0) + 1;
+      await tx.shipments.updateMany({
+        where: {
+          tour_id: tourId,
+          tour_position: { gte: nextPos },
+          id: { not: exec.newShipmentId },
+        },
+        data: { tour_position: { increment: 1 } },
+      });
+      await tx.shipments.update({
+        where: { id: exec.newShipmentId },
+        data: {
+          tour_id: tourId,
+          tour_position: nextPos,
+        },
+      });
+      return {
+        original_shipment_id: ship.id,
+        new_shipment_id: exec.newShipmentId,
+        new_shipment_number: exec.newShipmentNumber,
+        moved_item_count: plan.movedItemCount,
+        cloned_item_count: plan.clonedItemCount,
+      };
+    });
   }
 }

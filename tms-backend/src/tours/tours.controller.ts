@@ -197,4 +197,24 @@ export class ToursController {
     const km = await this.toursService.optimizeFvTour(tourId);
     return { ok: km != null, geplante_km: km };
   }
+
+  // C-2.1 FV Sendung-Splitten — FV hat keine stops, direkte
+  // tour-shipment-Relation. Body analog NV-split.
+  @Post(':id/shipments/:shipmentId/split')
+  async splitShipment(
+    @Param('id') tourId: string,
+    @Param('shipmentId') shipmentId: string,
+    @Body() dto: {
+      itemSplits: Array<{ itemId: string; quantity: number }>;
+    },
+    @Headers('x-client-id') clientId?: string,
+  ) {
+    const r = await this.toursService.splitShipmentInTour(
+      tourId,
+      shipmentId,
+      dto.itemSplits ?? [],
+    );
+    this.realtime.emit('tour.updated', 'tour', tourId, clientId);
+    return r;
+  }
 }

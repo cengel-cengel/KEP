@@ -49,6 +49,7 @@ function makeService(prisma: any): ToursService {
     {} as any,
     {} as any,
     {} as any,
+    {} as any,
   );
 }
 

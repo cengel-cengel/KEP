@@ -187,4 +187,37 @@ export class NvTourenController {
   capacity(@Param('id') tourId: string) {
     return this.svc.getCapacity(tourId);
   }
+
+  // T-3.2: Conflict-driven Actions
+  @Post(':id/apply-action')
+  async applyAction(
+    @Param('id') tourId: string,
+    @Body() dto: {
+      action_type:
+        | 'SHIFT_STOP_LATER'
+        | 'SPLIT_TOUR_AT_STOP'
+        | 'SWAP_DRIVER'
+        | 'MOVE_STOP_TO_TOUR';
+      stop_id?: string;
+      new_subunternehmer_id?: string;
+      target_tour_id?: string;
+      shift_minutes?: number;
+    },
+    @Headers('x-client-id') clientId?: string,
+  ) {
+    const r = await this.svc.applyAction(tourId, dto);
+    this.realtime.emit('tour.updated', 'tour', tourId, clientId);
+    return r;
+  }
+
+  @Post(':id/split')
+  async splitTour(
+    @Param('id') tourId: string,
+    @Body() dto: { from_stop_id: string },
+    @Headers('x-client-id') clientId?: string,
+  ) {
+    const r = await this.svc.splitTour(tourId, dto.from_stop_id);
+    this.realtime.emit('tour.updated', 'tour', tourId, clientId);
+    return r;
+  }
 }

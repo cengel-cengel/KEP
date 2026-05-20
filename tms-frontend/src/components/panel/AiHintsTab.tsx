@@ -1,16 +1,20 @@
-import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Clock, Lightbulb } from 'lucide-react';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AlertTriangle, Clock, Lightbulb, Plus } from 'lucide-react';
 import { api } from '../../lib/api';
 import { usePanel } from '../../state/panel';
+import SplitTourDialog from './dialogs/SplitTourDialog';
+import SwapDriverDialog from './dialogs/SwapDriverDialog';
+import MoveStopDialog from './dialogs/MoveStopDialog';
 
 /**
- * T-3.1 AiHintsTab — Risk-Stops-Liste + Placeholder-Vorschläge.
+ * T-3.2 AiHintsTab — Risk-Stops + Konflikte + Action-Buttons.
  *
- * Aktuell: Risk-Stops aus persisted risk_severity/risk_score
- * + statische Empfehlungs-Templates.
- *
- * T-3.2 wird ersetzen durch echte Konflikt-Detection-Engine
- * (Hazmat/ADR, Time-Overlap, Driver-Workload).
+ * Actions:
+ *   SHIFT_STOP_LATER     — inline +15min (kein Dialog)
+ *   SPLIT_TOUR_AT_STOP   → SplitTourDialog
+ *   SWAP_DRIVER          → SwapDriverDialog
+ *   MOVE_STOP_TO_TOUR    → MoveStopDialog
  */
 
 interface NvStopRisk {
@@ -29,13 +33,31 @@ interface NvStopRisk {
   };
 }
 
+interface NvTourConflict {
+  type: 'TIME_OVERLAP' | 'WORKLOAD_EXCEEDED' | 'OVERLOAD_RISK';
+  severity: 'warning' | 'critical';
+  msg: string;
+  affected_stop_ids?: string[];
+  suggested_actions: Array<{
+    type:
+      | 'SHIFT_STOP_LATER'
+      | 'SPLIT_TOUR_AT_STOP'
+      | 'SWAP_DRIVER'
+      | 'MOVE_STOP_TO_TOUR';
+    stop_id?: string;
+  }>;
+}
+
 interface NvTourRiskDetail {
   id: string;
+  subunternehmer_id?: string | null;
+  subunternehmer?: { id: string; name: string } | null;
   risk?: {
     max_score: number;
     critical_count: number;
     warning_count: number;
   } | null;
+  conflicts?: NvTourConflict[];
   stops?: NvStopRisk[];
 }
 
@@ -56,9 +78,15 @@ function hintForStop(s: NvStopRisk): string | null {
 
 export default function AiHintsTab() {
   const { entity } = usePanel();
-
-  // Nur NV-Touren haben aktuell persisted risk (T-3.1 Scope).
+  const qc = useQueryClient();
   const isNvTour = entity?.type === 'nv-tour';
+
+  const [splitOpen, setSplitOpen] = useState<{ stopId?: string } | null>(null);
+  const [swapOpen, setSwapOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState<{
+    stopId: string;
+    label: string;
+  } | null>(null);
 
   const tourQ = useQuery<NvTourRiskDetail | null>({
     queryKey: ['nv-tour-detail', entity?.id],
@@ -73,41 +101,48 @@ export default function AiHintsTab() {
     staleTime: 30_000,
   });
 
-  if (!entity) {
-    return (
-      <div className="p-3 text-xs text-gray-400 italic">
-        Keine Auswahl.
-      </div>
-    );
-  }
+  const shiftMut = useMutation({
+    mutationFn: async (stopId: string) => {
+      if (!entity?.id) return;
+      await api.post(`/nv-touren/${entity.id}/apply-action`, {
+        action_type: 'SHIFT_STOP_LATER',
+        stop_id: stopId,
+        shift_minutes: 15,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['nv-tour-detail', entity?.id] });
+      qc.invalidateQueries({ queryKey: ['nv-touren'] });
+    },
+  });
 
+  if (!entity) {
+    return <div className="p-3 text-xs text-gray-400 italic">Keine Auswahl.</div>;
+  }
   if (!isNvTour) {
     return (
       <div className="p-3 text-xs text-gray-400 italic">
         Hinweise nur für NV-Touren verfügbar.
-        <div className="mt-2 text-[10px] text-gray-300">
-          FV-Hinweise + Cross-entity Konflikte: T-3.2.
-        </div>
       </div>
     );
   }
-
   if (tourQ.isLoading) {
     return <div className="p-3 text-xs text-gray-400">Lädt…</div>;
   }
-
   const t = tourQ.data;
   if (!t) {
-    return (
-      <div className="p-3 text-xs text-gray-400">Tour nicht gefunden.</div>
-    );
+    return <div className="p-3 text-xs text-gray-400">Tour nicht gefunden.</div>;
   }
 
   const riskStops = (t.stops ?? []).filter(
     (s) => s.risk_severity === 'critical' || s.risk_severity === 'warning',
   );
+  const conflicts = t.conflicts ?? [];
 
-  if (riskStops.length === 0) {
+  const empty =
+    riskStops.length === 0 && conflicts.length === 0;
+
+  if (empty) {
     return (
       <div className="p-3 space-y-2 text-xs">
         <div className="flex items-center gap-1.5 text-emerald-700">
@@ -115,97 +150,224 @@ export default function AiHintsTab() {
           <span className="font-medium">Keine kritischen Punkte</span>
         </div>
         <div className="text-gray-500 text-[11px]">
-          Alle Stops innerhalb SLA-Fenster. Tour ist auf Kurs.
-        </div>
-        <div className="mt-3 text-[10px] text-gray-300">
-          T-3.2: Cross-entity Konflikt-Detection (Hazmat,
-          Driver-Workload) kommt hier.
+          Alle Stops innerhalb SLA-Fenster, keine Konflikte.
         </div>
       </div>
     );
   }
 
+  const renderActionBtn = (
+    type: NvTourConflict['suggested_actions'][0]['type'],
+    stopId: string | undefined,
+    label: string,
+    onClick: () => void,
+  ) => (
+    <button
+      key={`${type}:${stopId ?? ''}`}
+      onClick={onClick}
+      disabled={shiftMut.isPending}
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] bg-white border border-gray-300 rounded hover:bg-blue-50 hover:border-blue-400 disabled:opacity-50"
+    >
+      <Plus size={9} />
+      {label}
+    </button>
+  );
+
   return (
     <div className="p-3 space-y-3 text-xs">
-      <div className="flex items-center gap-1.5 text-amber-700 font-medium">
-        <AlertTriangle size={14} />
-        {riskStops.length} Stop(s) mit Risiko
-      </div>
-      {t.risk && (
-        <div className="text-[10px] text-gray-500">
-          {t.risk.critical_count > 0 && (
-            <span className="text-red-700 mr-2">
-              {t.risk.critical_count} kritisch
-            </span>
-          )}
-          {t.risk.warning_count > 0 && (
-            <span className="text-amber-700">
-              {t.risk.warning_count} Warnung
-            </span>
-          )}
-        </div>
-      )}
-      <div className="space-y-2">
-        {riskStops.map((s) => {
-          const sev = s.risk_severity;
-          const col =
-            sev === 'critical'
-              ? 'border-red-300 bg-red-50'
-              : 'border-amber-300 bg-amber-50';
-          const isDelivery = s.stop_type === 'DELIVERY';
-          const windowFrom = isDelivery
-            ? s.shipment?.delivery_time_from
-            : s.shipment?.loading_time_from;
-          const windowTo = isDelivery
-            ? s.shipment?.delivery_time_to
-            : s.shipment?.loading_time_to;
-          const hint = hintForStop(s);
-          return (
-            <div key={s.id} className={`border ${col} rounded px-2 py-1.5`}>
-              <div className="flex items-center gap-1.5">
-                <span className="font-mono text-gray-700">
-                  {s.position}.
-                </span>
-                <span className="font-mono font-semibold">
-                  {s.shipment?.shipment_number ?? '—'}
-                </span>
-                <span className="text-[10px] text-gray-500">
-                  {s.stop_type}
-                </span>
-                <span className="ml-auto text-[10px] text-gray-500">
-                  Score {s.risk_score ?? '?'}
-                </span>
-              </div>
-              {(windowFrom || windowTo) && s.planned_arrival && (
-                <div className="mt-0.5 text-[10px] text-gray-600 inline-flex items-center gap-1">
-                  <Clock size={10} />
-                  Plan{' '}
-                  {new Date(s.planned_arrival).toLocaleTimeString('de', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                  {windowFrom && windowTo && (
-                    <span className="text-gray-400">
-                      · Fenster {String(windowFrom).slice(0, 5)}–
-                      {String(windowTo).slice(0, 5)}
+      {conflicts.length > 0 && (
+        <section>
+          <div className="flex items-center gap-1.5 text-amber-700 font-medium mb-1">
+            <AlertTriangle size={14} />
+            {conflicts.length} Konflikt(e)
+          </div>
+          <div className="space-y-2">
+            {conflicts.map((c, i) => {
+              const col =
+                c.severity === 'critical'
+                  ? 'border-red-300 bg-red-50'
+                  : 'border-amber-300 bg-amber-50';
+              return (
+                <div
+                  key={i}
+                  className={`border ${col} rounded px-2 py-1.5`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-mono uppercase text-gray-600">
+                      {c.type.replace(/_/g, ' ')}
                     </span>
+                    <span className="text-[10px] text-gray-500">
+                      {c.severity}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-gray-700">{c.msg}</div>
+                  {c.suggested_actions.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {c.suggested_actions.map((a) => {
+                        if (a.type === 'SHIFT_STOP_LATER' && a.stop_id) {
+                          return renderActionBtn(
+                            a.type,
+                            a.stop_id,
+                            'Stop +15min',
+                            () => shiftMut.mutate(a.stop_id!),
+                          );
+                        }
+                        if (a.type === 'SPLIT_TOUR_AT_STOP') {
+                          return renderActionBtn(
+                            a.type,
+                            a.stop_id,
+                            'Tour splitten',
+                            () => setSplitOpen({ stopId: a.stop_id }),
+                          );
+                        }
+                        if (a.type === 'SWAP_DRIVER') {
+                          return renderActionBtn(
+                            a.type,
+                            undefined,
+                            'Sub wechseln',
+                            () => setSwapOpen(true),
+                          );
+                        }
+                        if (a.type === 'MOVE_STOP_TO_TOUR' && a.stop_id) {
+                          const stop = t.stops?.find(
+                            (s) => s.id === a.stop_id,
+                          );
+                          const label =
+                            stop?.shipment?.shipment_number ??
+                            a.stop_id.slice(0, 6);
+                          return renderActionBtn(
+                            a.type,
+                            a.stop_id,
+                            'In andere Tour',
+                            () =>
+                              setMoveOpen({
+                                stopId: a.stop_id!,
+                                label,
+                              }),
+                          );
+                        }
+                        return null;
+                      })}
+                    </div>
                   )}
                 </div>
-              )}
-              {hint && (
-                <div className="mt-1 text-[10px] text-gray-700 inline-flex items-start gap-1">
-                  <Lightbulb size={10} className="mt-[1px] flex-shrink-0" />
-                  <span>{hint}</span>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {riskStops.length > 0 && (
+        <section>
+          <div className="flex items-center gap-1.5 text-amber-700 font-medium mb-1">
+            <AlertTriangle size={14} />
+            {riskStops.length} Stop(s) mit Risiko
+          </div>
+          <div className="space-y-2">
+            {riskStops.map((s) => {
+              const sev = s.risk_severity;
+              const col =
+                sev === 'critical'
+                  ? 'border-red-300 bg-red-50'
+                  : 'border-amber-300 bg-amber-50';
+              const isDelivery = s.stop_type === 'DELIVERY';
+              const windowFrom = isDelivery
+                ? s.shipment?.delivery_time_from
+                : s.shipment?.loading_time_from;
+              const windowTo = isDelivery
+                ? s.shipment?.delivery_time_to
+                : s.shipment?.loading_time_to;
+              const hint = hintForStop(s);
+              return (
+                <div key={s.id} className={`border ${col} rounded px-2 py-1.5`}>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-gray-700">
+                      {s.position}.
+                    </span>
+                    <span className="font-mono font-semibold">
+                      {s.shipment?.shipment_number ?? '—'}
+                    </span>
+                    <span className="text-[10px] text-gray-500">
+                      {s.stop_type}
+                    </span>
+                    <span className="ml-auto text-[10px] text-gray-500">
+                      Score {s.risk_score ?? '?'}
+                    </span>
+                  </div>
+                  {(windowFrom || windowTo) && s.planned_arrival && (
+                    <div className="mt-0.5 text-[10px] text-gray-600 inline-flex items-center gap-1">
+                      <Clock size={10} />
+                      Plan{' '}
+                      {new Date(s.planned_arrival).toLocaleTimeString('de', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                      {windowFrom && windowTo && (
+                        <span className="text-gray-400">
+                          · Fenster {String(windowFrom).slice(0, 5)}–
+                          {String(windowTo).slice(0, 5)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {hint && (
+                    <div className="mt-1 text-[10px] text-gray-700 inline-flex items-start gap-1">
+                      <Lightbulb size={10} className="mt-[1px] flex-shrink-0" />
+                      <span>{hint}</span>
+                    </div>
+                  )}
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {renderActionBtn(
+                      'SHIFT_STOP_LATER',
+                      s.id,
+                      'Stop +15min',
+                      () => shiftMut.mutate(s.id),
+                    )}
+                    {renderActionBtn(
+                      'MOVE_STOP_TO_TOUR',
+                      s.id,
+                      'In andere Tour',
+                      () =>
+                        setMoveOpen({
+                          stopId: s.id,
+                          label: s.shipment?.shipment_number ?? s.id.slice(0, 6),
+                        }),
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-3 text-[10px] text-gray-300 border-t pt-2">
-        T-3.2 wird konkrete Aktions-Buttons hinzufügen
-        (Stop verschieben / Tour splitten / Driver wechseln).
-      </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {splitOpen && (
+        <SplitTourDialog
+          tourId={t.id}
+          stops={(t.stops ?? []).map((s) => ({
+            id: s.id,
+            position: s.position,
+            shipment_number: s.shipment?.shipment_number ?? null,
+          }))}
+          preselectedStopId={splitOpen.stopId}
+          onClose={() => setSplitOpen(null)}
+        />
+      )}
+      {swapOpen && (
+        <SwapDriverDialog
+          tourId={t.id}
+          currentSubId={t.subunternehmer?.id ?? t.subunternehmer_id ?? null}
+          onClose={() => setSwapOpen(false)}
+        />
+      )}
+      {moveOpen && (
+        <MoveStopDialog
+          fromTourId={t.id}
+          stopId={moveOpen.stopId}
+          stopLabel={moveOpen.label}
+          onClose={() => setMoveOpen(null)}
+        />
+      )}
     </div>
   );
 }

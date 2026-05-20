@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -33,6 +34,11 @@ import {
   type NvPlzSet,
 } from '../lib/nv-plz.lib';
 import { computeOverload, formatOverloadMessage } from '../lib/capacity.lib';
+import {
+  detectConflictsForTour,
+  type DetectInputTour,
+  type Conflict,
+} from '../lib/conflicts.lib';
 import {
   computeEffectiveLdm,
   isShipmentFullyStackable,
@@ -769,7 +775,7 @@ export class NvTourenService {
       set.add(s.customer_id);
       byStamm.set(s.nv_stamm_tour_id, set);
     }
-    return tours.map((t) => {
+    const augmented: T[] = tours.map((t) => {
       const set = t.nv_stamm_tour_id
         ? byStamm.get(t.nv_stamm_tour_id) ?? null
         : null;
@@ -806,10 +812,16 @@ export class NvTourenService {
         else if (s.risk_severity === 'warning') warning_count++;
       }
       const risk = { max_score, critical_count, warning_count };
+      // T-3.2: Conflict-Detection benötigt anderer-Touren-Spans.
+      // Wird in 2. Phase nach loop unten gefüllt — hier nur
+      // Slot reservieren.
       return {
         ...t,
         overload,
         risk,
+        conflicts: [] as Conflict[],
+        conflict_count: 0,
+        has_critical_conflict: false,
         stops: t.stops.map((s: any) => ({
           ...s,
           is_stamm_kunde:
@@ -819,6 +831,47 @@ export class NvTourenService {
         })),
       } as T;
     });
+    // T-3.2: Konflikt-Detection (Phase 2) — pro Tour über alle
+    // anderen am gleichen Tag gleichen Sub.
+    const detectInputs: DetectInputTour[] = augmented.map((t: any) => ({
+      id: t.id,
+      datum: new Date(t.datum),
+      subunternehmer_id: t.subunternehmer_id ?? t.subunternehmer?.id ?? null,
+      overload: t.overload ? { isOverloaded: t.overload.isOverloaded } : null,
+      stops: (t.stops ?? []).map((s: any) => ({
+        id: s.id,
+        risk_severity: s.risk_severity,
+        planned_arrival: s.planned_arrival ? new Date(s.planned_arrival) : null,
+        planned_departure: s.planned_departure
+          ? new Date(s.planned_departure)
+          : null,
+        loading_time_from: s.shipment?.loading_time_from
+          ? new Date(s.shipment.loading_time_from)
+          : null,
+        loading_time_to: s.shipment?.loading_time_to
+          ? new Date(s.shipment.loading_time_to)
+          : null,
+        delivery_time_from: s.shipment?.delivery_time_from
+          ? new Date(s.shipment.delivery_time_from)
+          : null,
+        delivery_time_to: s.shipment?.delivery_time_to
+          ? new Date(s.shipment.delivery_time_to)
+          : null,
+        stop_type: s.stop_type,
+      })),
+    }));
+    for (let i = 0; i < augmented.length; i++) {
+      const conflicts = detectConflictsForTour(
+        detectInputs[i],
+        detectInputs,
+      );
+      (augmented[i] as any).conflicts = conflicts;
+      (augmented[i] as any).conflict_count = conflicts.length;
+      (augmented[i] as any).has_critical_conflict = conflicts.some(
+        (c) => c.severity === 'critical',
+      );
+    }
+    return augmented;
   }
 
   async list(filter: { datum?: string; status?: string | string[] }) {
@@ -1473,6 +1526,168 @@ export class NvTourenService {
     });
     await this.safeRecalc(tourId);
     return { count: items.length };
+  }
+
+  /**
+   * T-3.2 apply-action — Conflict-driven Mutations.
+   * SHIFT_STOP_LATER: +15min servicezeit (oder dto.shift_minutes)
+   * SWAP_DRIVER: PATCH subunternehmer_id
+   * MOVE_STOP_TO_TOUR: shipment via batch-stops cross-tour
+   * SPLIT_TOUR_AT_STOP: delegiert an splitTour()
+   */
+  async applyAction(
+    tourId: string,
+    dto: {
+      action_type:
+        | 'SHIFT_STOP_LATER'
+        | 'SPLIT_TOUR_AT_STOP'
+        | 'SWAP_DRIVER'
+        | 'MOVE_STOP_TO_TOUR';
+      stop_id?: string;
+      new_subunternehmer_id?: string;
+      target_tour_id?: string;
+      shift_minutes?: number;
+    },
+  ) {
+    switch (dto.action_type) {
+      case 'SHIFT_STOP_LATER': {
+        if (!dto.stop_id) {
+          throw new BadRequestException('stop_id required für SHIFT_STOP_LATER');
+        }
+        const shift = Math.max(5, Math.min(120, dto.shift_minutes ?? 15));
+        const stop = await this.prisma.nv_tour_stops.findUnique({
+          where: { id: dto.stop_id },
+          select: { servicezeit_min: true, nv_tour_id: true },
+        });
+        if (!stop) throw new NotFoundException('Stop nicht gefunden');
+        const newSz = (stop.servicezeit_min ?? 30) + shift;
+        await this.prisma.nv_tour_stops.update({
+          where: { id: dto.stop_id },
+          data: { servicezeit_min: newSz },
+        });
+        setImmediate(() => {
+          void this.safeRecomputeSchedule(stop.nv_tour_id);
+        });
+        return { ok: true, action: 'SHIFT_STOP_LATER', stop_id: dto.stop_id, new_servicezeit_min: newSz };
+      }
+      case 'SWAP_DRIVER': {
+        if (!dto.new_subunternehmer_id) {
+          throw new BadRequestException('new_subunternehmer_id required');
+        }
+        await this.prisma.nv_touren.update({
+          where: { id: tourId },
+          data: { subunternehmer_id: dto.new_subunternehmer_id },
+        });
+        return { ok: true, action: 'SWAP_DRIVER' };
+      }
+      case 'MOVE_STOP_TO_TOUR': {
+        if (!dto.stop_id || !dto.target_tour_id) {
+          throw new BadRequestException(
+            'stop_id + target_tour_id required für MOVE_STOP_TO_TOUR',
+          );
+        }
+        const stop = await this.prisma.nv_tour_stops.findUnique({
+          where: { id: dto.stop_id },
+          select: { shipment_id: true, nv_tour_id: true },
+        });
+        if (!stop) throw new NotFoundException('Stop nicht gefunden');
+        await this.batchStops(stop.nv_tour_id, {
+          adds: [],
+          removes: [dto.stop_id],
+        });
+        await this.batchStops(dto.target_tour_id, {
+          adds: [stop.shipment_id],
+          removes: [],
+        });
+        return { ok: true, action: 'MOVE_STOP_TO_TOUR' };
+      }
+      case 'SPLIT_TOUR_AT_STOP': {
+        if (!dto.stop_id) {
+          throw new BadRequestException('stop_id required für SPLIT_TOUR_AT_STOP');
+        }
+        return this.splitTour(tourId, dto.stop_id);
+      }
+      default:
+        throw new BadRequestException(`Unbekannte Action: ${(dto as any).action_type}`);
+    }
+  }
+
+  /**
+   * T-3.2 splitTour: erstellt neue Tour mit denselben Tour-Daten
+   * (Datum, Sub, Fahrzeug) und transferiert alle Stops ab from_stop
+   * (inkl.) in die neue Tour. Original-Tour behält die Stops davor.
+   */
+  async splitTour(tourId: string, fromStopId: string) {
+    const orig = await this.prisma.nv_touren.findUnique({
+      where: { id: tourId },
+      select: {
+        id: true,
+        datum: true,
+        nv_stamm_tour_id: true,
+        subunternehmer_id: true,
+        fahrzeug_typ: true,
+        start_zeit: true,
+        kosten_modus: true,
+        stops: {
+          orderBy: [{ position: 'asc' }],
+          select: { id: true, shipment_id: true, position: true, stop_type: true, servicezeit_min: true },
+        },
+      },
+    });
+    if (!orig) throw new NotFoundException('NV-Tour nicht gefunden');
+    const cutIdx = orig.stops.findIndex((s) => s.id === fromStopId);
+    if (cutIdx < 0) {
+      throw new BadRequestException('from_stop_id nicht in Tour');
+    }
+    if (cutIdx === 0) {
+      throw new BadRequestException('Split nicht am ersten Stop — bewege Stops anders.');
+    }
+    const stopsToMove = orig.stops.slice(cutIdx);
+    if (stopsToMove.length === 0) {
+      throw new BadRequestException('Keine Stops zum Splitten ab Cut-Punkt');
+    }
+
+    // Neue Tour mit gleichen Werten erstellen
+    const newTour = await this.prisma.nv_touren.create({
+      data: {
+        datum: orig.datum,
+        nv_stamm_tour_id: orig.nv_stamm_tour_id,
+        subunternehmer_id: orig.subunternehmer_id,
+        fahrzeug_typ: orig.fahrzeug_typ,
+        start_zeit: orig.start_zeit,
+        kosten_modus: orig.kosten_modus,
+        status: 'PLANNING',
+      },
+      select: { id: true },
+    });
+
+    // Stops cross-tour transferieren via $transaction
+    await this.prisma.$transaction(async (tx) => {
+      let pos = 0;
+      for (const s of stopsToMove) {
+        await tx.nv_tour_stops.update({
+          where: { id: s.id },
+          data: {
+            nv_tour_id: newTour.id,
+            position: pos++,
+          },
+        });
+      }
+    });
+
+    setImmediate(() => {
+      void this.safeRecomputeSchedule(tourId);
+      void this.safeRecomputeSchedule(newTour.id);
+      void this.safeRecalc(tourId);
+      void this.safeRecalc(newTour.id);
+    });
+
+    return {
+      ok: true,
+      action: 'SPLIT_TOUR_AT_STOP',
+      new_tour_id: newTour.id,
+      moved_stops: stopsToMove.length,
+    };
   }
 
   async eligibleShipments(filter: {

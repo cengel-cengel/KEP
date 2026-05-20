@@ -223,6 +223,7 @@ export default function MapPanel({
         shipment_number: sh?.shipment_number ?? undefined,
         lat,
         lng,
+        risk_severity: (s as { risk_severity?: string | null }).risk_severity,
       });
     }
     return pins;
@@ -355,6 +356,9 @@ export default function MapPanel({
                 ? (activeTour as NvTour | undefined)?.nv_stamm_tour?.nv_tour_gebiet
                     ?.farbe ?? undefined
                 : undefined
+            }
+            tourStatus={
+              (activeTour as { status?: string } | undefined)?.status ?? null
             }
           />
         )}

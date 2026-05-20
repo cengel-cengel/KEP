@@ -1,7 +1,45 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet.markercluster';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import { useNvPending } from '../../lib/useNvPendingStore';
+
+// S-7 LOD-Schwelle.
+// disableClusteringAtZoom: ≥11 → einzelne Pins, sonst Cluster.
+const CLUSTER_BELOW_ZOOM = 11;
+
+// S-7 Severity → SVG-Stroke-Color für Stop-Pin-Border.
+function severityStroke(sev?: string | null): string {
+  switch (sev) {
+    case 'critical':
+      return '#ef4444'; // red-500
+    case 'warning':
+      return '#f59e0b'; // amber-500
+    case 'ok':
+      return '#10b981'; // green-500 (decoration only)
+    default:
+      return '#ffffff'; // default white border
+  }
+}
+
+// S-7 Tour-Status → Polyline-Color.
+export function polylineColorForStatus(status?: string | null): string {
+  switch (status) {
+    case 'IN_PROGRESS':
+      return '#3b82f6'; // blue-500
+    case 'COMPLETED':
+      return '#10b981'; // green-500
+    case 'CANCELLED':
+      return '#9ca3af'; // gray-400
+    case 'LATE':
+      return '#ef4444'; // red-500
+    case 'PLANNING':
+    default:
+      return '#64748b'; // slate-500
+  }
+}
 
 export type MapShipment = {
   id: string;
@@ -42,12 +80,16 @@ function makeIcon(
   label?: string | number,
   color?: string,
   selected: boolean = false,
+  severityStrokeColor?: string,
 ) {
   const bg = active ? '#16a34a' : color ?? '#1e40af';
   const text = label != null ? String(label) : '';
   const ringStroke = selected
     ? `<circle cx="14" cy="14" r="13" fill="none" stroke="#f59e0b" stroke-width="3"/>`
     : '';
+  // S-7: severity-border ersetzt den default-white-stroke wenn gesetzt.
+  const stroke = severityStrokeColor ?? 'white';
+  const strokeWidth = severityStrokeColor ? '3' : '2';
   const html = `
     <div style="
       width:28px;height:36px;position:relative;
@@ -55,7 +97,7 @@ function makeIcon(
     ">
       <svg viewBox="0 0 28 36" width="28" height="36">
         <path d="M14 0 C 22 0 28 6 28 14 C 28 22 14 36 14 36 C 14 36 0 22 0 14 C 0 6 6 0 14 0 Z"
-              fill="${bg}" stroke="white" stroke-width="2"/>
+              fill="${bg}" stroke="${stroke}" stroke-width="${strokeWidth}"/>
         ${ringStroke}
       </svg>
       <div style="
@@ -82,6 +124,8 @@ export type TourStopPin = {
   lng: number;
   isWarehouse?: boolean;
   label?: string;
+  /** S-7: SLA-Severity ('ok'|'warning'|'critical') für Border-Color. */
+  risk_severity?: string | null;
 };
 
 function makeWarehouseIcon() {
@@ -122,6 +166,7 @@ export default function NvDispoMap({
   tourPolyline,
   selectedStopId,
   tourStopColor,
+  tourStatus,
 }: {
   shipments: MapShipment[];
   clickedSequence: string[];
@@ -145,6 +190,8 @@ export default function NvDispoMap({
   selectedStopId?: string | null;
   /** A' Sprint: per-Tour-Gebiet-Color für tour-stops (hex). */
   tourStopColor?: string;
+  /** S-7: Tour-Status für Polyline-Color (planned/in_progress/late/completed). */
+  tourStatus?: string | null;
 }) {
   // Subscribe to external pending store — re-rendert NUR diesen
   // Component bei Pending-Mutation (kein Page-Wide-Re-Render).
@@ -154,6 +201,8 @@ export default function NvDispoMap({
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const polylineRef = useRef<L.Polyline | null>(null);
   const tourMarkersRef = useRef<Map<string, L.Marker>>(new Map());
+  // S-7 Marker-Cluster für Tour-Stops (Warehouse-Pins bleiben einzeln).
+  const tourClusterRef = useRef<L.MarkerClusterGroup | null>(null);
   const tourPolylineRef = useRef<L.Polyline | null>(null);
   const tourAbortRef = useRef<AbortController | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -192,6 +241,38 @@ export default function NvDispoMap({
       attribution: '© OpenStreetMap',
     }).addTo(map);
     mapRef.current = map;
+    // S-7: MarkerCluster für Tour-Stops. Cluster zeigt count + worst-severity
+    // als bg-color (via iconCreateFunction). Disable wenn zoom >= 11.
+    const cluster = L.markerClusterGroup({
+      disableClusteringAtZoom: CLUSTER_BELOW_ZOOM,
+      spiderfyOnMaxZoom: false,
+      showCoverageOnHover: false,
+      maxClusterRadius: 40,
+      iconCreateFunction: (c) => {
+        // Worst-severity unter den Markers im Cluster.
+        let worst: string | null = null;
+        const rank = (s: string | null) =>
+          s === 'critical' ? 3 : s === 'warning' ? 2 : s === 'ok' ? 1 : 0;
+        for (const m of c.getAllChildMarkers()) {
+          const s = (m as L.Marker & { _sev?: string | null })._sev ?? null;
+          if (rank(s) > rank(worst)) worst = s;
+        }
+        const bg =
+          worst === 'critical'
+            ? '#ef4444'
+            : worst === 'warning'
+              ? '#f59e0b'
+              : '#3b82f6';
+        const count = c.getChildCount();
+        return L.divIcon({
+          html: `<div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:${bg};color:white;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.4);font-weight:700;font-family:system-ui,sans-serif;">${count}</div>`,
+          iconSize: [36, 36],
+          className: 'nv-cluster-pin',
+        });
+      },
+    });
+    map.addLayer(cluster);
+    tourClusterRef.current = cluster;
     // P0-12 BUG-3b: ResizeObserver → invalidateSize.
     // Wenn ContextPanel öffnet/schließt, schrumpft/wächst der Map-
     // Container. Leaflet weiß das nicht von selbst → Pin-Klicks
@@ -471,11 +552,16 @@ export default function NvDispoMap({
     for (const s of visibleStops) {
       seenIds.add(s.id);
       // A' Sprint: per-Gebiet-Color + Selected-State (amber ring).
+      // S-7: severity-stroke wenn risk_severity gesetzt.
       const isSelected = selectedStopId === s.id;
       const stopColor = tourStopColor ?? '#16a34a';
+      const sevStroke =
+        s.risk_severity && s.risk_severity !== 'ok' && !s.isWarehouse
+          ? severityStroke(s.risk_severity)
+          : undefined;
       const icon = s.isWarehouse
         ? makeWarehouseIcon()
-        : makeIcon(true, s.position, stopColor, isSelected);
+        : makeIcon(true, s.position, stopColor, isSelected, sevStroke);
       const tip = s.isWarehouse
         ? s.label ?? 'Lager'
         : `Stop ${s.position}${
@@ -488,19 +574,27 @@ export default function NvDispoMap({
         existing.unbindTooltip();
         existing.bindTooltip(tip, { direction: 'top', offset: [0, -34] });
       } else {
-        const m = L.marker([s.lat, s.lng], { icon }).addTo(map);
-        m.bindTooltip(tip, { direction: 'top', offset: [0, -34] });
-        if (!s.isWarehouse) {
+        const m = L.marker([s.lat, s.lng], { icon });
+        // S-7: store severity on marker für Cluster-iconCreateFunction.
+        (m as L.Marker & { _sev?: string | null })._sev =
+          s.risk_severity ?? null;
+        if (s.isWarehouse) {
+          m.addTo(map);
+        } else {
+          tourClusterRef.current?.addLayer(m);
           m.on('click', () => {
             onTourStopClickRef.current?.(s.id);
           });
         }
+        m.bindTooltip(tip, { direction: 'top', offset: [0, -34] });
         tourMarkersRef.current.set(s.id, m);
       }
     }
     // Remove obsolete only
     for (const [id, m] of tourMarkersRef.current) {
       if (!seenIds.has(id)) {
+        // S-7: aus Cluster + Map entfernen (idempotent).
+        tourClusterRef.current?.removeLayer(m);
         map.removeLayer(m);
         tourMarkersRef.current.delete(id);
       }
@@ -542,7 +636,7 @@ export default function NvDispoMap({
       if (tourPolylineRef.current)
         map.removeLayer(tourPolylineRef.current);
       tourPolylineRef.current = L.polyline(latlngs, {
-        color: '#1a73e8',
+        color: tourStatus ? polylineColorForStatus(tourStatus) : '#1a73e8',
         weight: 6,
         opacity: 0.85,
       }).addTo(map);
@@ -555,7 +649,7 @@ export default function NvDispoMap({
       if (tourPolylineRef.current)
         map.removeLayer(tourPolylineRef.current);
       tourPolylineRef.current = L.polyline(cached, {
-        color: '#1a73e8',
+        color: tourStatus ? polylineColorForStatus(tourStatus) : '#1a73e8',
         weight: 6,
         opacity: 0.85,
       }).addTo(map);
@@ -589,7 +683,7 @@ export default function NvDispoMap({
           mapRef.current.removeLayer(tourPolylineRef.current);
         }
         tourPolylineRef.current = L.polyline(latlngs, {
-          color: '#1a73e8',
+          color: tourStatus ? polylineColorForStatus(tourStatus) : '#1a73e8',
           weight: 6,
           opacity: 0.85,
         }).addTo(map);

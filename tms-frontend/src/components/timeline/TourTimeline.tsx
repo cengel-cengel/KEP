@@ -1,27 +1,35 @@
-import { useMemo } from 'react';
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+/**
+ * S-4 Timeline-Fokus-Modi.
+ *
+ * Adaptive Zoom: t_min = earliest planned_arrival - 30min,
+ *                t_max = latest planned_departure + 30min.
+ *                Fallback 06:00-22:00 wenn keine planned_*-Zeiten.
+ *
+ * Single-Color Block: severity-tinted bg + border via S-1
+ * SEVERITY_TOKENS (statt 4-color-Suppe).
+ *
+ * SLA-Window: hairline outline rechts vom Block (statt bg-fill).
+ *
+ * Travel-Segment: zwischen Stop[i].pd und Stop[i+1].pa als
+ * 4px-Linie + Duration-Text inline.
+ *
+ * Now-Line: dashed schwarz mit "JETZT"-Label (statt solid red).
+ *
+ * Critical-Mode: auto-on wenn ≥1 critical → ok-Stops opacity-30
+ * + Toggle "Alle zeigen".
+ */
+import { useMemo, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Focus, Eye } from 'lucide-react';
 import {
   checkSlaViolations,
   type SlaCheckInput,
   type SlaResult,
 } from '../../lib/sla';
 
-/**
- * W-2 TourTimeline.
- *
- * Horizontale Zeitachse 06:00-22:00 (16h Standard).
- * Pro Stop: vertikaler Block (position: planned_arrival,
- * width: servicezeit_min). Color nach SLA-Severity.
- *
- * Pure CSS — keine Library, kein Canvas.
- *
- * Klick → onStopClick. Drag-Reorder nicht in W-2 (geht via
- * bestehende Stops-Liste in TourDetailsTab).
- */
-
-const DAY_START_H = 6;
-const DAY_END_H = 22;
+const DEFAULT_START_H = 6;
+const DEFAULT_END_H = 22;
 const HEIGHT_PX = 80;
+const ADAPTIVE_PADDING_MIN = 30;
 
 export interface TimelineStop {
   id: string;
@@ -35,8 +43,7 @@ export interface TimelineStop {
   loading_time_to?: string | null;
   delivery_time_from?: string | null;
   delivery_time_to?: string | null;
-  /** T-3.1: BE-persisted risk_severity. Fallback auf SLA-lib
-   * wenn null (Legacy-Touren ohne recompute). */
+  /** T-3.1: BE-persisted risk_severity. */
   risk_severity?: string | null;
 }
 
@@ -45,14 +52,12 @@ function toDate(d?: string | Date | null): Date | null {
   return d instanceof Date ? d : new Date(d);
 }
 
-function pctOfDay(d: Date): number {
-  const totalMin = (DAY_END_H - DAY_START_H) * 60;
-  const startMin = DAY_START_H * 60;
-  const minOfDay = d.getHours() * 60 + d.getMinutes();
-  return Math.max(0, Math.min(100, ((minOfDay - startMin) / totalMin) * 100));
+function minutesOfDay(d: Date): number {
+  return d.getHours() * 60 + d.getMinutes();
 }
 
-function severityColor(sev: SlaResult['severity']): {
+/** Severity-Mapping SLA ('ok'|'warning'|'critical') → S-1 Token-Classes. */
+function severityClasses(sev: SlaResult['severity']): {
   bg: string;
   border: string;
   text: string;
@@ -60,30 +65,82 @@ function severityColor(sev: SlaResult['severity']): {
   switch (sev) {
     case 'critical':
       return {
-        bg: 'bg-red-100',
+        bg: 'bg-red-50',
         border: 'border-red-400',
-        text: 'text-red-800',
+        text: 'text-red-700',
       };
     case 'warning':
       return {
-        bg: 'bg-amber-100',
+        bg: 'bg-amber-50',
         border: 'border-amber-400',
-        text: 'text-amber-800',
+        text: 'text-amber-700',
       };
     case 'ok':
-      return {
-        bg: 'bg-green-100',
-        border: 'border-green-400',
-        text: 'text-green-800',
-      };
     case 'unknown':
     default:
       return {
-        bg: 'bg-gray-100',
+        bg: 'bg-white',
         border: 'border-gray-300',
         text: 'text-gray-700',
       };
   }
+}
+
+/** Adaptiver Zoom-Range: earliest pa - 30min ... latest pd + 30min. */
+function computeRange(stops: TimelineStop[]): {
+  startMin: number;
+  endMin: number;
+  adaptive: boolean;
+} {
+  let minTime: number | null = null;
+  let maxTime: number | null = null;
+  for (const s of stops) {
+    const pa = toDate(s.planned_arrival);
+    const pd = toDate(s.planned_departure);
+    if (pa) {
+      const m = minutesOfDay(pa);
+      if (minTime == null || m < minTime) minTime = m;
+    }
+    if (pd) {
+      const m = minutesOfDay(pd);
+      if (maxTime == null || m > maxTime) maxTime = m;
+    }
+  }
+  if (minTime == null || maxTime == null) {
+    return {
+      startMin: DEFAULT_START_H * 60,
+      endMin: DEFAULT_END_H * 60,
+      adaptive: false,
+    };
+  }
+  return {
+    startMin: Math.max(0, minTime - ADAPTIVE_PADDING_MIN),
+    endMin: Math.min(24 * 60, maxTime + ADAPTIVE_PADDING_MIN),
+    adaptive: true,
+  };
+}
+
+function pctOfRange(d: Date, startMin: number, endMin: number): number {
+  const total = endMin - startMin;
+  if (total <= 0) return 0;
+  return Math.max(0, Math.min(100, ((minutesOfDay(d) - startMin) / total) * 100));
+}
+
+function timeStrFromMin(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+}
+
+function fmtTime(d: Date): string {
+  return `${d.getHours().toString().padStart(2, '0')}:${d
+    .getMinutes()
+    .toString()
+    .padStart(2, '0')}`;
+}
+
+function durationMin(a: Date, b: Date): number {
+  return Math.round((b.getTime() - a.getTime()) / 60_000);
 }
 
 export default function TourTimeline({
@@ -99,20 +156,23 @@ export default function TourTimeline({
     () => [...stops].sort((a, b) => a.position - b.position),
     [stops],
   );
-  // T-3.1: bevorzuge BE-persisted risk_severity. Fallback
-  // SLA-lib wenn null (Legacy-Touren).
+
+  // SLA-Severity (BE-persisted bevorzugt, Fallback SLA-lib).
   const slaResults = useMemo<Map<string, SlaResult>>(() => {
     const out = new Map<string, SlaResult>();
     for (const s of sortedStops) {
-      if (s.risk_severity === 'ok' || s.risk_severity === 'warning' ||
-          s.risk_severity === 'critical' || s.risk_severity === 'unknown') {
+      if (
+        s.risk_severity === 'ok' ||
+        s.risk_severity === 'warning' ||
+        s.risk_severity === 'critical' ||
+        s.risk_severity === 'unknown'
+      ) {
         out.set(s.id, {
           stopId: s.id,
           severity: s.risk_severity as SlaResult['severity'],
         });
       }
     }
-    // Fallback für Stops ohne persisted-severity
     const missing = sortedStops.filter((s) => !out.has(s.id));
     if (missing.length > 0) {
       const inputs: SlaCheckInput[] = missing.map((s) => ({
@@ -129,18 +189,43 @@ export default function TourTimeline({
     return out;
   }, [sortedStops]);
 
-  const hours = useMemo(() => {
+  const range = useMemo(() => computeRange(sortedStops), [sortedStops]);
+
+  const criticalCount = useMemo(
+    () =>
+      Array.from(slaResults.values()).filter((r) => r.severity === 'critical')
+        .length,
+    [slaResults],
+  );
+  const warningCount = useMemo(
+    () =>
+      Array.from(slaResults.values()).filter((r) => r.severity === 'warning')
+        .length,
+    [slaResults],
+  );
+
+  // Critical-Mode: auto-on wenn ≥1 critical, User kann toggle.
+  const [focusedManual, setFocusedManual] = useState<boolean | null>(null);
+  const focused = focusedManual ?? criticalCount > 0;
+
+  // Hour-Ticks dynamisch nach Range (alle 2h gerundet).
+  const hourTicks = useMemo(() => {
     const arr: number[] = [];
-    for (let h = DAY_START_H; h <= DAY_END_H; h += 2) arr.push(h);
+    const startH = Math.floor(range.startMin / 60);
+    const endH = Math.ceil(range.endMin / 60);
+    const step = endH - startH > 12 ? 2 : endH - startH > 6 ? 1 : 1;
+    for (let h = startH; h <= endH; h += step) {
+      arr.push(h * 60);
+    }
     return arr;
-  }, []);
+  }, [range]);
 
   const nowPct = useMemo(() => {
     const now = new Date();
-    const h = now.getHours() + now.getMinutes() / 60;
-    if (h < DAY_START_H || h > DAY_END_H) return null;
-    return ((h - DAY_START_H) / (DAY_END_H - DAY_START_H)) * 100;
-  }, []);
+    const m = minutesOfDay(now);
+    if (m < range.startMin || m > range.endMin) return null;
+    return ((m - range.startMin) / (range.endMin - range.startMin)) * 100;
+  }, [range]);
 
   return (
     <div className="relative w-full bg-white border border-gray-200 rounded-md">
@@ -149,18 +234,24 @@ export default function TourTimeline({
         className="relative w-full border-b border-gray-100"
         style={{ height: 16 }}
       >
-        {hours.map((h) => {
-          const pct = ((h - DAY_START_H) / (DAY_END_H - DAY_START_H)) * 100;
+        {hourTicks.map((m) => {
+          const pct =
+            ((m - range.startMin) / (range.endMin - range.startMin)) * 100;
           return (
             <div
-              key={h}
+              key={m}
               className="absolute top-0 text-[10px] text-gray-400 -translate-x-1/2"
               style={{ left: `${pct}%` }}
             >
-              {h.toString().padStart(2, '0')}:00
+              {timeStrFromMin(m)}
             </div>
           );
         })}
+        {range.adaptive && (
+          <div className="absolute top-0 right-1 text-[9px] text-blue-500 font-mono">
+            adaptiv
+          </div>
+        )}
       </div>
 
       {/* Track */}
@@ -168,25 +259,65 @@ export default function TourTimeline({
         className="relative w-full bg-gradient-to-r from-slate-50 to-white"
         style={{ height: HEIGHT_PX }}
       >
-        {/* Grid-Lines */}
-        {hours.map((h) => {
-          const pct = ((h - DAY_START_H) / (DAY_END_H - DAY_START_H)) * 100;
+        {/* Grid */}
+        {hourTicks.map((m) => {
+          const pct =
+            ((m - range.startMin) / (range.endMin - range.startMin)) * 100;
           return (
             <div
-              key={`g-${h}`}
+              key={`g-${m}`}
               className="absolute top-0 bottom-0 border-l border-gray-100"
               style={{ left: `${pct}%` }}
             />
           );
         })}
 
+        {/* Travel-Segments (zwischen Stop[i].pd → Stop[i+1].pa) */}
+        {sortedStops.map((s, i) => {
+          if (i === sortedStops.length - 1) return null;
+          const cur = toDate(s.planned_departure);
+          const next = toDate(sortedStops[i + 1].planned_arrival);
+          if (!cur || !next) return null;
+          const startPct = pctOfRange(cur, range.startMin, range.endMin);
+          const endPct = pctOfRange(next, range.startMin, range.endMin);
+          const widthPct = Math.max(0, endPct - startPct);
+          if (widthPct <= 0.1) return null;
+          const dur = durationMin(cur, next);
+          return (
+            <div
+              key={`travel-${s.id}`}
+              className="absolute pointer-events-none"
+              style={{
+                left: `${startPct}%`,
+                width: `${widthPct}%`,
+                top: HEIGHT_PX / 2 - 2,
+                height: 4,
+              }}
+            >
+              <div className="w-full h-full bg-gray-300 rounded-sm" />
+              {widthPct > 4 && (
+                <div className="text-[9px] text-gray-500 text-center -mt-3 font-mono">
+                  {dur}min
+                </div>
+              )}
+            </div>
+          );
+        })}
+
         {/* Now-Line */}
         {nowPct != null && (
-          <div
-            className="absolute top-0 bottom-0 w-px bg-red-500 z-10"
-            style={{ left: `${nowPct}%` }}
-            title="Jetzt"
-          />
+          <>
+            <div
+              className="absolute top-0 bottom-0 border-l-2 border-dashed border-gray-800 z-10"
+              style={{ left: `${nowPct}%` }}
+            />
+            <div
+              className="absolute top-1 text-[9px] font-mono font-bold text-gray-800 bg-white/80 px-0.5 rounded z-10"
+              style={{ left: `calc(${nowPct}% + 2px)` }}
+            >
+              JETZT
+            </div>
+          </>
         )}
 
         {/* Stop-Blocks */}
@@ -194,44 +325,71 @@ export default function TourTimeline({
           const pa = toDate(s.planned_arrival);
           const pd = toDate(s.planned_departure);
           if (!pa) return null;
-          const startPct = pctOfDay(pa);
-          const endPct = pd ? pctOfDay(pd) : startPct + 1.5;
+          const startPct = pctOfRange(pa, range.startMin, range.endMin);
+          const endPct = pd
+            ? pctOfRange(pd, range.startMin, range.endMin)
+            : startPct + 1.5;
           const widthPct = Math.max(0.8, endPct - startPct);
           const sev = slaResults.get(s.id)?.severity ?? 'unknown';
-          const col = severityColor(sev);
+          const col = severityClasses(sev);
           const isSelected = selectedStopId === s.id;
+
+          // S-4.3: SLA-Window hairline (vertical 1px) bei time_to.
+          const slaTo =
+            s.stop_type === 'DELIVERY' ? s.delivery_time_to : s.loading_time_to;
+          let slaToPct: number | null = null;
+          if (slaTo && pa) {
+            const [hh, mm] = slaTo.split(':').map(Number);
+            if (Number.isFinite(hh) && Number.isFinite(mm)) {
+              const slaToMin = hh * 60 + mm;
+              if (slaToMin >= range.startMin && slaToMin <= range.endMin) {
+                slaToPct =
+                  ((slaToMin - range.startMin) /
+                    (range.endMin - range.startMin)) *
+                  100;
+              }
+            }
+          }
+
+          const dim = focused && sev === 'ok';
+
           return (
-            <button
-              key={s.id}
-              onClick={() => onStopClick?.(s.id)}
-              className={`absolute top-2 bottom-2 ${col.bg} ${col.border} border-2 rounded ${
-                isSelected ? 'ring-2 ring-blue-500' : ''
-              } hover:brightness-95 transition-all overflow-hidden text-left`}
-              style={{
-                left: `${startPct}%`,
-                width: `${widthPct}%`,
-                minWidth: '24px',
-              }}
-              title={`${s.shipment_number ?? s.id.slice(0, 6)} · ${pa.getHours()}:${pa
-                .getMinutes()
-                .toString()
-                .padStart(2, '0')}`}
-            >
-              <div
-                className={`px-1 text-[10px] font-mono ${col.text} truncate`}
+            <div key={s.id}>
+              <button
+                onClick={() => onStopClick?.(s.id)}
+                className={`absolute top-2 bottom-2 ${col.bg} ${col.border} border-2 rounded ${
+                  isSelected ? 'ring-2 ring-blue-500' : ''
+                } hover:brightness-95 transition-all overflow-hidden text-left ${
+                  dim ? 'opacity-30' : ''
+                }`}
+                style={{
+                  left: `${startPct}%`,
+                  width: `${widthPct}%`,
+                  minWidth: '24px',
+                }}
+                title={`${s.shipment_number ?? s.id.slice(0, 6)} · ${fmtTime(pa)}`}
               >
-                {s.position}. {s.shipment_number ?? '—'}
-              </div>
-              <div className="px-1 text-[9px] text-gray-600 truncate">
-                {pa.getHours().toString().padStart(2, '0')}:
-                {pa.getMinutes().toString().padStart(2, '0')}
-              </div>
-            </button>
+                <div className={`px-1 text-[10px] font-mono ${col.text} truncate`}>
+                  {s.position}. {s.shipment_number ?? '—'}
+                </div>
+                <div className="px-1 text-[9px] text-gray-600 truncate">
+                  {fmtTime(pa)}
+                </div>
+              </button>
+              {/* SLA-Window-Hairline rechts neben Block */}
+              {slaToPct != null && (
+                <div
+                  className="absolute top-1 bottom-1 border-r border-dashed border-amber-500/70 pointer-events-none"
+                  style={{ left: `${slaToPct}%`, width: 0 }}
+                  title={`SLA-Deadline ${slaTo}`}
+                />
+              )}
+            </div>
           );
         })}
       </div>
 
-      {/* Legend / SLA-Badge */}
+      {/* Legend + Critical-Mode-Toggle */}
       <div className="flex items-center gap-3 px-2 py-1 text-[10px] text-gray-500 border-t border-gray-100">
         <span className="inline-flex items-center gap-1">
           <CheckCircle2 size={10} className="text-green-600" />
@@ -245,12 +403,24 @@ export default function TourTimeline({
           <AlertTriangle size={10} className="text-red-600" />
           Kritisch
         </span>
-        <span className="ml-auto">
-          {Array.from(slaResults.values()).filter((r) => r.severity === 'critical')
-            .length} kritisch ·{' '}
-          {Array.from(slaResults.values()).filter((r) => r.severity === 'warning')
-            .length} Warnung
+        <span className="ml-2">
+          {criticalCount} kritisch · {warningCount} Warnung
         </span>
+        {(criticalCount > 0 || focused) && (
+          <button
+            type="button"
+            onClick={() => setFocusedManual(!focused)}
+            className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 border border-gray-300 rounded text-[10px] hover:bg-gray-50"
+            title={
+              focused
+                ? 'Alle Stops zeigen'
+                : 'Nur kritische/Warnungen hervorheben'
+            }
+          >
+            {focused ? <Eye size={10} /> : <Focus size={10} />}
+            {focused ? 'Alle zeigen' : 'Fokus'}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -702,13 +702,16 @@ export default function LoadingPlanPage() {
         vehicleDims.heightCm,
       );
       // 4. PATCH jede neue Position auf BE.
+      //    (Bugfix Teil A: pkg.rotationDeg statt hardcode 0 —
+      //     sonst nukes Re-Pack alle Rotationen, die User per
+      //     R-Hotkey gesetzt hat.)
       for (const pkg of repacked) {
         if (!pkg.dbItemId) continue; // synth-pkgs nicht persistierbar
         await api.patch(`/loading/package-item/${pkg.dbItemId}/position`, {
           posXCm: Math.round(pkg.posX),
           posYCm: Math.round(pkg.posY),
           posZCm: Math.round(pkg.posZ),
-          rotationDeg: 0,
+          rotationDeg: pkg.rotationDeg ?? 0,
         });
       }
       return { count: repacked.length };

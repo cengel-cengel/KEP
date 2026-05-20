@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsDateString,
@@ -9,32 +10,42 @@ import {
 } from 'class-validator';
 
 export class CreateRoutingRuleDto {
+  @ApiProperty({ example: 'HH-Nord OUTBOUND' })
   @IsString()
   rule_name!: string;
 
+  @ApiProperty({ enum: ['INBOUND', 'OUTBOUND', 'BOTH'] })
   @IsIn(['INBOUND', 'OUTBOUND', 'BOTH'])
   direction!: string;
 
+  @ApiPropertyOptional({ format: 'uuid' })
   @IsString()
   @IsOptional()
   @IsUUID()
   partner_id?: string | null;
 
+  @ApiProperty({ example: 'DE', minLength: 2, maxLength: 2 })
   @IsString()
   country_code!: string;
 
+  @ApiPropertyOptional({ example: '20000' })
   @IsOptional()
   @IsString()
   zip_from?: string | null;
 
+  @ApiPropertyOptional({ example: '29999' })
   @IsOptional()
   @IsString()
   zip_to?: string | null;
 
+  @ApiPropertyOptional({ example: '2' })
   @IsOptional()
   @IsString()
   zip_prefix?: string | null;
 
+  @ApiProperty({
+    enum: ['OWN_NV', 'NETWORK_PARTNER', 'CHARTER', 'COOPERATOR'],
+  })
   @IsIn(['OWN_NV', 'NETWORK_PARTNER', 'CHARTER', 'COOPERATOR'])
   delivery_type!: string;
 

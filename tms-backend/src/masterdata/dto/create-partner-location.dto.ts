@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsDateString,
@@ -10,37 +11,47 @@ import {
 import { Type } from 'class-transformer';
 
 export class CreatePartnerLocationDto {
+  @ApiProperty({ example: 'HAMBURG-LAGER', description: 'Eindeutiger Key innerhalb des Partners' })
   @IsString()
   locationKey!: string;
 
+  @ApiPropertyOptional({ example: 'WAREHOUSE', description: 'WAREHOUSE | OFFICE | HUB | …' })
   @IsOptional()
   @IsString()
   locationType?: string;
 
+  @ApiProperty({ example: 'Hamburg-Lager' })
   @IsString()
   name!: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   name2?: string;
 
+  @ApiProperty({ example: 'Hafenstraße 12' })
   @IsString()
   street!: string;
 
+  @ApiProperty({ example: '20457' })
   @IsString()
   zip!: string;
 
+  @ApiProperty({ example: 'Hamburg' })
   @IsString()
   city!: string;
 
+  @ApiPropertyOptional({ example: 'DE', minLength: 2, maxLength: 2 })
   @IsOptional()
   @IsString()
   countryCode?: string;
 
+  @ApiPropertyOptional({ example: 53.55 })
   @IsOptional()
   @IsDecimal()
   lat?: number;
 
+  @ApiPropertyOptional({ example: 9.99 })
   @IsOptional()
   @IsDecimal()
   lng?: number;

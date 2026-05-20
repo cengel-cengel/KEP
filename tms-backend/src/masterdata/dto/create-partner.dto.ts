@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsDateString,
   IsDecimal,
@@ -9,44 +10,58 @@ import {
 import { Type } from 'class-transformer';
 
 export class CreatePartnerDto {
+  @ApiPropertyOptional({ example: 'P-12345' })
   @IsOptional()
   @IsString()
   partnerNumber?: string;
 
+  @ApiProperty({
+    example: 'CUSTOMER',
+    description: 'CUSTOMER | SUPPLIER | CARRIER | …',
+  })
   @IsString()
   partnerType!: string;
 
+  @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
   @IsUUID()
   corporateGroupId?: string;
 
+  @ApiProperty({ example: 'Müller GmbH' })
   @IsString()
   name!: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   name2?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   legalForm?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   street?: string;
 
+  @ApiPropertyOptional({ example: '20095' })
   @IsOptional()
   @IsString()
   zip?: string;
 
+  @ApiPropertyOptional({ example: 'Hamburg' })
   @IsOptional()
   @IsString()
   city?: string;
 
+  @ApiPropertyOptional({ example: 'DE', minLength: 2, maxLength: 2 })
   @IsOptional()
   @IsString()
   countryCode?: string;
 
+  @ApiPropertyOptional({ example: 'DE123456789' })
   @IsOptional()
   @IsString()
   vatId?: string;

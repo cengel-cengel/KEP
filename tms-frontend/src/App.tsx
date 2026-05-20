@@ -28,6 +28,7 @@ import WorkstackPage from './pages/WorkstackPage';
 import PricingHubPage from './pages/PricingHubPage';
 import MasterDataLayout from './layouts/MasterDataLayout';
 import AppLayout from './components/layout/AppLayout';
+import HotkeyCheatSheet from './components/help/HotkeyCheatSheet';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -38,6 +39,15 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  return (
+    <>
+      <HotkeyCheatSheet />
+      <AppRoutes />
+    </>
+  );
+}
+
+function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />

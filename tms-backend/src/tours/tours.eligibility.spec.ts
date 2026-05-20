@@ -3,7 +3,7 @@
  * Sicherstellt:
  *   • FV_TRANSPORT_TYPES enthält alle 7 erwarteten Werte
  *   • WHERE-Clause filtert transport_type über die Liste
- *   • OR-Branch 1 prüft stop_type='PICKUP' UND tour.COMPLETED (P0-6)
+ *   • OR-Branch 1 prüft stop_type='PICKUP' UND nv_tour.status='COMPLETED' (P0-6)
  *   • OR-Branch 2 prüft partner_delivered=true
  *   • OR-Branch 3 deckt outside-NV-Gebiet ab (Charter)
  *
@@ -107,18 +107,20 @@ describe('eligibleShipmentsFv WHERE-Struktur', () => {
     expect(where.deleted_at).toBeNull();
   });
 
-  it('OR-Branch 1: stop_type=PICKUP + nv_touren.status=COMPLETED', async () => {
+  it('OR-Branch 1: stop_type=PICKUP + nv_tour.status=COMPLETED', async () => {
     const { prisma, calls } = makeMockPrisma();
     await makeService(prisma).eligibleShipmentsFv({});
     const where = calls.shipmentsFindMany[0].where;
     const orList = where.AND?.[0]?.OR ?? [];
     const branch1 = orList[0];
     // Strukturell: AND mit nv_tour_stops.some.stop_type='PICKUP'
+    // + nv_tour.status='COMPLETED' (Prisma-Relation-Name ist
+    // 'nv_tour' singular, nicht 'nv_touren').
     const stopFilter = branch1?.AND?.find(
       (a: any) => a.nv_tour_stops?.some,
     );
     expect(stopFilter?.nv_tour_stops?.some?.stop_type).toBe('PICKUP');
-    expect(stopFilter?.nv_tour_stops?.some?.nv_touren?.status).toBe(
+    expect(stopFilter?.nv_tour_stops?.some?.nv_tour?.status).toBe(
       'COMPLETED',
     );
   });

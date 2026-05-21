@@ -7,8 +7,11 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import type { ToursService } from '../tours/tours.service';
-import { ToursService as ToursServiceClass } from '../tours/tours.service';
+// R2.1-Fix: Single runtime-Import — der frühere `import type` +
+// `import as ToursServiceClass`-Mix führte zu Reflect.metadata-
+// undefined und Nest-Bootstrap "Cannot resolve dependencies".
+// Mit einem normalen Import resolved emitDecoratorMetadata sauber.
+import { ToursService } from '../tours/tours.service';
 import { Prisma } from '../../generated/prisma';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateNvTourDto } from './dto/create-nv-tour.dto';
@@ -147,7 +150,7 @@ export class NvTourenService {
     private readonly prisma: PrismaService,
     // R2.1: Tours-Service für CHARTER_UMSCHLAG-Auto-Hauptlauf-Hook
     // bei completeStopShipment (status→in_warehouse).
-    @Inject(forwardRef(() => ToursServiceClass))
+    @Inject(forwardRef(() => ToursService))
     private readonly tours: ToursService,
   ) {}
 

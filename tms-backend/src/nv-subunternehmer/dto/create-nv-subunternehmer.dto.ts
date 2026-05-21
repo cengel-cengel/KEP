@@ -1,3 +1,7 @@
+/**
+ * C2-H: Swagger-annotated. DTO standalone (kein PartialType-Parent).
+ */
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsIn,
@@ -20,75 +24,90 @@ export const TARIF_TYPEN = [
 ] as const;
 
 export class CreateNvSubunternehmerDto {
+  @ApiProperty({ format: 'uuid' })
   @IsUUID()
   business_partner_id!: string;
 
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
   @IsOptional()
   @IsUUID()
   nv_tour_gebiet_id?: string | null;
 
+  @ApiPropertyOptional({ enum: TARIF_TYPEN })
   @IsOptional()
   @IsIn(TARIF_TYPEN as readonly string[])
   tarif_typ?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   tarif_pro_stop_eur?: number;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   tarif_tagespauschale_eur?: number;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   tarif_pro_km_eur?: number;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   tarif_grundgebuehr_eur?: number;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   tarif_pro_stunde_eur?: number;
 
+  @ApiPropertyOptional({ maxLength: 20 })
   @IsOptional()
   @IsString()
   @MaxLength(20)
   fahrzeug_typ?: string;
 
+  @ApiPropertyOptional({ minimum: 0 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
   max_paletten?: number;
 
+  @ApiPropertyOptional({ minimum: 0 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
   max_gewicht_kg?: number;
 
+  @ApiPropertyOptional({ minimum: 0 })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
   max_volumen_m3?: number;
 
+  @ApiPropertyOptional({ minimum: 0 })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
   max_ldm?: number;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   notiz?: string;
 
+  @ApiPropertyOptional({ default: true })
   @IsOptional()
   @IsBoolean()
   aktiv?: boolean;

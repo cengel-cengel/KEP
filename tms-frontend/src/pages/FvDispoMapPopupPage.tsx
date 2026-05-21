@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import NvDispoMap from '../components/nv/NvDispoMap';
 import type { MapShipment } from '../components/nv/NvDispoMap';
@@ -72,6 +72,41 @@ export default function FvDispoMapPopupPage() {
     [tourQ.data],
   );
 
+  // C1-C: Pop-out nearby-Pins (Symmetrie zu MapPanel-Embedded).
+  // Eigener TanStack-Client im Pop-out — Query/Mutation pro Page.
+  const nearbyQ = useQuery<
+    Array<{
+      id: string;
+      shipment_number: string;
+      lat: number;
+      lng: number;
+      customer_name?: string | null;
+      distance_km: number;
+    }>
+  >({
+    queryKey: ['fv-nearby', tourId],
+    queryFn: async () => {
+      if (!tourId) return [];
+      const { data } = await api.get(`/tours/${tourId}/nearby-shipments`);
+      return data;
+    },
+    enabled: !!tourId,
+    staleTime: 30_000,
+  });
+
+  const addNearbyMut = useMutation({
+    mutationFn: async (shipmentId: string) => {
+      await api.post(`/tours/${tourId}/batch-stops`, {
+        adds: [shipmentId],
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fv-tour-detail', tourId] });
+      qc.invalidateQueries({ queryKey: ['fv-nearby', tourId] });
+      qc.invalidateQueries({ queryKey: ['fv-eligible'] });
+    },
+  });
+
   // Map verlangt shipments-Prop — wir liefern leeres Array
   // (Pop-out zeigt nur die EINE Tour, keine eligible-Pins).
   const emptyShipments = useMemo<MapShipment[]>(() => [], []);
@@ -127,6 +162,8 @@ export default function FvDispoMapPopupPage() {
             onPinClick={() => {
               /* FV map ist read-only (Pop-out zeigt eine Tour). */
             }}
+            nearbyShipments={nearbyQ.data ?? []}
+            onNearbyClick={(id) => addNearbyMut.mutate(id)}
           />
         )}
       </div>

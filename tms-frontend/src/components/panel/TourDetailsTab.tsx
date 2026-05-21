@@ -511,6 +511,23 @@ function NvTourBody({ tourId }: { tourId: string }) {
     };
   }, [tourQ.data]);
 
+  // C2-J: Scroll-to-View für selectedStopId. Map-Marker-Klick setzt
+  // selectedStopId; Stop-Row mit data-stop-id={id} wird in den
+  // sichtbaren Bereich gescrollt. block:'nearest' verhindert harten
+  // Snap wenn Row bereits im Viewport.
+  useEffect(() => {
+    if (!selectedStopId) return;
+    const el = document.querySelector(
+      `[data-stop-id="${selectedStopId}"]`,
+    );
+    if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
+      (el as HTMLElement).scrollIntoView({
+        block: 'nearest',
+        behavior: 'smooth',
+      });
+    }
+  }, [selectedStopId]);
+
   // A' Sprint: missing-Geocode-Count berechnen für conditional Sparkles-Btn.
   // tour.stops.shipment.addresses_*.lat/lng — addresses sind in
   // TOUR_INCLUDE eingeschlossen (s. nv-touren.service.ts:101+112).
@@ -1256,6 +1273,7 @@ function StopRow({
   return (
     <button
       type="button"
+      data-stop-id={stop.id}
       onClick={onToggleSelect}
       {...lp}
       className={`w-full text-left text-xs flex items-center gap-2 py-0.5 px-1 rounded ${
@@ -1514,6 +1532,7 @@ function NvStoppListeView({
           return (
             <tr
               key={r.id}
+              data-stop-id={r.id}
               onClick={() => setSelectedStopId(isSelected ? null : r.id)}
               className={`cursor-pointer ${
                 isSelected ? 'bg-amber-50' : 'hover:bg-gray-50'

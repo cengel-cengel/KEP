@@ -14,7 +14,12 @@ import { DocumentsService } from '../documents/documents.service';
 import { LockService } from '../status/lock.service';
 import { NvTourenService } from '../nv-touren/nv-touren.service';
 import { StatusService } from '../status/status.service';
-import { routeDistanceKm, routeOnly, routeTrip } from '../lib/osrm.lib';
+import {
+  routeDistanceKm,
+  routeOnly,
+  routeTrip,
+  routeWithDurations,
+} from '../lib/osrm.lib';
 import { getNvPlzSet } from '../lib/nv-plz.lib';
 import { computeOverload, formatOverloadMessage } from '../lib/capacity.lib';
 import {
@@ -1264,6 +1269,17 @@ export class ToursService {
     }
   }
 
+  /**
+   * Map-Routing R3: Full-Recompute für Admin-Bulk-Job.
+   * Sequenz: is_charter → optimize → schedule.
+   * Idempotent + best-effort.
+   */
+  async recomputeTourFull(tourId: string): Promise<void> {
+    await this.safeRecomputeIsCharterFv(tourId);
+    await this.safeOptimizeFvTour(tourId);
+    await this.safeRecomputeFvSchedule(tourId);
+  }
+
   /** W-2.1: recompute planned_arrival_fv/departure + risk pro Stop. */
   private async safeRecomputeFvSchedule(tourId: string) {
     try {
@@ -1333,10 +1349,44 @@ export class ToursService {
       }
     }
 
+    // C1-D: FV precise-eta via OSRM (Parity zu NV).
+    // legDurationsSec[i] = travel-Time von prev (oder startCoord)
+    // zu shipment[i].delivery_address.
+    let legDurationsSec: number[] | undefined;
+    const osrmCoords: Array<[number, number]> = [];
+    if (startCoord) osrmCoords.push([startCoord.lng, startCoord.lat]);
+    for (const s of tour.shipments) {
+      const a = s.addresses_shipments_delivery_address_idToaddresses;
+      if (a?.lat != null && a?.lng != null) {
+        osrmCoords.push([Number(a.lng), Number(a.lat)]);
+      }
+    }
+    if (osrmCoords.length >= 2) {
+      try {
+        const r = await routeWithDurations(osrmCoords);
+        if (r && r.legs.length >= 1) {
+          const offset = startCoord ? 0 : 1;
+          const durations: number[] = tour.shipments.map(
+            (_: unknown, i: number) =>
+              r.legs[i - offset]?.duration_sec ?? 0,
+          );
+          if (!startCoord && durations.length > 0) {
+            durations[0] = 0;
+          }
+          legDurationsSec = durations;
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `FV precise-eta routeWithDurations failed (${tourId}): ${err?.message ?? err}`,
+        );
+      }
+    }
+
     const sched = computeFvSchedule({
       tourDate: tour.tour_date,
       departureTime: tour.departure_time,
       startCoord,
+      legDurationsSec,
       shipments: tour.shipments.map((s) => ({
         id: s.id,
         tour_position: s.tour_position,

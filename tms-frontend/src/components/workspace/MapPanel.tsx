@@ -26,6 +26,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '../../lib/api';
+import { buildPreviewPolyline } from '../../lib/haversine';
 import { ChevronRight, ExternalLink } from 'lucide-react';
 import NvDispoMap, {
   type MapShipment,
@@ -199,6 +200,13 @@ export default function MapPanel({
     }));
   }, [mode, eligNvQ.data, farbenMap]);
 
+  // C1-B: Preview-Polyline-State während OSRM-Roundtrip.
+  // Wird durch addNearbyMut.onMutate gesetzt, durch
+  // onSettled gecleart (echte Polyline kommt via invalidate).
+  const [previewPolyline, setPreviewPolyline] = useState<
+    Array<[number, number]> | null
+  >(null);
+
   // Tour-Stops aus aktiver Tour (mode-aware).
   const tourStops = useMemo<TourStopPin[] | undefined>(() => {
     if (!activeTour) return undefined;
@@ -287,8 +295,32 @@ export default function MapPanel({
       ];
       await qc.cancelQueries({ queryKey: nearbyKey });
       const prevNearby = qc.getQueryData<
-        Array<{ id: string }> | undefined
+        Array<{ id: string; lat: number; lng: number }> | undefined
       >(nearbyKey);
+      // C1-B: Haversine-Preview-Polyline direkt zeichnen.
+      // Stops aus aktueller Tour + neuer Pin am Ende.
+      const clicked = prevNearby?.find((p) => p.id === shipmentId);
+      const stopCoords: Array<{ lat: number; lng: number }> =
+        (tourStops ?? [])
+          .filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng))
+          .map((s) => ({ lat: s.lat, lng: s.lng }));
+      if (clicked && Number.isFinite(clicked.lat) && Number.isFinite(clicked.lng)) {
+        stopCoords.push({ lat: clicked.lat, lng: clicked.lng });
+      }
+      const isCharter =
+        (activeTour as { is_charter?: boolean } | undefined)?.is_charter ??
+        false;
+      // Preview-WH = erstes Tour-Stop als Approximation
+      // (echtes WH bei BE bekannt; FE-Preview ist nur Visual-
+      // Hint bis OSRM kommt).
+      const previewWh = !isCharter && stopCoords[0] ? stopCoords[0] : null;
+      const preview = buildPreviewPolyline({
+        warehouse: previewWh,
+        stops: stopCoords,
+        isCharter,
+      });
+      setPreviewPolyline(preview.length >= 2 ? preview : null);
+
       if (prevNearby) {
         qc.setQueryData(
           nearbyKey,
@@ -319,6 +351,11 @@ export default function MapPanel({
         );
       }
       onError?.(`Pin-Add fehlgeschlagen (${err?.response?.status ?? '?'}).`);
+    },
+    onSettled: () => {
+      // C1-B: Preview clearen — echte Polyline kommt via
+      // tour-detail-invalidate (Hart-Replace, kein Flicker).
+      setPreviewPolyline(null);
     },
   });
 
@@ -455,6 +492,7 @@ export default function MapPanel({
             }
             nearbyShipments={nearbyQ.data ?? []}
             onNearbyClick={(id) => addNearbyMut.mutate(id)}
+            previewPolylineCoords={previewPolyline ?? undefined}
           />
         )}
       </div>

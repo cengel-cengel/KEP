@@ -112,7 +112,11 @@ function makeIcon(
     html,
     iconSize: [28, 36],
     iconAnchor: [14, 34],
-    className: 'nv-dispo-pin',
+    // C2-I: selected → pulse-class (CSS-Keyframe in index.css mit
+    // prefers-reduced-motion-Fallback).
+    className: selected
+      ? 'nv-dispo-pin nv-dispo-pin--selected'
+      : 'nv-dispo-pin',
   });
 }
 
@@ -196,6 +200,7 @@ export default function NvDispoMap({
   tourStatus,
   nearbyShipments,
   onNearbyClick,
+  previewPolylineCoords,
 }: {
   shipments: MapShipment[];
   clickedSequence: string[];
@@ -212,6 +217,10 @@ export default function NvDispoMap({
   }>;
   /** Pin-Klick → optimistic addStop (Caller). */
   onNearbyClick?: (shipmentId: string) => void;
+  /** Map-Routing C1-B: temporäre Haversine-Polyline (gerade
+   *  Linie) zum sofortigen Visual-Feedback während OSRM
+   *  async lädt. Coords im [lat, lng]-Format (Leaflet). */
+  previewPolylineCoords?: Array<[number, number]>;
   onReset?: () => void;
   onRouteError?: (msg: string) => void;
   tourStops?: TourStopPin[];
@@ -247,6 +256,10 @@ export default function NvDispoMap({
   // S-7 Marker-Cluster für Tour-Stops (Warehouse-Pins bleiben einzeln).
   const tourClusterRef = useRef<L.MarkerClusterGroup | null>(null);
   const tourPolylineRef = useRef<L.Polyline | null>(null);
+  // C1-B: Haversine-Preview-Layer (instant visual feedback,
+  // wird durch echtes tourPolylineRef ersetzt sobald OSRM-
+  // Geometry vom BE persistiert + invalidate-Pfad zurückkommt).
+  const previewPolylineRef = useRef<L.Polyline | null>(null);
   const tourAbortRef = useRef<AbortController | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<number | null>(null);
@@ -436,6 +449,35 @@ export default function NvDispoMap({
       }
     }
   }, [nearbyShipments, onNearbyClick]);
+
+  // C1-B: Preview-Polyline Render (Hart-Replace, kein Flicker).
+  // Wird vom MapPanel als kurzlebige Haversine-Linie übergeben,
+  // OSRM-Antwort triggert invalidate → echte tourPolyline ersetzt
+  // diese in der nächsten Render.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!previewPolylineCoords || previewPolylineCoords.length < 2) {
+      if (previewPolylineRef.current) {
+        map.removeLayer(previewPolylineRef.current);
+        previewPolylineRef.current = null;
+      }
+      return;
+    }
+    const latLngs = previewPolylineCoords.map(([la, ln]) =>
+      L.latLng(la, ln),
+    );
+    if (previewPolylineRef.current) {
+      previewPolylineRef.current.setLatLngs(latLngs);
+    } else {
+      previewPolylineRef.current = L.polyline(latLngs, {
+        color: '#6b7280',
+        weight: 3,
+        opacity: 0.7,
+        dashArray: '6 4',
+      }).addTo(map);
+    }
+  }, [previewPolylineCoords]);
 
   // Zentraler Auto-Fit: alle Shipments + Tour-Stops (inkl. Lager-Pins).
   useEffect(() => {

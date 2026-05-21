@@ -170,6 +170,20 @@ export class NvTourenService {
     }
   }
 
+  /**
+   * Map-Routing R3: Full-Recompute für Admin-Bulk-Job
+   * (POST /admin/recompute-all-tours).
+   * Sequenz: is_charter → recalc → optimize → schedule.
+   * Reihenfolge wichtig: Geometry/Schedule liest is_charter.
+   * Idempotent + best-effort (swallow per-step errors).
+   */
+  async recomputeTourFull(tourId: string): Promise<void> {
+    await this.safeRecomputeIsCharter(tourId);
+    await this.safeRecalc(tourId);
+    await this.safeOptimizeTour(tourId);
+    await this.safeRecomputeSchedule(tourId);
+  }
+
   /** Wraps recalcVorlaufCosts ohne Mutation zu blockieren. */
   private async safeRecalc(tourId: string) {
     try {

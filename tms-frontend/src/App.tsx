@@ -17,6 +17,7 @@ import InvoicesPage from './pages/InvoicesPage';
 import HallPage from './pages/HallPage';
 import MasterDataPage from './pages/MasterDataPage';
 import AdminPage from './pages/AdminPage';
+import CharterPreviewPage from './pages/CharterPreviewPage';
 import RoutingPage from './pages/RoutingPage';
 import NvGebietePage from './pages/NvGebietePage';
 import NvSubunternehmerPage from './pages/NvSubunternehmerPage';
@@ -116,6 +117,7 @@ function AppRoutes() {
         <Route path="/masterdata" element={<MasterDataLayout />}>
           <Route index element={<MasterDataPage />} />
           <Route path="admin" element={<AdminPage />} />
+          <Route path="charter-preview" element={<CharterPreviewPage />} />
           <Route path="routing" element={<RoutingPage />} />
           <Route path="nv-gebiete" element={<NvGebietePage />} />
           <Route path="nv-subunternehmer" element={<NvSubunternehmerPage />} />

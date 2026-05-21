@@ -150,6 +150,7 @@ describe('ToursService.recomputeTourFull (FV, idempotent)', () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
     );
 
     const s1 = jest.spyOn<any, any>(svc as any, 'safeRecomputeIsCharterFv').mockResolvedValue(undefined);

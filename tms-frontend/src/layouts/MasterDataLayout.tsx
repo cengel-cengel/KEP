@@ -29,6 +29,9 @@ export default function MasterDataLayout() {
         <NavLink to="/masterdata/warehouses" className={subNavClass}>
           Lager
         </NavLink>
+        <NavLink to="/masterdata/charter-preview" className={subNavClass}>
+          Charter-Preview
+        </NavLink>
         <NavLink to="/pricing-hub" className={subNavClass}>
           Preise &amp; Kosten
         </NavLink>

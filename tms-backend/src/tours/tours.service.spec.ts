@@ -81,6 +81,7 @@ function makeSvc(prisma: any): ToursService {
     {} as any,
     {} as any,
     {} as any,
+    {} as any,
   );
 }
 
@@ -269,7 +270,14 @@ function makeConsolidatePrisma(opts: {
   return { prisma, updates, created };
 }
 
-function makeConsolidateSvc(prisma: any): ToursService {
+function makeConsolidateSvc(prisma: any, opts?: {
+  warehouses?: any;
+}): ToursService {
+  const warehouses = opts?.warehouses ?? {
+    // Default-Mock: kein Umschlag-WH konfiguriert (returns null).
+    ensureUmschlagAddressId: jest.fn().mockResolvedValue(null),
+    getUmschlagWarehouse: jest.fn().mockResolvedValue(null),
+  };
   return new ToursService(
     prisma,
     {} as any,
@@ -277,6 +285,7 @@ function makeConsolidateSvc(prisma: any): ToursService {
     {} as any,
     {} as any,
     {} as any,
+    warehouses as any,
   );
 }
 
@@ -834,5 +843,148 @@ describe('ToursService — R2.4 Edge-Cases', () => {
     // im nächsten Tick.
     await new Promise((r) => setImmediate(r));
     expect(consSpy).toHaveBeenCalled();
+  });
+});
+
+// ═══ R3-C: auto_consolidated-Flag in findAll ════════════════════
+//
+// Tours-Liste enricht jeden Tour-Row mit auto_consolidated:boolean.
+// Quelle: shipment_cost_components.faktoren.source='auto_consolidate'
+// für irgendeine Sendung der Tour.
+
+describe('R3-C: findAll auto_consolidated-Flag', () => {
+  function makeFindAllPrisma(opts: {
+    tours: any[];
+    autoConsolidatedTourIds: string[];
+  }) {
+    return {
+      tours: {
+        findMany: jest.fn().mockResolvedValue(opts.tours),
+      },
+      shipment_cost_components: {
+        findMany: jest.fn().mockResolvedValue(
+          opts.autoConsolidatedTourIds.map((tourId) => ({
+            faktoren: { source: 'auto_consolidate', tour_id: tourId },
+          })),
+        ),
+      },
+    };
+  }
+
+  it('Tour mit auto-konsolidiert-Marker bekommt flag=true', async () => {
+    const tours = [
+      {
+        id: 't-1',
+        status: 'planned',
+        shipments: [{ id: 'S-1', ldm: 5 }, { id: 'S-2', ldm: 4 }],
+      },
+      {
+        id: 't-2',
+        status: 'planned',
+        shipments: [{ id: 'S-3', ldm: 3 }],
+      },
+    ];
+    const prisma = makeFindAllPrisma({
+      tours,
+      autoConsolidatedTourIds: ['t-1'],
+    });
+    const svc = new ToursService(
+      prisma as any,
+      {} as any,
+      { enrichToursWithReleaseBlockInfo: (rows: any[]) => rows } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+    const result: any = await svc.findAll({});
+    expect(result.find((t: any) => t.id === 't-1').auto_consolidated).toBe(true);
+    expect(result.find((t: any) => t.id === 't-2').auto_consolidated).toBe(false);
+  });
+
+  it('keine Sendungen → kein cost-components-Query, alle false', async () => {
+    const prisma = makeFindAllPrisma({
+      tours: [{ id: 't-empty', status: 'planned', shipments: [] }],
+      autoConsolidatedTourIds: [],
+    });
+    const svc = new ToursService(
+      prisma as any,
+      {} as any,
+      { enrichToursWithReleaseBlockInfo: (rows: any[]) => rows } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+    const result: any = await svc.findAll({});
+    expect(result[0].auto_consolidated).toBe(false);
+    expect(prisma.shipment_cost_components.findMany).not.toHaveBeenCalled();
+  });
+});
+
+// ═══ R3-B: Auto-Hub-Set bei consolidateOrCreateFvTour ═══════════
+//
+// Wenn keine FV-Match → create new tour mit hub_start_address_id =
+// Umschlag-WH-Address (ensureUmschlagAddressId).
+
+describe('R3-B: consolidateOrCreateFvTour Auto-Hub-Set', () => {
+  it('hub_start_address_id wird auf Umschlag-Address gesetzt bei Create', async () => {
+    const { prisma, created } = makeConsolidatePrisma({
+      shipment: makeShipment(),
+      newTourId: 't-new',
+    });
+    const warehouses = {
+      ensureUmschlagAddressId: jest.fn().mockResolvedValue('addr-umschlag-1'),
+    };
+    const svc = makeConsolidateSvc(prisma, { warehouses });
+    jest.spyOn(svc, 'findBestMatchForShipment').mockResolvedValue([] as any);
+
+    const res = await svc.consolidateOrCreateFvTour('S-1');
+    expect(res.action).toBe('created');
+    expect(warehouses.ensureUmschlagAddressId).toHaveBeenCalledTimes(1);
+    expect(created).toHaveLength(1);
+    expect(created[0].hub_start_address_id).toBe('addr-umschlag-1');
+  });
+
+  it('hub_start_address_id bleibt null wenn kein Umschlag-WH konfiguriert', async () => {
+    const { prisma, created } = makeConsolidatePrisma({
+      shipment: makeShipment(),
+      newTourId: 't-new',
+    });
+    const warehouses = {
+      ensureUmschlagAddressId: jest.fn().mockResolvedValue(null),
+    };
+    const svc = makeConsolidateSvc(prisma, { warehouses });
+    jest.spyOn(svc, 'findBestMatchForShipment').mockResolvedValue([] as any);
+
+    const res = await svc.consolidateOrCreateFvTour('S-1');
+    expect(res.action).toBe('created');
+    expect(created[0].hub_start_address_id).toBeNull();
+  });
+
+  it('ensureUmschlagAddressId NICHT aufgerufen wenn consolidate (kein Create)', async () => {
+    const matchTour = {
+      id: 't-match',
+      status: 'planned',
+      subcontractor_id: 'sub-1',
+      subcontractors: { has_adr_license: true },
+      shipments: [],
+    };
+    const { prisma } = makeConsolidatePrisma({
+      shipment: makeShipment(),
+      matchTour,
+    });
+    const warehouses = {
+      ensureUmschlagAddressId: jest.fn().mockResolvedValue('addr-umschlag-1'),
+    };
+    const svc = makeConsolidateSvc(prisma, { warehouses });
+    jest.spyOn(svc, 'findBestMatchForShipment').mockResolvedValue([
+      { tour_id: 't-match', mode: 'fv', score: 85, factors: [], reason: '' },
+    ] as any);
+
+    const res = await svc.consolidateOrCreateFvTour('S-1');
+    expect(res.action).toBe('consolidated');
+    // ensureUmschlagAddressId NICHT aufgerufen — Tour existierte schon.
+    expect(warehouses.ensureUmschlagAddressId).not.toHaveBeenCalled();
   });
 });

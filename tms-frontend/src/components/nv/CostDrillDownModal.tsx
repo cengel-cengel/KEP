@@ -17,6 +17,9 @@ export type CostComponent = {
     zeitAnteilFaktor?: number;
     routingAnteilFaktor?: number;
     kapazitaetAnteilFaktor?: number;
+    // R3-A: HAUPTLAUF-Faktoren.
+    tour_id?: string;
+    source?: string;
   } | null;
   tour_total_kosten_eur: string | number | null;
   tour_gesamt_stops: number | null;
@@ -60,13 +63,19 @@ export default function CostDrillDownModal({
     (x) => x.phase === 'VORLAUF' && (!tourId || x.nv_tour_id === tourId),
   );
 
+  // R3-A: Phase-aware Title + Body. HAUPTLAUF hat keine 4-Anteile-
+  // Aufteilung (nur kapazitaet_anteil_eur = total). Eigener Render-
+  // Branch.
+  const isHauptlauf = c?.phase === 'HAUPTLAUF';
+  const titlePhase = isHauptlauf ? 'Hauptlauf' : 'Vorlauf';
+
   return (
     <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div>
             <h2 className="font-semibold text-gray-800">
-              Vorlauf-Kosten {shipmentNumber ?? ''}
+              {titlePhase}-Kosten {shipmentNumber ?? ''}
             </h2>
             {customerName && (
               <p className="text-xs text-gray-500">{customerName}</p>
@@ -84,7 +93,7 @@ export default function CostDrillDownModal({
             </p>
           )}
 
-          {c && (
+          {c && !isHauptlauf && (
             <>
               <div className="bg-gray-50 border rounded p-2 text-xs space-y-0.5">
                 <div className="text-gray-500 uppercase text-[10px]">
@@ -157,6 +166,56 @@ export default function CostDrillDownModal({
                   </div>
                 </div>
               )}
+            </>
+          )}
+
+          {c && isHauptlauf && (
+            <>
+              <div className="bg-emerald-50 border border-emerald-100 rounded p-2 text-xs space-y-0.5">
+                <div className="text-emerald-700 uppercase text-[10px] font-medium">
+                  FV-Tour-Snapshot
+                </div>
+                {c.faktoren?.tour_id && (
+                  <div className="font-mono">
+                    Tour-ID: {c.faktoren.tour_id.slice(0, 8)}
+                  </div>
+                )}
+                {c.faktoren?.source === 'auto_consolidate' && (
+                  <div className="text-emerald-700">
+                    Auto-konsolidiert (CHARTER_UMSCHLAG-Flow)
+                  </div>
+                )}
+              </div>
+
+              <table className="w-full text-sm">
+                <tbody>
+                  <tr className="border-b">
+                    <td className="py-1.5">Hauptlauf-Rate (€/100kg)</td>
+                    <td className="py-1.5 text-right font-mono">
+                      € {fmt(c.kapazitaet_anteil_eur)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 font-semibold">Total Hauptlauf</td>
+                    <td className="py-2 text-right font-mono font-semibold text-emerald-700">
+                      € {fmt(c.total_eur)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div className="border-t pt-2 text-xs text-gray-600 space-y-0.5">
+                <div className="text-[10px] uppercase text-gray-500">
+                  Berechnungs-Quelle
+                </div>
+                <div>
+                  Cost-Rate-Engine (calculateMainCarriageCost):
+                  chargeableWeight × rate_per_100kg.
+                </div>
+                <div className="text-[10px] text-gray-500">
+                  Stand: {new Date(c.computed_at).toLocaleString('de')}
+                </div>
+              </div>
             </>
           )}
         </div>

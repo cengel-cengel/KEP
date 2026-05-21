@@ -198,11 +198,30 @@ export default function TourDetailsTab({
 function FvTourBody({ tourId }: { tourId: string }) {
   const qc = useQueryClient();
   const panel = usePanel();
+  // R3-G1: FV-Symmetrie zu NvTourBody (C2-J-Pattern).
+  // selectedStopId aus workspace.tsx (bidirektionale Map↔Panel-Sync).
+  const { selectedStopId } = useWorkspace();
   const tourQ = useQuery<TourDetail>({
     queryKey: ['fv-tour-detail', tourId],
     queryFn: async () => (await api.get<TourDetail>(`/tours/${tourId}`)).data,
     staleTime: 30_000,
   });
+
+  // R3-G1: Scroll-to-View für selectedStopId (analog NvTourBody).
+  // Map-Marker-Klick setzt selectedStopId; Sendungs-Row mit
+  // data-stop-id={shipment.id} wird in den Viewport gescrollt.
+  useEffect(() => {
+    if (!selectedStopId) return;
+    const el = document.querySelector(
+      `[data-stop-id="${selectedStopId}"]`,
+    );
+    if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
+      (el as HTMLElement).scrollIntoView({
+        block: 'nearest',
+        behavior: 'smooth',
+      });
+    }
+  }, [selectedStopId]);
 
   // B'-2: 2 Sub-Tabs (Stops compact, Tabelle detail).
   const [fvSubTab, setFvSubTab] = useState<'stops' | 'tabelle'>('stops');
@@ -1739,6 +1758,7 @@ function FvStopsListView({
         <button
           key={s.id}
           type="button"
+          data-stop-id={s.id}
           onClick={() => onShipmentClick(s.id)}
           className="w-full text-left text-xs flex items-center gap-2 py-0.5 px-1 rounded hover:bg-gray-50"
         >
@@ -1806,6 +1826,7 @@ function FvShipmentsTableView({
         {shipments.map((s, i) => (
           <tr
             key={s.id}
+            data-stop-id={s.id}
             onClick={() => onShipmentClick(s.id)}
             className="cursor-pointer hover:bg-blue-50"
           >

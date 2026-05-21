@@ -508,7 +508,8 @@ function CostsBreakdownSection({ shipmentId }: { shipmentId: string }) {
               return (
                 <li
                   key={c.id}
-                  className="py-2 flex items-center gap-2 text-sm"
+                  className="py-2 flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 -mx-2 px-2 rounded"
+                  onClick={() => setOpenCC(c)}
                 >
                   <span className="font-mono text-xs text-gray-600">
                     {faktoren?.tour_id?.slice(0, 8) ?? '—'}

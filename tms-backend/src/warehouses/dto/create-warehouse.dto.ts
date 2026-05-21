@@ -56,6 +56,15 @@ export class CreateWarehouseDto {
   @IsBoolean()
   is_default?: boolean;
 
+  @ApiPropertyOptional({
+    description:
+      'R3-B: Markiert dieses Lager als Umschlag-Lager für ' +
+      'CHARTER_UMSCHLAG-Sendungen. FV-Hauptlauf startet ab diesem Hub.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  is_umschlag?: boolean;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()

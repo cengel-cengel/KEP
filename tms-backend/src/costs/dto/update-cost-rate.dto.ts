@@ -1,40 +1,8 @@
-import { IsBoolean, IsDateString, IsNumber, IsOptional, IsString } from 'class-validator';
+/**
+ * A-1.6: PartialType-Refactor (1:1-Felder zu CreateCostRateDto).
+ * Erbt @ApiProperty + Validatoren — keine doppelte Annotation.
+ */
+import { PartialType } from '@nestjs/swagger';
+import { CreateCostRateDto } from './create-cost-rate.dto';
 
-export class UpdateCostRateDto {
-  @IsOptional()
-  @IsString()
-  rateType?: string;
-
-  @IsOptional()
-  @IsString()
-  name?: string;
-
-  @IsOptional()
-  @IsString()
-  relationId?: string | null;
-
-  @IsOptional()
-  @IsString()
-  subcontractorId?: string | null;
-
-  @IsOptional()
-  @IsNumber()
-  ratePer100kg?: number;
-
-  @IsOptional()
-  @IsNumber()
-  minCharge?: number;
-
-  @IsOptional()
-  @IsDateString()
-  validFrom?: string;
-
-  @IsOptional()
-  @IsDateString()
-  validTo?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  isActive?: boolean;
-}
-
+export class UpdateCostRateDto extends PartialType(CreateCostRateDto) {}

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import NvDispoMap from '../components/nv/NvDispoMap';
 import type { MapShipment } from '../components/nv/NvDispoMap';
 import { api } from '../lib/api';
+import { buildPreviewPolyline } from '../lib/haversine';
 import {
   buildFvTourStops,
   type FvTourDetailLite,
@@ -94,16 +95,52 @@ export default function FvDispoMapPopupPage() {
     staleTime: 30_000,
   });
 
+  // R3-G2: Haversine-Preview-Polyline (Symmetrie zu C1-B MapPanel).
+  // onMutate: berechne Preview aus Tour-Stops + new shipment.
+  // onSettled: clear Preview (OSRM-Antwort über invalidate eingefangen).
+  const [previewPolyline, setPreviewPolyline] = useState<
+    Array<[number, number]> | undefined
+  >(undefined);
+
   const addNearbyMut = useMutation({
     mutationFn: async (shipmentId: string) => {
       await api.post(`/tours/${tourId}/batch-stops`, {
         adds: [shipmentId],
       });
     },
+    onMutate: (shipmentId: string) => {
+      // Finde new-shipment coords aus nearbyQ-Data.
+      const newShip = (nearbyQ.data ?? []).find((n) => n.id === shipmentId);
+      if (!newShip || !tourQ.data) return;
+      // Tour-Stops als Haversine-Punkte (lat/lng nur).
+      const stopsForPreview = tourStops
+        .filter((s) => !s.isWarehouse)
+        .map((s) => ({ lat: s.lat, lng: s.lng }));
+      stopsForPreview.push({ lat: newShip.lat, lng: newShip.lng });
+      // FV: kein Charter-Flag im Pop-out-Context; nutze hub_start als
+      // warehouse-Proxy wenn vorhanden. Fallback: kein Warehouse →
+      // Preview-Charter-Modus (nur Stops).
+      const wh = (tourQ.data as { hub_start_address?: { lat?: number | null; lng?: number | null } | null })
+        .hub_start_address;
+      const warehouse =
+        wh?.lat != null && wh?.lng != null
+          ? { lat: Number(wh.lat), lng: Number(wh.lng) }
+          : null;
+      const preview = buildPreviewPolyline({
+        warehouse,
+        stops: stopsForPreview,
+        isCharter: !warehouse,
+      });
+      if (preview.length >= 2) setPreviewPolyline(preview);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['fv-tour-detail', tourId] });
       qc.invalidateQueries({ queryKey: ['fv-nearby', tourId] });
       qc.invalidateQueries({ queryKey: ['fv-eligible'] });
+    },
+    onSettled: () => {
+      // Clear-Delay: 2s → genug für invalidate-Cycle + neue OSRM-Polyline.
+      setTimeout(() => setPreviewPolyline(undefined), 2000);
     },
   });
 
@@ -158,6 +195,7 @@ export default function FvDispoMapPopupPage() {
             shipments={emptyShipments}
             tourStops={tourStops}
             tourPolyline={tourQ.data.polyline_geometry ?? null}
+            previewPolylineCoords={previewPolyline}
             clickedSequence={[]}
             onPinClick={() => {
               /* FV map ist read-only (Pop-out zeigt eine Tour). */

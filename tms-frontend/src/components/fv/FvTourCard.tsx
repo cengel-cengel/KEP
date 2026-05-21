@@ -68,12 +68,16 @@ export default function FvTourCard({
   tourId,
   tourNumber,
   status,
+  autoConsolidated,
   onDropShipment,
   onRemoveStop,
 }: {
   tourId: string;
   tourNumber?: string | null;
   status: string;
+  /** R3-C: Auto-Konsolidiert-Marker (mind. 1 CHARTER_UMSCHLAG-Sendung
+   *  via consolidateOrCreateFvTour). */
+  autoConsolidated?: boolean;
   onDropShipment: (tourId: string, shipmentId: string) => void;
   onRemoveStop: (tourId: string, shipmentId: string) => void;
 }) {
@@ -195,6 +199,14 @@ export default function FvTourCard({
           <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
             {status}
           </span>
+          {autoConsolidated && (
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium"
+              title="Mindestens 1 CHARTER_UMSCHLAG-Sendung via consolidateOrCreateFvTour zugeordnet"
+            >
+              auto-konsolidiert
+            </span>
+          )}
           {km != null && (
             <span className="text-xs text-gray-600">
               · {km.toFixed(1)} km

@@ -1,54 +1,10 @@
-import {
-  IsBoolean,
-  IsNumber,
-  IsOptional,
-  IsString,
-  Length,
-  MaxLength,
-} from 'class-validator';
-import { Type } from 'class-transformer';
+/**
+ * A-1.6: PartialType-Refactor (1:1-Felder zu CreateWarehouseDto).
+ * Erbt @ApiProperty + Validatoren — incl. R3-B is_umschlag-Feld
+ * (B-Kopplung: B fügte is_umschlag zu CreateWarehouseDto, hier
+ * automatisch geerbt).
+ */
+import { PartialType } from '@nestjs/swagger';
+import { CreateWarehouseDto } from './create-warehouse.dto';
 
-export class UpdateWarehouseDto {
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  name?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  street?: string | null;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  zip?: string | null;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  city?: string | null;
-
-  @IsOptional()
-  @IsString()
-  @Length(2, 2)
-  country?: string;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  lat?: number | null;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  lng?: number | null;
-
-  @IsOptional()
-  @IsBoolean()
-  is_default?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  active?: boolean;
-}
+export class UpdateWarehouseDto extends PartialType(CreateWarehouseDto) {}

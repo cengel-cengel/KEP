@@ -6,6 +6,7 @@ import { StatusModule } from '../status/status.module';
 import { NvTourenModule } from '../nv-touren/nv-touren.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { CostsModule } from '../costs/costs.module';
+import { WarehousesModule } from '../warehouses/warehouses.module';
 
 @Module({
   controllers: [ToursController],
@@ -14,12 +15,15 @@ import { CostsModule } from '../costs/costs.module';
   // nv-touren.module.ts-Kommentar).
   // R2.2: CostsModule für HAUPTLAUF-Kosten via
   // calculateMainCarriageCost.
+  // R3-B: WarehousesModule für Umschlag-WH-Auto-Hub-Set bei
+  // consolidateOrCreateFvTour.
   imports: [
     DocumentsModule,
     StatusModule,
     forwardRef(() => NvTourenModule),
     RealtimeModule,
     CostsModule,
+    WarehousesModule,
   ],
   exports: [ToursService],
 })

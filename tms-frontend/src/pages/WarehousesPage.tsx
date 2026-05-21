@@ -15,11 +15,18 @@ type Warehouse = {
   lat: string | number | null;
   lng: string | number | null;
   is_default: boolean;
+  is_umschlag: boolean;
   active: boolean;
 };
 
 function emptyForm(): Partial<Warehouse> {
-  return { name: '', country: 'DE', is_default: false, active: true };
+  return {
+    name: '',
+    country: 'DE',
+    is_default: false,
+    is_umschlag: false,
+    active: true,
+  };
 }
 
 function buildColumns(args: {
@@ -39,6 +46,14 @@ function buildColumns(args: {
           {w.is_default && (
             <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
               Standard
+            </span>
+          )}
+          {w.is_umschlag && (
+            <span
+              className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700"
+              title="Umschlag-Lager (CHARTER_UMSCHLAG-Flow Hub-Start)"
+            >
+              Umschlag
             </span>
           )}
         </span>
@@ -257,6 +272,7 @@ function WarehouseModal({
       lat: form.lat != null ? Number(form.lat) : null,
       lng: form.lng != null ? Number(form.lng) : null,
       is_default: form.is_default ?? false,
+      is_umschlag: form.is_umschlag ?? false,
       active: form.active ?? true,
     });
   };
@@ -379,6 +395,17 @@ function WarehouseModal({
               onChange={(e) => update('is_default', e.target.checked)}
             />
             <span>Standard-Lager</span>
+          </label>
+          <label
+            className="flex items-center gap-2 text-sm"
+            title="Charter-Umschlag-Flow: FV-Hauptlauf-Touren starten ab diesem Lager."
+          >
+            <input
+              type="checkbox"
+              checked={form.is_umschlag ?? false}
+              onChange={(e) => update('is_umschlag', e.target.checked)}
+            />
+            <span>Umschlag-Lager</span>
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input

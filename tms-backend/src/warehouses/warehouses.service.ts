@@ -40,6 +40,69 @@ export class WarehousesService {
     });
   }
 
+  /**
+   * R3-B: Umschlag-Lager — wird vom Charter-Umschlag-2-Touren-Flow
+   * konsumiert (consolidateOrCreateFvTour setzt hub_start auf das
+   * Umschlag-WH-Address). Falls mehrere is_umschlag-WHs: returns
+   * den ersten (Reihenfolge name asc).
+   */
+  async getUmschlagWarehouse() {
+    return this.prisma.warehouses.findFirst({
+      where: { is_umschlag: true, active: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  /**
+   * R3-B: addresses-Bridge für Umschlag-WH.
+   * tours.hub_start_address_id verweist auf addresses-Tabelle, nicht
+   * direkt warehouses. Helper sucht/erstellt ein addresses-Record
+   * (type='depot') passend zum Umschlag-WH und liefert die ID.
+   * Idempotent: matched per (street, zip, city) wenn schon vorhanden.
+   * Liefert null wenn kein Umschlag-WH konfiguriert.
+   */
+  async ensureUmschlagAddressId(): Promise<string | null> {
+    const wh = await this.getUmschlagWarehouse();
+    if (!wh) return null;
+    // addresses-NOT-NULL-Constraints: street, zip, city. WH-Felder
+    // sind optional → fail-safe wenn unvollständig, kein Throw.
+    if (!wh.street || !wh.zip || !wh.city) {
+      this.logger.warn(
+        `ensureUmschlagAddress: WH ${wh.id} hat unvollständige Adresse — skip`,
+      );
+      return null;
+    }
+    // Match by full address (street+zip+city). Idempotent: existing
+    // address wird zurückgegeben, nichts dupliziert.
+    const existing = await this.prisma.addresses.findFirst({
+      where: {
+        type: 'depot',
+        street: wh.street,
+        zip: wh.zip,
+        city: wh.city,
+      },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+    const created = await this.prisma.addresses.create({
+      data: {
+        type: 'depot',
+        name: wh.name,
+        street: wh.street,
+        zip: wh.zip,
+        city: wh.city,
+        country_code: wh.country,
+        lat: wh.lat ?? undefined,
+        lng: wh.lng ?? undefined,
+      },
+      select: { id: true },
+    });
+    this.logger.log(
+      `ensureUmschlagAddress: addresses-Record erstellt id=${created.id} (wh=${wh.id})`,
+    );
+    return created.id;
+  }
+
   async getOne(id: string) {
     const w = await this.prisma.warehouses.findUnique({ where: { id } });
     if (!w) throw new NotFoundException('Lager nicht gefunden');
@@ -114,6 +177,7 @@ export class WarehousesService {
         lat: dto.lat ?? geocoded?.lat ?? undefined,
         lng: dto.lng ?? geocoded?.lng ?? undefined,
         is_default: dto.is_default ?? false,
+        is_umschlag: dto.is_umschlag ?? false,
         active: dto.active ?? true,
       },
     });
@@ -191,6 +255,7 @@ export class WarehousesService {
         lat: lat === undefined ? undefined : lat,
         lng: lng === undefined ? undefined : lng,
         is_default: dto.is_default ?? undefined,
+        is_umschlag: dto.is_umschlag ?? undefined,
         active: dto.active ?? undefined,
       },
     });

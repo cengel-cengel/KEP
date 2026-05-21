@@ -37,6 +37,7 @@ import { buildTourRoute } from '../lib/routeGeometry.lib';
 import { deriveIsCharter } from '../lib/tourCharterDerive.lib';
 import { computeFvSchedule } from './fv-scheduler.lib';
 import { CostsService } from '../costs/costs.service';
+import { WarehousesService } from '../warehouses/warehouses.service';
 
 /**
  * R2.1: nächster Werktag (Mo-Fr) ab `from`. Skip Sa/So.
@@ -87,6 +88,9 @@ export class ToursService {
     // CarriageCost best-effort, dann shipment_cost_components-
     // Mirror mit phase='HAUPTLAUF').
     private readonly costs: CostsService,
+    // R3-B: WarehousesService für ensureUmschlagAddressId →
+    // tour.hub_start_address_id beim Charter-Umschlag-Auto-Create.
+    private readonly warehouses: WarehousesService,
   ) {}
 
   async findAll(filters: { status?: string; date?: Date }) {
@@ -128,7 +132,35 @@ export class ToursService {
       },
       orderBy: [{ tour_date: 'asc' }, { created_at: 'asc' }],
     });
-    return this.locks.enrichToursWithReleaseBlockInfo(rows);
+
+    // R3-C: Auto-Konsolidiert-Marker. Lade HAUPTLAUF-cost_components
+    // mit faktoren.source='auto_consolidate' für alle shipment_ids
+    // dieser Tours. Tour mit ≥1 solchem Marker wird als
+    // auto_consolidated=true geflaggt (UI-Badge + Filter).
+    const shipmentIds: string[] = [];
+    for (const t of rows) {
+      for (const s of t.shipments ?? []) shipmentIds.push(s.id);
+    }
+    const autoTourIds = new Set<string>();
+    if (shipmentIds.length > 0) {
+      const components = await this.prisma.shipment_cost_components.findMany({
+        where: {
+          phase: 'HAUPTLAUF',
+          shipment_id: { in: shipmentIds },
+          faktoren: { path: ['source'], equals: 'auto_consolidate' } as any,
+        },
+        select: { faktoren: true },
+      });
+      for (const c of components) {
+        const f = c.faktoren as { tour_id?: string } | null;
+        if (f?.tour_id) autoTourIds.add(f.tour_id);
+      }
+    }
+    const enriched = rows.map((t) => ({
+      ...t,
+      auto_consolidated: autoTourIds.has(t.id),
+    }));
+    return this.locks.enrichToursWithReleaseBlockInfo(enriched as any);
   }
 
   /** Abgeschlossene / erledigte Touren inkl. Sendungsdetails (für Archiv-Übersicht). */
@@ -632,6 +664,13 @@ export class ToursService {
 
     // Kein Match → neue FV-Tour mit Smart-Defaults anlegen.
     const tourDate = shipment.delivery_date ?? nextBusinessDay(new Date());
+    // R3-B: hub_start auf Umschlag-WH automatisch setzen (FV startet
+    // ab Umschlag-Lager — "Umschlag immer eigenes Lager"). Wenn kein
+    // is_umschlag-WH konfiguriert oder unvollständige Adresse:
+    // null lassen (Mensch füllt manuell, scheduler fällt auf
+    // default-WH zurück).
+    const hubStartAddressId =
+      await this.warehouses.ensureUmschlagAddressId();
     const created = await this.prisma.tours.create({
       data: {
         tour_date: tourDate,
@@ -640,7 +679,8 @@ export class ToursService {
         max_ldm: 13.6, // Default-Trailer; Mensch kann später ändern.
         max_weight_kg: 24000,
         // subcontractor_id null lassen — Mensch weist zu vor Dispatch.
-        // hub_start/end null lassen — Mensch füllt im UI.
+        hub_start_address_id: hubStartAddressId,
+        // hub_end null lassen — Mensch füllt im UI (Destination-Region).
         created_by:
           (await this.prisma.users.findFirst({ select: { id: true } }))?.id ??
           '',

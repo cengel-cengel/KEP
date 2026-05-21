@@ -67,6 +67,8 @@ interface FvTourListItem {
   subcontractor_id?: string | null;
   subcontractors?: { id: string; name: string } | null;
   shipments?: { id: string }[];
+  /** R3-C: auto-konsolidiert (mind. 1 Shipment via consolidate-Flow). */
+  auto_consolidated?: boolean;
 }
 
 export interface BoardPanelProps {
@@ -360,12 +362,20 @@ export default function BoardPanel({
     );
   }, [touren, mode, filter.gebiet]);
 
+  // R3-C: Filter "auto-konsolidiert" (FV-Board-only). Default off,
+  // session-local (kein localStorage — Filter-State pro Browser-Tab).
+  const [autoConsolidatedOnly, setAutoConsolidatedOnly] = useState(false);
+
   const sortedFvTouren = useMemo(() => {
     if (mode !== 'fv') return [];
-    return [...(touren as FvTourListItem[])].sort((a, b) =>
+    let arr = [...(touren as FvTourListItem[])];
+    if (autoConsolidatedOnly) {
+      arr = arr.filter((t) => t.auto_consolidated === true);
+    }
+    return arr.sort((a, b) =>
       (a.tour_number ?? '').localeCompare(b.tour_number ?? ''),
     );
-  }, [touren, mode]);
+  }, [touren, mode, autoConsolidatedOnly]);
 
   // === Auto-Vorschlag (NV-only) ======================================
   const runAutoSuggest = () => {
@@ -416,8 +426,22 @@ export default function BoardPanel({
       <div className="bg-white border-b px-4 py-2 flex items-center gap-2">
         <h2 className="font-semibold text-sm">
           {mode === 'nv' ? 'NV-Touren' : 'FV-Touren'} {datum} (
-          {filteredTouren.length})
+          {mode === 'fv' ? sortedFvTouren.length : filteredTouren.length})
         </h2>
+        {mode === 'fv' && (
+          <label
+            className="ml-2 flex items-center gap-1 text-[11px] text-gray-600 cursor-pointer"
+            title="Nur Touren mit auto-konsolidierten CHARTER_UMSCHLAG-Sendungen"
+          >
+            <input
+              type="checkbox"
+              className="w-3 h-3"
+              checked={autoConsolidatedOnly}
+              onChange={(e) => setAutoConsolidatedOnly(e.target.checked)}
+            />
+            <span>nur auto-konsolidiert</span>
+          </label>
+        )}
         {mode === 'nv' && (
           <button
             onClick={runAutoSuggest}
@@ -521,6 +545,7 @@ export default function BoardPanel({
               tourId={t.id}
               tourNumber={t.tour_number}
               status={t.status}
+              autoConsolidated={t.auto_consolidated}
               onDropShipment={(tourId, shipmentId) =>
                 dropOnTour(tourId, [shipmentId])
               }

@@ -81,4 +81,28 @@ export interface Shipment {
     name: string;
     country_to?: string | null;
   } | null;
+
+  /** R2.3: Charter-Umschlag-Flow. */
+  classification?: string | null;
+  /** R2.3: FV-Tour-FK (Hauptlauf). */
+  tour_id?: string | null;
+  tours?: {
+    id: string;
+    tour_number?: string | null;
+    tour_date?: string | null;
+    status?: string | null;
+    subcontractors?: { id: string; name: string } | null;
+  } | null;
+  /** R2.3: NV-Vorhol-Tour-Link (PICKUP-Stop-Set). */
+  nv_tour_stops?: Array<{
+    id: string;
+    stop_type?: string | null;
+    status?: string | null;
+    nv_tour?: {
+      id: string;
+      datum?: string | null;
+      status?: string | null;
+      nv_stamm_tour?: { code?: string | null; name?: string | null } | null;
+    } | null;
+  }>;
 }

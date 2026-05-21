@@ -50,6 +50,7 @@ function makeService(prisma: any): ToursService {
     {} as any,
     {} as any,
     {} as any,
+    {} as any,
   );
 }
 
@@ -151,6 +152,37 @@ describe('eligibleShipmentsFv WHERE-Struktur', () => {
     expect(addrFilter.AND).toBeDefined();
     const notInClause = addrFilter.AND.find((a: any) => a.zip?.notIn);
     expect(notInClause?.zip?.notIn).toContain('71499');
+  });
+
+  it('OR-Branch 4 (R2.1): CHARTER_UMSCHLAG + nv_tour PICKUP-completed', async () => {
+    const { prisma, calls } = makeMockPrisma();
+    await makeService(prisma).eligibleShipmentsFv({});
+    const where = calls.shipmentsFindMany[0].where;
+    const orList = where.AND?.[0]?.OR ?? [];
+    const branch4 = orList[3];
+    expect(branch4).toBeDefined();
+    expect(branch4.AND).toBeDefined();
+    // Branch 4 hat: classification=CHARTER_UMSCHLAG + nv_tour_stops
+    // some PICKUP+COMPLETED. KEIN relation_id, KEIN loading-zip,
+    // KEIN partner_delivered (das unterscheidet Branch 4 von 1).
+    const classification = branch4.AND.find(
+      (a: any) => a.classification !== undefined,
+    );
+    expect(classification?.classification).toBe('CHARTER_UMSCHLAG');
+    const stopFilter = branch4.AND.find(
+      (a: any) => a.nv_tour_stops?.some,
+    );
+    expect(stopFilter?.nv_tour_stops?.some?.stop_type).toBe('PICKUP');
+    expect(stopFilter?.nv_tour_stops?.some?.nv_tour?.status).toBe(
+      'COMPLETED',
+    );
+    // Negativ-Checks: keine relation_id, kein partner_delivered.
+    const hasRel = branch4.AND.some((a: any) => a.relation_id);
+    expect(hasRel).toBe(false);
+    const hasPartner = branch4.AND.some(
+      (a: any) => a.partner_delivered !== undefined,
+    );
+    expect(hasPartner).toBe(false);
   });
 
   it('leerer fvRelations-Set → leere Antwort, kein findMany-Call', async () => {

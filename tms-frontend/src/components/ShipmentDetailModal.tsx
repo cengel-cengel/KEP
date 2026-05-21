@@ -143,6 +143,14 @@ export default function ShipmentDetailModal({
               <span className="text-xs rounded bg-gray-100 text-gray-700 px-2 py-0.5 uppercase">
                 {status}
               </span>
+              {shipment.classification === 'CHARTER_UMSCHLAG' && (
+                <span
+                  className="text-[10px] rounded bg-amber-100 text-amber-800 px-2 py-0.5 uppercase font-medium"
+                  title="Charter-Umschlag: NV-Vorholung → Umschlag-Lager → FV-Hauptlauf"
+                >
+                  Charter-Umschlag
+                </span>
+              )}
             </Dialog.Title>
             <Dialog.Close asChild>
               <button className="text-gray-500 hover:text-gray-700" aria-label="Schließen">
@@ -257,7 +265,8 @@ export default function ShipmentDetailModal({
                 </div>
               )}
             </Section>
-            <VorlaufCostsSection shipmentId={shipment.id} />
+            <TourAssignmentSection shipment={shipment} />
+            <CostsBreakdownSection shipmentId={shipment.id} />
           </div>
 
           <div className="flex items-center justify-between gap-2 px-5 py-3 border-t bg-gray-50 rounded-b-xl">
@@ -326,7 +335,98 @@ function KV({ label, value }: { label: string; value: string }) {
   );
 }
 
-function VorlaufCostsSection({ shipmentId }: { shipmentId: string }) {
+/**
+ * R2.3: 2-Tour-Sicht für CHARTER_UMSCHLAG (NV-Vorholung + FV-Hauptlauf).
+ * Auch sichtbar für nicht-Charter-Sendungen die genau eine Tour haben.
+ * Touren sind klickbar (Link-Card mit Status + Datum).
+ */
+function TourAssignmentSection({ shipment }: { shipment: Shipment }) {
+  // NV-Vorhol-Stops (kann mehrere PICKUP-Stops haben falls
+  // re-disponiert wurde; meist 1).
+  const nvStops = (shipment.nv_tour_stops ?? []).filter(
+    (s) => s.nv_tour != null,
+  );
+  const fvTour = shipment.tours;
+  if (nvStops.length === 0 && !fvTour) return null;
+
+  return (
+    <section className="rounded-xl border border-gray-200 p-4">
+      <h3 className="text-sm font-semibold text-gray-700 mb-2">
+        Tour-Zuordnung
+      </h3>
+      <div className="space-y-2">
+        {nvStops.map((s) => {
+          const t = s.nv_tour!;
+          return (
+            <div
+              key={s.id}
+              className="flex items-center gap-2 text-sm rounded-md border border-gray-100 bg-blue-50/40 px-3 py-1.5"
+            >
+              <span className="text-[10px] uppercase text-blue-700 font-medium">
+                NV-Vorholung
+              </span>
+              <span className="font-mono text-xs">
+                {t.nv_stamm_tour?.code ?? '—'}
+              </span>
+              <span className="text-xs text-gray-500">
+                {t.datum?.slice(0, 10) ?? ''}
+              </span>
+              <span
+                className={`ml-auto text-[10px] uppercase rounded px-1.5 py-0.5 ${
+                  t.status === 'COMPLETED'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                {t.status ?? '—'}
+              </span>
+              {s.stop_type && (
+                <span className="text-[10px] text-gray-500 font-mono">
+                  {s.stop_type}
+                </span>
+              )}
+            </div>
+          );
+        })}
+        {fvTour && (
+          <div className="flex items-center gap-2 text-sm rounded-md border border-gray-100 bg-emerald-50/40 px-3 py-1.5">
+            <span className="text-[10px] uppercase text-emerald-700 font-medium">
+              FV-Hauptlauf
+            </span>
+            <span className="font-mono text-xs">
+              {fvTour.tour_number ?? fvTour.id.slice(0, 8)}
+            </span>
+            <span className="text-xs text-gray-500">
+              {fvTour.tour_date?.slice(0, 10) ?? ''}
+            </span>
+            {fvTour.subcontractors && (
+              <span className="text-xs text-gray-600">
+                · {fvTour.subcontractors.name}
+              </span>
+            )}
+            <span
+              className={`ml-auto text-[10px] uppercase rounded px-1.5 py-0.5 ${
+                fvTour.status === 'planned'
+                  ? 'bg-amber-100 text-amber-700'
+                  : fvTour.status === 'dispatched'
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              {fvTour.status ?? '—'}
+            </span>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * R2.3: Kosten-Breakdown — VORLAUF + HAUPTLAUF separat.
+ * Konsumiert /shipments/:id/cost-components (liefert beide phases).
+ */
+function CostsBreakdownSection({ shipmentId }: { shipmentId: string }) {
   const [openCC, setOpenCC] = useState<CostComponent | null>(null);
   const q = useQuery<CostComponent[]>({
     queryKey: ['shipment-cost-comp', shipmentId],
@@ -337,46 +437,97 @@ function VorlaufCostsSection({ shipmentId }: { shipmentId: string }) {
     staleTime: 30_000,
   });
   const vorlauf = (q.data ?? []).filter((c) => c.phase === 'VORLAUF');
+  const hauptlauf = (q.data ?? []).filter((c) => c.phase === 'HAUPTLAUF');
+  const total =
+    vorlauf.reduce((a, c) => a + Number(c.total_eur ?? 0), 0) +
+    hauptlauf.reduce((a, c) => a + Number(c.total_eur ?? 0), 0);
 
   return (
     <section className="rounded-xl border border-gray-200 p-4">
-      <h3 className="text-sm font-semibold text-gray-700 mb-2">
-        Vorlauf-Kosten
-      </h3>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold text-gray-700">
+          Kosten-Komponenten
+        </h3>
+        <span className="text-xs font-mono text-emerald-700">
+          Σ € {total.toFixed(2)}
+        </span>
+      </div>
       {q.isLoading && <div className="text-sm text-gray-500">Lade...</div>}
-      {!q.isLoading && vorlauf.length === 0 && (
+      {!q.isLoading && vorlauf.length === 0 && hauptlauf.length === 0 && (
         <p className="text-sm text-gray-500">
-          Noch keiner NV-Tour zugeordnet.
+          Noch keiner Tour zugeordnet.
         </p>
       )}
-      <ul className="divide-y divide-gray-100">
-        {vorlauf.map((c) => {
-          const tour = (c as unknown as {
-            nv_tour?: {
-              id: string;
-              datum: string;
-              nv_stamm_tour?: { code: string };
-            };
-          }).nv_tour;
-          return (
-            <li
-              key={c.id}
-              className="py-2 flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 -mx-2 px-2 rounded"
-              onClick={() => setOpenCC(c)}
-            >
-              <span className="font-mono text-xs">
-                {tour?.nv_stamm_tour?.code ?? '—'}
-              </span>
-              <span className="text-xs text-gray-500">
-                {tour?.datum?.slice(0, 10) ?? ''}
-              </span>
-              <span className="ml-auto font-mono text-emerald-700">
-                € {Number(c.total_eur ?? 0).toFixed(2)}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
+
+      {vorlauf.length > 0 && (
+        <div className="mb-2">
+          <div className="text-[10px] uppercase text-blue-700 font-medium mb-1">
+            Vorlauf (NV)
+          </div>
+          <ul className="divide-y divide-gray-100">
+            {vorlauf.map((c) => {
+              const tour = (c as unknown as {
+                nv_tour?: {
+                  id: string;
+                  datum: string;
+                  nv_stamm_tour?: { code: string };
+                };
+              }).nv_tour;
+              return (
+                <li
+                  key={c.id}
+                  className="py-2 flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 -mx-2 px-2 rounded"
+                  onClick={() => setOpenCC(c)}
+                >
+                  <span className="font-mono text-xs">
+                    {tour?.nv_stamm_tour?.code ?? '—'}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    {tour?.datum?.slice(0, 10) ?? ''}
+                  </span>
+                  <span className="ml-auto font-mono text-emerald-700">
+                    € {Number(c.total_eur ?? 0).toFixed(2)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {hauptlauf.length > 0 && (
+        <div>
+          <div className="text-[10px] uppercase text-emerald-700 font-medium mb-1">
+            Hauptlauf (FV)
+          </div>
+          <ul className="divide-y divide-gray-100">
+            {hauptlauf.map((c) => {
+              const faktoren = (c as unknown as {
+                faktoren?: { tour_id?: string; source?: string };
+              }).faktoren;
+              return (
+                <li
+                  key={c.id}
+                  className="py-2 flex items-center gap-2 text-sm"
+                >
+                  <span className="font-mono text-xs text-gray-600">
+                    {faktoren?.tour_id?.slice(0, 8) ?? '—'}
+                  </span>
+                  {faktoren?.source === 'auto_consolidate' && (
+                    <span className="text-[10px] rounded bg-emerald-100 text-emerald-700 px-1.5 py-0.5">
+                      auto
+                    </span>
+                  )}
+                  <span className="ml-auto font-mono text-emerald-700">
+                    € {Number(c.total_eur ?? 0).toFixed(2)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
       {openCC && (
         <CostDrillDownModal
           shipmentId={shipmentId}

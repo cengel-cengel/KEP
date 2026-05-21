@@ -357,6 +357,20 @@ export class ShipmentsService {
         conditions: { include: { condition_rates: true } },
         shipment_package_items: { orderBy: { line_index: 'asc' } },
         shipment_events: { orderBy: { created_at: 'desc' }, take: 10 },
+        // R2.3: NV-Vorhol-Tour-Link (für 2-Tour-Sicht im Detail-Modal).
+        // Liefert PICKUP-Stops mit nv_tour-Header + Stamm-Code.
+        nv_tour_stops: {
+          include: {
+            nv_tour: {
+              select: {
+                id: true,
+                datum: true,
+                status: true,
+                nv_stamm_tour: { select: { code: true, name: true } },
+              },
+            },
+          },
+        },
       },
     });
 

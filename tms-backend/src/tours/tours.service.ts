@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ConflictException,
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -34,6 +36,21 @@ import {
 import { buildTourRoute } from '../lib/routeGeometry.lib';
 import { deriveIsCharter } from '../lib/tourCharterDerive.lib';
 import { computeFvSchedule } from './fv-scheduler.lib';
+import { CostsService } from '../costs/costs.service';
+
+/**
+ * R2.1: nächster Werktag (Mo-Fr) ab `from`. Skip Sa/So.
+ * Genutzt als delivery_date-Fallback bei Auto-FV-Tour-Create.
+ */
+function nextBusinessDay(from: Date): Date {
+  const d = new Date(from);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 1);
+  while (d.getDay() === 0 || d.getDay() === 6) {
+    d.setDate(d.getDate() + 1);
+  }
+  return d;
+}
 
 /**
  * Transport-Types die in /tours/eligible-shipments-fv landen.
@@ -62,7 +79,14 @@ export class ToursService {
     private readonly documents: DocumentsService,
     private readonly locks: LockService,
     private readonly statusSvc: StatusService,
+    // R2.1: forwardRef da NvTouren → Tours zurück-importiert
+    // (consolidateOrCreateFvTour-Hook bei completeStopShipment).
+    @Inject(forwardRef(() => NvTourenService))
     private readonly nvTouren: NvTourenService,
+    // R2.2: CostsService für recordHauptlaufCost (calculateMain
+    // CarriageCost best-effort, dann shipment_cost_components-
+    // Mirror mit phase='HAUPTLAUF').
+    private readonly costs: CostsService,
   ) {}
 
   async findAll(filters: { status?: string; date?: Date }) {
@@ -543,6 +567,452 @@ export class ToursService {
     return this.findOne(tourId);
   }
 
+  /**
+   * R2.1: Charter-Umschlag-2-Touren-Flow — Auto-Konsolidierung
+   * nach NV-Vorholung-Completed.
+   *
+   * Findet beste passende offene FV-Tour via tourMatcher und
+   * fügt die Sendung dort hinzu. Wenn kein guter Match: legt
+   * neue FV-Tour mit Smart-Defaults an und fügt Sendung hinzu.
+   *
+   * Idempotent: skipped wenn tour_id bereits gesetzt, lock,
+   * falscher status, falsche classification.
+   *
+   * Status-Verhalten: bei consolidate/create wird shipment.status
+   * NICHT geändert — bleibt 'in_warehouse' bis FV-Tour dispatcht
+   * (dann setzt dispatchTour alle Sendungen auf 'dispatched').
+   */
+  async consolidateOrCreateFvTour(shipmentId: string): Promise<{
+    action: 'consolidated' | 'created' | 'skipped';
+    tourId?: string;
+    reason?: string;
+  }> {
+    const shipment = await this.prisma.shipments.findFirst({
+      where: { id: shipmentId, deleted_at: null },
+      select: {
+        id: true,
+        status: true,
+        tour_id: true,
+        classification: true,
+        has_active_lock: true,
+        lock_types: true,
+        delivery_date: true,
+        loading_date: true,
+        ldm: true,
+        weight_kg: true,
+        is_hazmat: true,
+      },
+    });
+    if (!shipment) return { action: 'skipped', reason: 'not_found' };
+    if (shipment.tour_id)
+      return { action: 'skipped', reason: 'already_assigned' };
+    if (shipment.status !== 'in_warehouse')
+      return { action: 'skipped', reason: 'wrong_status' };
+    if (shipment.classification !== 'CHARTER_UMSCHLAG')
+      return { action: 'skipped', reason: 'not_charter_umschlag' };
+    if (shipment.has_active_lock)
+      return { action: 'skipped', reason: 'shipment_locked' };
+
+    // tourMatcher findet beste FV-Tour aus planned/dispatched-Pool.
+    // findBestMatchForShipment liefert NV+FV; wir filtern FV-only.
+    const matches = await this.findBestMatchForShipment(shipmentId);
+    const fvMatches = matches.filter((m) => m.mode === 'fv');
+
+    // Versuche Konsolidierung: bester FV-Match wenn capacity > 0.
+    // capacityScore=0 schon im Matcher rausgefiltert; Test auf
+    // tour_id-Race (Sendung bereits anderweitig zugewiesen).
+    for (const m of fvMatches) {
+      const linked = await this.tryLinkToFvTour(m.tour_id, shipmentId);
+      if (linked.ok) {
+        return { action: 'consolidated', tourId: m.tour_id };
+      }
+      // Wenn Match wegen Hazmat-ADR-Blocker oder Race scheitert
+      // → nächsten Match versuchen.
+    }
+
+    // Kein Match → neue FV-Tour mit Smart-Defaults anlegen.
+    const tourDate = shipment.delivery_date ?? nextBusinessDay(new Date());
+    const created = await this.prisma.tours.create({
+      data: {
+        tour_date: tourDate,
+        tour_number: `T${Date.now()}`,
+        status: 'planned',
+        max_ldm: 13.6, // Default-Trailer; Mensch kann später ändern.
+        max_weight_kg: 24000,
+        // subcontractor_id null lassen — Mensch weist zu vor Dispatch.
+        // hub_start/end null lassen — Mensch füllt im UI.
+        created_by:
+          (await this.prisma.users.findFirst({ select: { id: true } }))?.id ??
+          '',
+        notes: 'Auto-erstellt (CHARTER_UMSCHLAG-Konsolidierung).',
+      },
+    });
+    const linked = await this.tryLinkToFvTour(created.id, shipmentId);
+    if (linked.ok) {
+      return { action: 'created', tourId: created.id };
+    }
+    // Sehr edge: Race oder Hazmat-Konflikt mit leerer Tour — sollte
+    // nicht passieren (leere Tour hat kein hazmat-Konflikt). Skip.
+    return { action: 'skipped', reason: linked.reason ?? 'link_failed' };
+  }
+
+  /**
+   * R2.4: Dry-Run-Preview von consolidateOrCreateFvTour.
+   * Returns geplante Action ohne irgendwelche Mutationen — Mensch
+   * sieht vorab welche FV-Tour gematcht würde / welche neue Tour
+   * angelegt würde.
+   *
+   * Format: gleiche shape wie consolidateOrCreateFvTour + zusätzlich
+   * `candidates` Top-N tour-matches mit Score (nur FV+planned).
+   */
+  async dryRunConsolidate(shipmentId: string): Promise<{
+    action: 'consolidated' | 'created' | 'skipped';
+    tourId?: string;
+    reason?: string;
+    candidates?: Array<{
+      tour_id: string;
+      tour_number?: string | null;
+      score: number;
+      eligible: boolean;
+      blocker?: string;
+    }>;
+  }> {
+    const shipment = await this.prisma.shipments.findFirst({
+      where: { id: shipmentId, deleted_at: null },
+      select: {
+        id: true,
+        status: true,
+        tour_id: true,
+        classification: true,
+        has_active_lock: true,
+        delivery_date: true,
+      },
+    });
+    if (!shipment) return { action: 'skipped', reason: 'not_found' };
+    if (shipment.tour_id)
+      return { action: 'skipped', reason: 'already_assigned' };
+    if (shipment.status !== 'in_warehouse')
+      return { action: 'skipped', reason: 'wrong_status' };
+    if (shipment.classification !== 'CHARTER_UMSCHLAG')
+      return { action: 'skipped', reason: 'not_charter_umschlag' };
+    if (shipment.has_active_lock)
+      return { action: 'skipped', reason: 'shipment_locked' };
+
+    const allMatches = await this.findBestMatchForShipment(shipmentId);
+    const fvMatches = allMatches.filter((m) => m.mode === 'fv');
+
+    // Eligibility-Vorprüfung pro Match-Tour (planned-Filter + hazmat-
+    // Pre-Check). Read-only, kein update.
+    const candidates: Array<{
+      tour_id: string;
+      tour_number?: string | null;
+      score: number;
+      eligible: boolean;
+      blocker?: string;
+    }> = [];
+    for (const m of fvMatches) {
+      const tour = await this.prisma.tours.findUnique({
+        where: { id: m.tour_id },
+        select: { id: true, status: true, tour_number: true },
+      });
+      let eligible = true;
+      let blocker: string | undefined;
+      if (!tour) {
+        eligible = false;
+        blocker = 'tour_not_found';
+      } else if (tour.status !== 'planned') {
+        eligible = false;
+        blocker = `status_${tour.status}`;
+      }
+      candidates.push({
+        tour_id: m.tour_id,
+        tour_number: tour?.tour_number ?? m.tour_number,
+        score: m.score,
+        eligible,
+        blocker,
+      });
+    }
+
+    const firstEligible = candidates.find((c) => c.eligible);
+    if (firstEligible) {
+      return {
+        action: 'consolidated',
+        tourId: firstEligible.tour_id,
+        candidates,
+      };
+    }
+    return {
+      action: 'created',
+      reason: 'no_eligible_match',
+      candidates,
+    };
+  }
+
+  /**
+   * R2.4: Admin-Bulk-Trigger für CHARTER_UMSCHLAG-Backfill.
+   * Findet alle Sendungen mit status='in_warehouse', classification=
+   * 'CHARTER_UMSCHLAG', tour_id=null und ruft consolidateOrCreateFvTour
+   * für jede sequenziell. Async per setImmediate; Response sofort
+   * mit count zurück.
+   */
+  async consolidateAllInWarehouse(opts: {
+    limit?: number;
+  } = {}): Promise<{
+    pending: number;
+    processed: 'background';
+  }> {
+    const limit = Math.min(500, Math.max(1, opts.limit ?? 100));
+    const candidates = await this.prisma.shipments.findMany({
+      where: {
+        status: 'in_warehouse',
+        classification: 'CHARTER_UMSCHLAG',
+        tour_id: null,
+        deleted_at: null,
+      },
+      select: { id: true },
+      take: limit,
+    });
+    setImmediate(async () => {
+      for (const c of candidates) {
+        try {
+          const res = await this.consolidateOrCreateFvTour(c.id);
+          if (res.action !== 'skipped') {
+            this.logger.log(
+              `bulk-consolidate(${c.id}) → ${res.action} tour=${res.tourId ?? '—'}`,
+            );
+          }
+        } catch (err: any) {
+          this.logger.warn(
+            `bulk-consolidate(${c.id}) threw: ${err?.message ?? err}`,
+          );
+        }
+      }
+      this.logger.log(`bulk-consolidate DONE (${candidates.length})`);
+    });
+    return { pending: candidates.length, processed: 'background' };
+  }
+
+  /**
+   * R2.1: Internal helper — verlinkt Sendung mit FV-Tour ohne
+   * den status='dispatched'-Override von addShipmentToTour.
+   * Sendung bleibt 'in_warehouse' bis Tour-Dispatch.
+   * Returns {ok, reason?}.
+   */
+  private async tryLinkToFvTour(
+    tourId: string,
+    shipmentId: string,
+  ): Promise<{ ok: boolean; reason?: string }> {
+    try {
+      const tour = await this.prisma.tours.findUnique({
+        where: { id: tourId },
+        select: {
+          id: true,
+          status: true,
+          subcontractor_id: true,
+          subcontractors: { select: { has_adr_license: true } },
+          shipments: {
+            where: { deleted_at: null },
+            select: { id: true, tour_position: true },
+          },
+        },
+      });
+      if (!tour) return { ok: false, reason: 'tour_not_found' };
+      // R2.2 Verify: nur 'planned' Touren konsolidieren — eine
+      // 'dispatched' (= bereits unterwegs) Tour darf KEINE neue
+      // Sendung mehr kriegen. Schützt vor Match-Treffer auf
+      // dispatched Tour aus findBestMatchForShipment (das aktuell
+      // planned+dispatched returnt).
+      if (tour.status !== 'planned') {
+        return { ok: false, reason: 'tour_not_planned' };
+      }
+      const ship = await this.prisma.shipments.findFirst({
+        where: { id: shipmentId, deleted_at: null },
+        select: { id: true, tour_id: true, is_hazmat: true },
+      });
+      if (!ship) return { ok: false, reason: 'shipment_not_found' };
+      if (ship.tour_id)
+        return { ok: false, reason: 'shipment_already_assigned' };
+      // R2.1: Hazmat-Block nur wenn Sub bereits zugewiesen UND keine
+      // ADR-Lizenz. Bei null-Sub (auto-created Tour) wird die Prüfung
+      // beim Sub-Zuweisen/Dispatch erneut greifen — hier nicht
+      // blockieren, sonst landet jede hazmat-CHARTER_UMSCHLAG-Sendung
+      // ohne Konsolidierung.
+      if (
+        ship.is_hazmat &&
+        tour.subcontractors &&
+        !tour.subcontractors.has_adr_license
+      ) {
+        return { ok: false, reason: 'hazmat_no_adr' };
+      }
+      const maxPos = tour.shipments.reduce(
+        (m, s) => Math.max(m, Number(s.tour_position) || 0),
+        0,
+      );
+      // R2.4: race-safe — atomic update mit tour_id=null als Pre-
+      // Condition. Wenn parallel-Call schon zugewiesen hat → count=0.
+      // status BLEIBT 'in_warehouse' (anders als addShipmentToTour).
+      const result = await this.prisma.shipments.updateMany({
+        where: { id: shipmentId, tour_id: null, deleted_at: null },
+        data: {
+          tour_id: tourId,
+          tour_position: maxPos + 1,
+        },
+      });
+      if (result.count === 0) {
+        return { ok: false, reason: 'race_lost' };
+      }
+      setImmediate(() => {
+        void this.safeRecomputeIsCharterFv(tourId).then(() => {
+          void this.safeRecomputeFvSchedule(tourId);
+          // R2.2: HAUPTLAUF-Kosten + Auto-Dispatch nach erfolg-
+          // reichem Link. Best-effort, beide fangen Fehler.
+          void this.recordHauptlaufCost(tourId, shipmentId);
+          void this.checkAndAutoDispatch(tourId);
+        });
+      });
+      return { ok: true };
+    } catch (err: any) {
+      this.logger.warn(
+        `tryLinkToFvTour(${tourId}, ${shipmentId}) failed: ${err?.message ?? err}`,
+      );
+      return { ok: false, reason: 'exception' };
+    }
+  }
+
+  /**
+   * R2.2: HAUPTLAUF-Kosten persistieren analog VORLAUF-Pattern.
+   *
+   * Schritte:
+   *   1. CostsService.calculateMainCarriageCost (best-effort, kann
+   *      NotFoundException werfen wenn kein cost_rate vorhanden)
+   *   2. Re-Read shipments.main_carriage_cost (von Step 1 gesetzt)
+   *   3. Upsert shipment_cost_components: phase='HAUPTLAUF',
+   *      nv_tour_id=NULL, kapazitaet_anteil_eur=cost,
+   *      faktoren={tour_id, source}
+   *   Postgres `total_eur` ist GENERATED ALWAYS AS (Σ anteil-cols),
+   *   wird automatisch befüllt.
+   *
+   * Unique-Constraint (shipment_id, phase, nv_tour_id=NULL) erlaubt
+   * EINEN HAUPTLAUF-Record pro Sendung → klare 1:1-Zuordnung zur
+   * FV-Tour (jede Sendung hat genau eine).
+   */
+  async recordHauptlaufCost(
+    tourId: string,
+    shipmentId: string,
+  ): Promise<void> {
+    try {
+      try {
+        await this.costs.calculateMainCarriageCost(shipmentId);
+      } catch (err: any) {
+        // Kein cost_rate vorhanden → Mensch trägt später nach.
+        // Wir schreiben trotzdem ein Marker-Record mit cost=0,
+        // damit FE die HAUPTLAUF-Zuordnung anzeigen kann.
+        this.logger.warn(
+          `recordHauptlaufCost calculateMain ${shipmentId}: ${err?.message ?? err}`,
+        );
+      }
+      const ship = await this.prisma.shipments.findUnique({
+        where: { id: shipmentId },
+        select: { main_carriage_cost: true },
+      });
+      const cost = Number(ship?.main_carriage_cost ?? 0);
+      const existing = await this.prisma.shipment_cost_components.findUnique({
+        where: {
+          shipment_id_phase_nv_tour_id: {
+            shipment_id: shipmentId,
+            phase: 'HAUPTLAUF',
+            nv_tour_id: null as any,
+          },
+        },
+        select: { id: true },
+      });
+      const faktoren: any = {
+        tour_id: tourId,
+        source: 'auto_consolidate',
+      };
+      if (existing) {
+        await this.prisma.shipment_cost_components.update({
+          where: { id: existing.id },
+          data: {
+            kapazitaet_anteil_eur: cost,
+            faktoren,
+            computed_at: new Date(),
+          },
+        });
+      } else {
+        await this.prisma.shipment_cost_components.create({
+          data: {
+            shipment_id: shipmentId,
+            nv_tour_id: null,
+            phase: 'HAUPTLAUF',
+            kapazitaet_anteil_eur: cost,
+            faktoren,
+          },
+        });
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `recordHauptlaufCost(${tourId}, ${shipmentId}) failed: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /**
+   * R2.2: Auto-Dispatch wenn FV-Tour voll ist UND Subunternehmer
+   * zugewiesen ist.
+   *
+   * "Voll" = fillRatio ≥ 0.90, wobei
+   *   fillRatio = max(usedLdm/maxLdm, usedKg/maxKg).
+   *
+   * Beide Bedingungen MÜSSEN erfüllt sein:
+   *   - fillRatio ≥ 0.9 (voll-Schwelle)
+   *   - subcontractor_id != null (sonst keine Fahrer = keine Fahrt)
+   * Sonst bleibt Tour 'planned', Mensch handelt manuell.
+   *
+   * Idempotent: skip wenn status nicht 'planned'.
+   */
+  async checkAndAutoDispatch(tourId: string): Promise<void> {
+    try {
+      const tour = await this.prisma.tours.findUnique({
+        where: { id: tourId },
+        select: {
+          id: true,
+          status: true,
+          subcontractor_id: true,
+          max_ldm: true,
+          max_weight_kg: true,
+          shipments: {
+            where: { deleted_at: null },
+            select: { ldm: true, weight_kg: true },
+          },
+        },
+      });
+      if (!tour) return;
+      if (tour.status !== 'planned') return;
+      if (!tour.subcontractor_id) return;
+      const maxLdm = Number(tour.max_ldm ?? 13.6);
+      const maxKg = Number(tour.max_weight_kg ?? 24000);
+      let usedLdm = 0;
+      let usedKg = 0;
+      for (const s of tour.shipments) {
+        usedLdm += Number(s.ldm ?? 0);
+        usedKg += Number(s.weight_kg ?? 0);
+      }
+      const ldmRatio = maxLdm > 0 ? usedLdm / maxLdm : 0;
+      const kgRatio = maxKg > 0 ? usedKg / maxKg : 0;
+      const fillRatio = Math.max(ldmRatio, kgRatio);
+      if (fillRatio < 0.9) return;
+      await this.dispatchTour(tourId);
+      this.logger.log(
+        `Auto-dispatch ${tourId} (fillRatio=${fillRatio.toFixed(2)}, sub=${tour.subcontractor_id})`,
+      );
+    } catch (err: any) {
+      this.logger.warn(
+        `checkAndAutoDispatch(${tourId}) failed: ${err?.message ?? err}`,
+      );
+    }
+  }
+
   async removeShipmentFromTour(tourId: string, shipmentId: string) {
     await this.ensureExists(tourId);
 
@@ -963,6 +1433,25 @@ export class ToursService {
       //    Charter sind ad-hoc-Routen ohne pre-defined FV-Relation).
       {
         addresses_shipments_loading_address_idToaddresses: outsideNvGebiet,
+      },
+      // 4. R2.1: CHARTER_UMSCHLAG nach NV-PICKUP (status=in_warehouse).
+      //    classification=CHARTER_UMSCHLAG hat delivery-ZIP IN NV-Gebiet,
+      //    Loading kann in/out NV liegen. Nach completed NV-Vorhol-Tour
+      //    wartet die Sendung im Umschlag-Lager auf FV-Hauptlauf —
+      //    Branches 1-3 fangen sie NICHT ab (kein relation_id, kein
+      //    partner_delivered, Loading nicht zwingend outside-NV).
+      {
+        AND: [
+          { classification: 'CHARTER_UMSCHLAG' },
+          {
+            nv_tour_stops: {
+              some: {
+                stop_type: 'PICKUP',
+                nv_tour: { status: 'COMPLETED' },
+              },
+            },
+          },
+        ],
       },
     ];
 

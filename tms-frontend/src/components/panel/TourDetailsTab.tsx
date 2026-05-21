@@ -1292,6 +1292,15 @@ function StopRow({
       <span className="text-[10px] text-gray-500">
         {stop.stop_type ?? ''}
       </span>
+      {(stop.shipment as { classification?: string } | undefined)
+        ?.classification === 'CHARTER_UMSCHLAG' && (
+        <span
+          className="text-[9px] rounded bg-amber-100 text-amber-800 px-1 py-0.5 uppercase font-medium"
+          title="Charter-Umschlag (2-Tour-Flow)"
+        >
+          CU
+        </span>
+      )}
       {stop.notizen && (
         <StickyNote
           size={11}
@@ -1737,6 +1746,15 @@ function FvStopsListView({
             {(s.tour_position ?? i + 1)}.
           </span>
           <span className="font-mono">{s.shipment_number ?? '—'}</span>
+          {(s as { classification?: string }).classification ===
+            'CHARTER_UMSCHLAG' && (
+            <span
+              className="text-[9px] rounded bg-amber-100 text-amber-800 px-1 py-0.5 uppercase font-medium"
+              title="Charter-Umschlag (auto-konsolidiert via NV-Vorholung)"
+            >
+              CU
+            </span>
+          )}
           <span className="truncate text-gray-600 ml-2">
             {s.customers?.name ?? ''}
           </span>

@@ -1,15 +1,26 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ToursService } from './tours.service';
 import { ToursController } from './tours.controller';
 import { DocumentsModule } from '../documents/documents.module';
 import { StatusModule } from '../status/status.module';
 import { NvTourenModule } from '../nv-touren/nv-touren.module';
 import { RealtimeModule } from '../realtime/realtime.module';
+import { CostsModule } from '../costs/costs.module';
 
 @Module({
   controllers: [ToursController],
   providers: [ToursService],
-  imports: [DocumentsModule, StatusModule, NvTourenModule, RealtimeModule],
+  // R2.1: NvTourenModule via forwardRef (zyklisch, siehe
+  // nv-touren.module.ts-Kommentar).
+  // R2.2: CostsModule für HAUPTLAUF-Kosten via
+  // calculateMainCarriageCost.
+  imports: [
+    DocumentsModule,
+    StatusModule,
+    forwardRef(() => NvTourenModule),
+    RealtimeModule,
+    CostsModule,
+  ],
   exports: [ToursService],
 })
 export class ToursModule {}

@@ -82,6 +82,8 @@ export type Stop = {
     height_cm?: number | null;
     effective_pallets?: string | number | null;
     freight_revenue?: string | number | null;
+    /** R2.3: Charter-Umschlag-Marker im NV-Stop-Row. */
+    classification?: string | null;
     addresses_shipments_loading_address_idToaddresses?: AddressGeo | null;
     addresses_shipments_delivery_address_idToaddresses?: AddressGeo | null;
   };

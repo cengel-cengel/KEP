@@ -105,12 +105,15 @@ describe('AdminController.recomputeAllTours', () => {
 
 describe('NvTourenService.recomputeTourFull (idempotent)', () => {
   it('ruft die 4 safe-Methoden in Reihenfolge auf — 2× Aufruf = 2× je safe', async () => {
-    // Wir bauen einen minimal-Service-Stub: NvTourenService nimmt nur
-    // prisma. Die safe-Methoden sind private — wir mocken sie über
-    // jest.spyOn nach Instanziierung.
+    // Wir bauen einen minimal-Service-Stub: NvTourenService nimmt
+    // prisma + tours (forwardRef, hier Mock). Die safe-Methoden sind
+    // private — wir mocken sie über jest.spyOn nach Instanziierung.
     const { NvTourenService } = await import('../nv-touren/nv-touren.service');
-    const prisma = { } as any;
-    const svc = new NvTourenService(prisma);
+    const prisma = {} as any;
+    const tours = {
+      consolidateOrCreateFvTour: jest.fn().mockResolvedValue({ action: 'skipped' }),
+    } as any;
+    const svc = new NvTourenService(prisma, tours);
 
     const s1 = jest.spyOn<any, any>(svc as any, 'safeRecomputeIsCharter').mockResolvedValue(undefined);
     const s2 = jest.spyOn<any, any>(svc as any, 'safeRecalc').mockResolvedValue(undefined);
@@ -141,6 +144,7 @@ describe('ToursService.recomputeTourFull (FV, idempotent)', () => {
   it('ruft die 3 FV-safe-Methoden in Reihenfolge auf — 2× Aufruf = 2× je safe', async () => {
     const { ToursService } = await import('../tours/tours.service');
     const svc = new ToursService(
+      {} as any,
       {} as any,
       {} as any,
       {} as any,

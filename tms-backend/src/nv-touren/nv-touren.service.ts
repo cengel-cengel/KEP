@@ -1,10 +1,14 @@
 import {
   BadRequestException,
   ConflictException,
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import type { ToursService } from '../tours/tours.service';
+import { ToursService as ToursServiceClass } from '../tours/tours.service';
 import { Prisma } from '../../generated/prisma';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateNvTourDto } from './dto/create-nv-tour.dto';
@@ -139,7 +143,13 @@ const TOUR_INCLUDE = {
 @Injectable()
 export class NvTourenService {
   private readonly logger = new Logger(NvTourenService.name);
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // R2.1: Tours-Service für CHARTER_UMSCHLAG-Auto-Hauptlauf-Hook
+    // bei completeStopShipment (status→in_warehouse).
+    @Inject(forwardRef(() => ToursServiceClass))
+    private readonly tours: ToursService,
+  ) {}
 
   /**
    * Map-Routing P1: setze tour.is_charter ab Stop-Set.
@@ -1371,6 +1381,12 @@ export class NvTourenService {
    * Setzt shipment.status passend zum stop_type wenn ein
    * Stop COMPLETED wird (PICKUP→in_warehouse, DELIVERY→
    * delivered). FAILED ändert nichts.
+   *
+   * R2.1: Charter-Umschlag-Hook — bei PICKUP-COMPLETED prüft
+   * der Hook ob classification=CHARTER_UMSCHLAG; wenn ja, wird
+   * consolidateOrCreateFvTour async getriggered (FV-Hauptlauf-
+   * Auto-Zuordnung). Best-effort: Fehler werden geloggt und
+   * blockieren die Stop-Completion NICHT.
    */
   private async completeStopShipment(stop: {
     shipment_id: string;
@@ -1382,6 +1398,24 @@ export class NvTourenService {
       where: { id: stop.shipment_id },
       data: { status: newStatus as any },
     });
+    if (newStatus === 'in_warehouse') {
+      setImmediate(() => {
+        void this.tours
+          .consolidateOrCreateFvTour(stop.shipment_id)
+          .then((res) => {
+            if (res.action !== 'skipped') {
+              this.logger.log(
+                `consolidateOrCreate(${stop.shipment_id}) → ${res.action} tourId=${res.tourId ?? '—'}`,
+              );
+            }
+          })
+          .catch((err: any) => {
+            this.logger.warn(
+              `consolidateOrCreate(${stop.shipment_id}) failed: ${err?.message ?? err}`,
+            );
+          });
+      });
+    }
   }
 
   async updateStop(stopId: string, dto: UpdateNvTourStopDto) {

@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  Param,
   Post,
   Query,
   UseGuards,
@@ -235,5 +236,44 @@ export class AdminController {
     }
 
     this.logger.log('recompute-all-tours DONE');
+  }
+
+  /**
+   * R2.4: Charter-Umschlag-Bulk-Backfill.
+   * Findet alle Sendungen mit status='in_warehouse',
+   * classification='CHARTER_UMSCHLAG', tour_id=null und triggert
+   * consolidateOrCreateFvTour async für jede.
+   * HTTP 202 + immediate response mit pending-count.
+   */
+  @Post('consolidate-charter-umschlag')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async consolidateCharterUmschlag(
+    @Body() body: { limit?: number } = {},
+  ): Promise<{ pending: number; processed: string }> {
+    return this.tours.consolidateAllInWarehouse({ limit: body.limit });
+  }
+
+  /**
+   * R2.4: Manual Re-Trigger für eine einzelne Sendung.
+   * Mensch klickt im UI "Re-Trigger Hauptlauf" — synchroner
+   * Response mit action-Ergebnis.
+   */
+  @Post('consolidate-shipment/:id')
+  async consolidateShipment(
+    @Body() _body: unknown,
+    @Query('id') _q: unknown,
+    @Param('id') id: string,
+  ) {
+    return this.tours.consolidateOrCreateFvTour(id);
+  }
+
+  /**
+   * R2.4: Dry-Run-Preview ohne Mutationen.
+   * Mensch sieht welche FV-Tour gematcht würde + Top-N candidates
+   * mit Score + eligibility-Blockers.
+   */
+  @Get('consolidate-preview/:id')
+  async previewConsolidate(@Param('id') id: string) {
+    return this.tours.dryRunConsolidate(id);
   }
 }

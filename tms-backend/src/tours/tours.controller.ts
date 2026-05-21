@@ -198,6 +198,19 @@ export class ToursController {
     return { ok: km != null, geplante_km: km };
   }
 
+  // Sprint Map-Routing: nearby-shipments ≤20km um FV-Tour-Stops.
+  @Get(':id/nearby-shipments')
+  nearbyShipments(
+    @Param('id') tourId: string,
+    @Query('radius_km') radius_km?: string,
+  ) {
+    const r = radius_km ? Number(radius_km) : 20;
+    return this.toursService.nearbyShipmentsFv(
+      tourId,
+      Number.isFinite(r) ? r : 20,
+    );
+  }
+
   // C-2.1 FV Sendung-Splitten — FV hat keine stops, direkte
   // tour-shipment-Relation. Body analog NV-split.
   @Post(':id/shipments/:shipmentId/split')

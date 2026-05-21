@@ -239,6 +239,7 @@ model shipments {
   transport_type                                     String                     @default("DIREKT") @db.VarChar(20)
   relation_id                                        String?                    @db.Uuid
   split_from_id                                      String?                    @db.Uuid
+  classification                                     String                     @default("SAMMELGUT") @db.VarChar(20)
   business_partner_id                                String?                    @db.Uuid
   chargeable_weight                                  Decimal?                   @db.Decimal(10, 2)
   cbm                                                Decimal?                   @db.Decimal(8, 3)
@@ -533,6 +534,7 @@ model tours {
   tour_number             String               @unique @db.VarChar(30)
   tour_date               DateTime             @db.Date
   status                  tour_status          @default(planned)
+  is_charter              Boolean              @default(false)
   subcontractor_id        String?              @db.Uuid
   vehicle_plate           String?              @db.VarChar(20)
   driver_name             String?              @db.VarChar(100)
@@ -1426,6 +1428,7 @@ model nv_touren {
   nv_stamm_tour_id         String?             @db.Uuid
   datum                    DateTime            @db.Date
   status                   String              @default("PLANNING") @db.VarChar(20)
+  is_charter               Boolean             @default(false)
   subunternehmer_id        String?             @db.Uuid
   start_zeit               DateTime?           @db.Time(6)
   end_zeit                 DateTime?           @db.Time(6)

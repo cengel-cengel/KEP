@@ -175,3 +175,47 @@ describe('computeFvSchedule', () => {
     expect(out[0].risk_severity).toBe('critical');
   });
 });
+
+// ─── Fix#1: startCoord-Konsistenz (Polyline == Schedule) ──────
+describe('Charter vs Non-Charter startCoord-Verhalten', () => {
+  const datum = new Date('2026-05-21T00:00:00Z');
+  const stops = [
+    {
+      id: 's1',
+      tour_position: 1,
+      delivery_address: { lat: 53.5, lng: 9.99 },
+      delivery_time_from: null,
+      delivery_time_to: null,
+      loading_time_from: null,
+      loading_time_to: null,
+    },
+  ];
+
+  it('non-Charter mit startCoord=WH → planned_arrival[0] enthält Vorlauf', () => {
+    const wh = { lat: 50.0, lng: 8.0 }; // weit weg
+    const out = computeFvSchedule({
+      tourDate: datum,
+      departureTime: new Date('1970-01-01T08:00:00Z'),
+      startCoord: wh,
+      shipments: stops,
+    });
+    expect(out).toHaveLength(1);
+    // WH→Stop[0] ist deutlich entfernt → planned_arrival nicht 08:00
+    const arrival = out[0].planned_arrival;
+    const startMs = new Date('2026-05-21T08:00:00Z').getTime();
+    expect(arrival.getTime()).toBeGreaterThan(startMs);
+  });
+
+  it('Charter mit startCoord=null → planned_arrival[0] = departureTime', () => {
+    const out = computeFvSchedule({
+      tourDate: datum,
+      departureTime: new Date('1970-01-01T08:00:00Z'),
+      startCoord: null,
+      shipments: stops,
+    });
+    expect(out).toHaveLength(1);
+    const arrival = out[0].planned_arrival;
+    expect(arrival.getUTCHours()).toBe(8);
+    expect(arrival.getUTCMinutes()).toBe(0);
+  });
+});

@@ -46,6 +46,63 @@ export class ShipmentsService {
   ) {}
 
   // ── Sendungsnummer generieren ─────────────────────────────
+  /**
+   * Map-Routing P1: classification-Ableitung bei Sendung-Create.
+   * Heuristik via classifyShipment-lib (Gewicht/Sattel/PLZ-Gebiet).
+   * PLZ-Gebiet-Match via nv_tour_gebiete.plz_pattern (lazy lookup).
+   */
+  private async deriveClassification(dto: {
+    weightKg?: number | null;
+    ldm?: number | null;
+    transportType?: string | null;
+    deliveryAddressId: string;
+    packageLines?: Array<{ weightKg?: number | null }> | undefined;
+  }): Promise<'SAMMELGUT' | 'CHARTER_UMSCHLAG' | 'CHARTER_DIREKT'> {
+    const { classifyShipment } = await import(
+      '../lib/shipmentClassification.lib'
+    );
+    // Gewicht: dto.weightKg ODER Σ packageLines
+    let weight = dto.weightKg ?? 0;
+    if ((!weight || weight === 0) && dto.packageLines?.length) {
+      weight = dto.packageLines.reduce(
+        (acc, l) => acc + Number(l.weightKg ?? 0),
+        0,
+      );
+    }
+    // Delivery-ZIP via address-lookup
+    const addr = await this.prisma.addresses.findUnique({
+      where: { id: dto.deliveryAddressId },
+      select: { zip: true },
+    });
+    const zip = addr?.zip ?? null;
+    // NV-Gebiet-Match (vereinfacht: PLZ-Prefix-Check gegen
+    // nv_tour_gebiete.plz_pattern). Fallback false bei JSON-Mismatch.
+    let isInOwnNvGebiet = false;
+    if (zip) {
+      const gebiete = await this.prisma.nv_tour_gebiete.findMany({
+        where: { aktiv: true },
+        select: { plz_pattern: true },
+      });
+      for (const g of gebiete) {
+        if (!g.plz_pattern) continue;
+        const pats: string[] = Array.isArray(g.plz_pattern)
+          ? (g.plz_pattern as string[])
+          : [];
+        if (pats.some((p) => zip.startsWith(String(p)))) {
+          isInOwnNvGebiet = true;
+          break;
+        }
+      }
+    }
+    return classifyShipment({
+      weight_kg: weight,
+      ldm: dto.ldm ?? null,
+      transport_type: dto.transportType ?? null,
+      delivery_zip: zip,
+      isInOwnNvGebiet,
+    });
+  }
+
   private async generateShipmentNumber(): Promise<string> {
     const result = await this.prisma.$queryRaw<[{ nextval: bigint }]>`
       SELECT nextval('shipment_number_seq')
@@ -496,6 +553,11 @@ export class ShipmentsService {
         freight_revenue,
         comment: dto.comment,
         customer_note: dto.customerNote,
+        // Map-Routing P1: classification override oder Auto-Ableitung
+        // (BE-side per-call; PLZ-Gebiet-Check passiert in Service).
+        classification:
+          dto.classification ??
+          (await this.deriveClassification(dto)),
         created_by: userId,
       },
       include: {

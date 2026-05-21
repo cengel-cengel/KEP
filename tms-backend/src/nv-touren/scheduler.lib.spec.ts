@@ -191,3 +191,65 @@ describe('computeRiskForStop', () => {
     expect(r.severity).toBe('ok');
   });
 });
+
+// ─── Map-Routing P0: is_charter-Konsequenz für Scheduler ──────
+describe('Charter-Konsequenz: startCoord null', () => {
+  it('Charter-Tour (startCoord=null) → planned_arrival[0] = startZeit', () => {
+    const datum = new Date('2026-05-21T00:00:00Z');
+    const stops = [
+      {
+        id: 's1',
+        position: 1,
+        lat: 53.5,
+        lng: 9.99,
+        stop_type: 'PICKUP',
+        servicezeit_min: 30,
+      },
+      {
+        id: 's2',
+        position: 2,
+        lat: 53.6,
+        lng: 10.1,
+        stop_type: 'DELIVERY',
+        servicezeit_min: 30,
+      },
+    ];
+    const out = computeStopSchedule({
+      datum,
+      startZeit: '08:00',
+      stops,
+      startCoord: null,
+    });
+    expect(out).toHaveLength(2);
+    // Stop[0] startet exakt bei 08:00 (travelMin=0 wegen kein
+    // prevCoord)
+    expect(out[0].planned_arrival.getUTCHours()).toBe(8);
+    expect(out[0].planned_arrival.getUTCMinutes()).toBe(0);
+  });
+
+  it('Non-Charter (startCoord=warehouse) → planned_arrival[0] = startZeit + travel(WH→Stop[0])', () => {
+    const datum = new Date('2026-05-21T00:00:00Z');
+    const stops = [
+      {
+        id: 's1',
+        position: 1,
+        lat: 53.5,
+        lng: 9.99,
+        stop_type: 'PICKUP',
+        servicezeit_min: 30,
+      },
+    ];
+    const wh = { lat: 50.0, lng: 8.0 }; // weit weg → ~400+km
+    const out = computeStopSchedule({
+      datum,
+      startZeit: '08:00',
+      stops,
+      startCoord: wh,
+    });
+    expect(out).toHaveLength(1);
+    // WH→Stop ~400km / 40km/h = ~10h → planned_arrival deutlich
+    // nach 08:00.
+    const arrivalH = out[0].planned_arrival.getUTCHours();
+    expect(arrivalH).toBeGreaterThan(8);
+  });
+});

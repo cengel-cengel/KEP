@@ -27,6 +27,8 @@ import {
   routeTrip,
   routeWithDurations,
 } from '../lib/osrm.lib';
+import { buildTourRoute } from '../lib/routeGeometry.lib';
+import { deriveIsCharter } from '../lib/tourCharterDerive.lib';
 import { computeStopSchedule } from './scheduler.lib';
 import {
   getNvPlzSet,
@@ -89,6 +91,7 @@ const TOUR_INCLUDE = {
           id: true,
           shipment_number: true,
           customer_id: true,
+          classification: true,
           customers: {
             select: { id: true, name: true, customer_number: true },
           },
@@ -138,6 +141,35 @@ export class NvTourenService {
   private readonly logger = new Logger(NvTourenService.name);
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Map-Routing P1: setze tour.is_charter ab Stop-Set.
+   * Trigger nach createStop/removeStop/batchStops/split.
+   * Wirft nicht — Failure loggen + tour bleibt mit aktuellem Flag.
+   */
+  private async safeRecomputeIsCharter(tourId: string) {
+    try {
+      const stops = await this.prisma.nv_tour_stops.findMany({
+        where: { nv_tour_id: tourId },
+        select: {
+          shipment: { select: { classification: true } },
+        },
+      });
+      const next = deriveIsCharter({
+        shipments: stops.map((s) => ({
+          classification: s.shipment?.classification ?? null,
+        })),
+      });
+      await this.prisma.nv_touren.update({
+        where: { id: tourId },
+        data: { is_charter: next },
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `safeRecomputeIsCharter(${tourId}) failed: ${err?.message ?? err}`,
+      );
+    }
+  }
+
   /** Wraps recalcVorlaufCosts ohne Mutation zu blockieren. */
   private async safeRecalc(tourId: string) {
     try {
@@ -172,12 +204,13 @@ export class NvTourenService {
   }
 
   async recomputeSchedule(tourId: string) {
-    const tour = await this.prisma.nv_touren.findUnique({
+    const tour: any = await this.prisma.nv_touren.findUnique({
       where: { id: tourId },
       select: {
         id: true,
         datum: true,
         start_zeit: true,
+        is_charter: true,
         stops: {
           orderBy: [{ position: 'asc' }],
           select: {
@@ -210,10 +243,15 @@ export class NvTourenService {
           .toString()
           .padStart(2, '0')}`
       : null;
-    const wh = await this.prisma.warehouses.findFirst({
-      where: { is_default: true, active: true },
-      select: { lat: true, lng: true },
-    });
+    // Map-Routing P0: Charter-Tour startet bei Stop[0], NICHT bei
+    // Warehouse — sonst falsche ETA (WH→Stop[0]-Travel addiert).
+    const isCharter = (tour as { is_charter?: boolean }).is_charter ?? false;
+    const wh = isCharter
+      ? null
+      : await this.prisma.warehouses.findFirst({
+          where: { is_default: true, active: true },
+          select: { lat: true, lng: true },
+        });
     const startCoord =
       wh && wh.lat != null && wh.lng != null
         ? { lat: Number(wh.lat), lng: Number(wh.lng) }
@@ -261,11 +299,14 @@ export class NvTourenService {
         // Wenn startCoord vorhanden: legs[0] = start→stop_0,
         // legs[1] = stop_0→stop_1 etc.
         const offset = startCoord ? 0 : 1;
-        legDurationsSec = stopsInput.map((_, i) => r.legs[i - offset]?.duration_sec ?? 0);
-        if (!startCoord) {
+        const durations: number[] = stopsInput.map(
+          (_, i) => r.legs[i - offset]?.duration_sec ?? 0,
+        );
+        if (!startCoord && durations.length > 0) {
           // erstes Element kein Leg → 0
-          legDurationsSec[0] = 0;
+          durations[0] = 0;
         }
+        legDurationsSec = durations;
       }
     }
 
@@ -389,18 +430,23 @@ export class NvTourenService {
     const wh = await this.prisma.warehouses.findFirst({
       where: { is_default: true, active: true },
     });
-    if (!wh || wh.lat == null || wh.lng == null) {
+    // Charter-Tours haben kein Lager — Non-Charter braucht es zwingend.
+    const isCharter = (tour as { is_charter?: boolean }).is_charter ?? false;
+    if (!isCharter && (!wh || wh.lat == null || wh.lng == null)) {
       this.logger.warn(
         `routeOnlyForTour(${tourId}): default warehouse missing — skip`,
       );
       return null;
     }
-    const whLat = Number(wh.lat);
-    const whLng = Number(wh.lng);
-    if (!Number.isFinite(whLat) || !Number.isFinite(whLng)) return null;
+    const whCoord =
+      wh && wh.lat != null && wh.lng != null
+        ? { lat: Number(wh.lat), lng: Number(wh.lng) }
+        : null;
+    if (whCoord && (!Number.isFinite(whCoord.lat) || !Number.isFinite(whCoord.lng)))
+      return null;
 
     const sortedStops = [...tour.stops].sort((a, b) => a.position - b.position);
-    const stopCoords: Array<[number, number]> = [];
+    const stops: Array<{ id: string; lat: number; lng: number }> = [];
     for (const s of sortedStops) {
       const sh: any = s.shipment;
       const addr =
@@ -411,20 +457,31 @@ export class NvTourenService {
       const lat = Number(addr.lat);
       const lng = Number(addr.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-      stopCoords.push([lng, lat]);
+      stops.push({ id: s.id, lat, lng });
     }
-    if (stopCoords.length === 0) {
+    if (stops.length === 0) {
       this.logger.warn(
         `routeOnlyForTour(${tourId}): no stop coords — skip`,
       );
       return null;
     }
 
-    const coords: Array<[number, number]> = [
-      [whLng, whLat],
-      ...stopCoords,
-      [whLng, whLat],
-    ];
+    // Map-Routing P0: buildTourRoute = einzige Geometrie-Wahrheit.
+    // is_charter=true  → [stop[0], …, stop[N]] (kein Lager)
+    // is_charter=false → [WH, …stops, WH] (RoundTrip)
+    const routeCoords = buildTourRoute({
+      stops,
+      startHub: whCoord,
+      endHub: whCoord,
+      isCharter,
+    });
+    const coords: Array<[number, number]> = routeCoords.map((r) => r.coord);
+    if (coords.length < 2) {
+      this.logger.warn(
+        `routeOnlyForTour(${tourId}): <2 coords — skip`,
+      );
+      return null;
+    }
     const result = await routeOnly(coords);
     if (!result) {
       this.logger.warn(
@@ -456,19 +513,22 @@ export class NvTourenService {
       include: TOUR_INCLUDE,
     });
     if (!tour) throw new NotFoundException('NV-Tour nicht gefunden');
+    const isCharter = (tour as { is_charter?: boolean }).is_charter ?? false;
 
     const wh = await this.prisma.warehouses.findFirst({
       where: { is_default: true, active: true },
     });
-    if (!wh || wh.lat == null || wh.lng == null) {
+    if (!isCharter && (!wh || wh.lat == null || wh.lng == null)) {
       this.logger.warn(
         `optimizeTourRoute(${tourId}): default warehouse missing lat/lng — skip`,
       );
       return null;
     }
-    const whLat = Number(wh.lat);
-    const whLng = Number(wh.lng);
-    if (!Number.isFinite(whLat) || !Number.isFinite(whLng)) {
+    const whCoord =
+      wh && wh.lat != null && wh.lng != null
+        ? { lat: Number(wh.lat), lng: Number(wh.lng) }
+        : null;
+    if (whCoord && (!Number.isFinite(whCoord.lat) || !Number.isFinite(whCoord.lng))) {
       this.logger.warn(
         `optimizeTourRoute(${tourId}): warehouse coords NaN — skip`,
       );
@@ -478,7 +538,7 @@ export class NvTourenService {
     const sortedStops = [...tour.stops].sort(
       (a, b) => a.position - b.position,
     );
-    const stopsWithCoords: Array<{ id: string; coord: [number, number] }> = [];
+    const stopsWithCoords: Array<{ id: string; lat: number; lng: number }> = [];
     let anyMissing = false;
     for (const s of sortedStops) {
       const sh: any = s.shipment;
@@ -496,7 +556,7 @@ export class NvTourenService {
         anyMissing = true;
         continue;
       }
-      stopsWithCoords.push({ id: s.id, coord: [lng, lat] });
+      stopsWithCoords.push({ id: s.id, lat, lng });
     }
 
     if (stopsWithCoords.length === 0) {
@@ -512,16 +572,18 @@ export class NvTourenService {
       return this.recalcTourKm(tourId);
     }
     if (stopsWithCoords.length === 1) {
-      // Trip-API braucht ≥2 Coords zwischen Lager-Pinnings; mit 1 Stop
-      // ist Sequenz trivial (WH→Stop→WH). Nur KM neu berechnen.
+      // Trip-API braucht ≥2 Coords; mit 1 Stop trivial.
       return this.recalcTourKm(tourId);
     }
 
-    const coords: Array<[number, number]> = [
-      [whLng, whLat],
-      ...stopsWithCoords.map((s) => s.coord),
-      [whLng, whLat],
-    ];
+    // Map-Routing P0: buildTourRoute = einzige Geometrie-Wahrheit.
+    const routeCoords = buildTourRoute({
+      stops: stopsWithCoords,
+      startHub: whCoord,
+      endHub: whCoord,
+      isCharter,
+    });
+    const coords: Array<[number, number]> = routeCoords.map((r) => r.coord);
     const result = await routeTrip(coords);
     if (!result) {
       this.logger.warn(
@@ -531,13 +593,16 @@ export class NvTourenService {
     }
 
     // optimizedOrder[optPos] = inputIdx (0..coords.length-1).
-    // Index 0 und last sind Lager → herausfiltern, mittlere mappen
-    // auf stop-Indizes via -1.
+    // Map-Routing P0: Wenn non-Charter → Index 0+last sind Hubs,
+    // sonst alle Indices sind Stops.
+    const hubCountStart = isCharter ? 0 : whCoord ? 1 : 0;
+    const hubCountEnd = isCharter ? 0 : whCoord ? 1 : 0;
     const newOrderStopIds: string[] = [];
     const lastIdx = coords.length - 1;
     for (const inputIdx of result.optimizedOrder) {
-      if (inputIdx === 0 || inputIdx === lastIdx) continue;
-      const stopIdx = inputIdx - 1;
+      if (hubCountStart && inputIdx === 0) continue;
+      if (hubCountEnd && inputIdx === lastIdx) continue;
+      const stopIdx = inputIdx - hubCountStart;
       if (stopIdx >= 0 && stopIdx < stopsWithCoords.length) {
         newOrderStopIds.push(stopsWithCoords[stopIdx].id);
       }
@@ -1097,6 +1162,34 @@ export class NvTourenService {
    * Sendung eine der 4 Kapazitaets-Achsen ueberschreitet.
    * Achsen mit max=null werden uebersprungen.
    */
+  /**
+   * Map-Routing Sprint: Soft-Variant of assertCapacityOk.
+   * Returns would_exceed-Liste statt zu throwen. Caller entscheidet
+   * ob warnen oder blocken. addStop nutzt soft, dispatch nutzt
+   * assertReadyForDispatchNv (welches selbst over-load checkt).
+   */
+  async checkCapacitySoft(
+    tourId: string,
+    shipmentId: string,
+  ): Promise<Array<{
+    axis: string;
+    max: number;
+    current: number;
+    adding: number;
+    total: number;
+  }>> {
+    try {
+      await this.assertCapacityOk(tourId, shipmentId);
+      return [];
+    } catch (err: any) {
+      const data = err?.response ?? err?.getResponse?.() ?? err;
+      if (data && Array.isArray(data.would_exceed)) {
+        return data.would_exceed;
+      }
+      return [];
+    }
+  }
+
   private async assertCapacityOk(tourId: string, shipmentId: string) {
     const cap = await this.getCapacity(tourId);
     const shipment = await this.prisma.shipments.findUnique({
@@ -1207,7 +1300,14 @@ export class NvTourenService {
       )._max.position ?? -1) +
         1);
 
-    await this.assertCapacityOk(tourId, dto.shipment_id);
+    // Map-Routing Sprint: Capacity-Soft-Allow.
+    // addStop blockt nicht mehr bei overload (würde-überschreiten).
+    // Block erfolgt jetzt bei Status PLANNING→IN_PROGRESS via
+    // assertReadyForDispatchNv. Capacity-Check liefert nur warnings.
+    const capacityWarnings = await this.checkCapacitySoft(
+      tourId,
+      dto.shipment_id,
+    );
 
     const created = await this.prisma.nv_tour_stops.create({
       data: {
@@ -1236,11 +1336,21 @@ export class NvTourenService {
     // Response nicht (OSRM ~1-2s). UI invalidiert ein zweites Mal
     // nach 3s und fängt die neuen positions/km ab.
     setImmediate(() => {
-      void this.safeRecalc(tourId);
-      void this.safeOptimizeTour(tourId);
-      void this.safeRecomputeSchedule(tourId);
+      void this.safeRecomputeIsCharter(tourId).then(() => {
+        // is_charter MUST be set BEFORE route/schedule recompute
+        // (sonst nutzt buildTourRoute alten Wert).
+        void this.safeRecalc(tourId);
+        void this.safeOptimizeTour(tourId);
+        void this.safeRecomputeSchedule(tourId);
+      });
     });
-    return created;
+    // Map-Routing: Return warnings als Sidecar (FE kann anzeigen
+    // ohne Block). Frontend-Code sollte response.capacity_warnings
+    // checken statt 409.
+    return {
+      ...created,
+      capacity_warnings: capacityWarnings,
+    };
   }
 
   /**
@@ -1318,9 +1428,11 @@ export class NvTourenService {
     if (!existing) throw new NotFoundException('Stop nicht gefunden');
     await this.prisma.nv_tour_stops.delete({ where: { id: stopId } });
     setImmediate(() => {
-      void this.safeRecalc(existing.nv_tour_id);
-      void this.safeOptimizeTour(existing.nv_tour_id);
-      void this.safeRecomputeSchedule(existing.nv_tour_id);
+      void this.safeRecomputeIsCharter(existing.nv_tour_id).then(() => {
+        void this.safeRecalc(existing.nv_tour_id);
+        void this.safeOptimizeTour(existing.nv_tour_id);
+        void this.safeRecomputeSchedule(existing.nv_tour_id);
+      });
     });
     return { ok: true };
   }
@@ -1500,9 +1612,11 @@ export class NvTourenService {
     });
 
     setImmediate(() => {
-      void this.safeRecalc(tourId);
-      void this.safeOptimizeTour(tourId);
-      void this.safeRecomputeSchedule(tourId);
+      void this.safeRecomputeIsCharter(tourId).then(() => {
+        void this.safeRecalc(tourId);
+        void this.safeOptimizeTour(tourId);
+        void this.safeRecomputeSchedule(tourId);
+      });
     });
     return {
       ok: true,
@@ -2815,4 +2929,110 @@ export class NvTourenService {
       skipped: addrMap.size - candidates.length,
     };
   }
+
+  /**
+   * Sprint Map-Routing: nearby-shipments ≤radius_km um Tour-Stops.
+   * Listet undisponierte Sendungen (status='new'|'in_warehouse',
+   * tour_id=null) deren loading-address innerhalb radius_km
+   * zu mindestens 1 Tour-Stop liegt (Haversine).
+   */
+  async nearbyShipments(tourId: string, radius_km = 20) {
+    const tour = await this.prisma.nv_touren.findUnique({
+      where: { id: tourId },
+      include: TOUR_INCLUDE,
+    });
+    if (!tour) throw new NotFoundException('Tour nicht gefunden');
+    const stopCoords: Array<{ lat: number; lng: number }> = [];
+    for (const s of tour.stops ?? []) {
+      const addr =
+        s.stop_type === 'DELIVERY'
+          ? s.shipment?.addresses_shipments_delivery_address_idToaddresses
+          : s.shipment?.addresses_shipments_loading_address_idToaddresses;
+      if (addr?.lat != null && addr?.lng != null) {
+        stopCoords.push({ lat: Number(addr.lat), lng: Number(addr.lng) });
+      }
+    }
+    if (stopCoords.length === 0) return [];
+
+    const candidates = await this.prisma.shipments.findMany({
+      where: {
+        deleted_at: null,
+        tour_id: null,
+        status: { in: ['new', 'in_warehouse'] },
+      },
+      select: {
+        id: true,
+        shipment_number: true,
+        weight_kg: true,
+        ldm: true,
+        loading_date: true,
+        customers: { select: { id: true, name: true } },
+        addresses_shipments_loading_address_idToaddresses: {
+          select: { lat: true, lng: true, zip: true, city: true },
+        },
+      },
+      take: 500,
+    });
+
+    const out: Array<{
+      id: string;
+      shipment_number: string;
+      weight_kg: number | null;
+      ldm: number | null;
+      customer_name: string | null;
+      lat: number;
+      lng: number;
+      zip: string | null;
+      city: string | null;
+      distance_km: number;
+    }> = [];
+    for (const c of candidates) {
+      const a = c.addresses_shipments_loading_address_idToaddresses;
+      if (!a?.lat || !a?.lng) continue;
+      const cLat = Number(a.lat);
+      const cLng = Number(a.lng);
+      let minDist = Number.POSITIVE_INFINITY;
+      for (const sc of stopCoords) {
+        const d = haversineKm(cLat, cLng, sc.lat, sc.lng);
+        if (d < minDist) minDist = d;
+      }
+      if (minDist <= radius_km) {
+        out.push({
+          id: c.id,
+          shipment_number: c.shipment_number,
+          weight_kg: c.weight_kg ? Number(c.weight_kg) : null,
+          ldm: c.ldm ? Number(c.ldm) : null,
+          customer_name: c.customers?.name ?? null,
+          lat: cLat,
+          lng: cLng,
+          zip: a.zip ?? null,
+          city: a.city ?? null,
+          distance_km: minDist,
+        });
+      }
+    }
+    out.sort((a, b) => a.distance_km - b.distance_km);
+    return out;
+  }
+}
+
+function haversineKm(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const sinDLat = Math.sin(dLat / 2);
+  const sinDLng = Math.sin(dLng / 2);
+  const a =
+    sinDLat * sinDLat +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      sinDLng *
+      sinDLng;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }

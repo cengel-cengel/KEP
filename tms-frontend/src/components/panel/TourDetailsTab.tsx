@@ -45,6 +45,8 @@ interface TourDetail {
   id: string;
   tour_number?: string | null;
   status?: string | null;
+  /** Map-Routing P0: Charter-Direkt FV-Tour. */
+  is_charter?: boolean;
   geplante_km?: string | number | null;
   notes?: string | null;
   subcontractors?: { id: string; name: string } | null;
@@ -106,6 +108,9 @@ interface NvTourDetail {
   id: string;
   datum: string;
   status: string;
+  /** Map-Routing P0: Charter-Direkt-Tour (1 CHARTER_DIREKT-Sendung).
+   *  Beeinflusst Route-Geometrie + Scheduler-Start-Coord. */
+  is_charter?: boolean;
   fahrzeug_typ?: string | null;
   notizen?: string | null;
   nv_stamm_tour?: {
@@ -697,9 +702,15 @@ function NvTourBody({ tourId }: { tourId: string }) {
   if (tourQ.isLoading) return <div className="p-3 text-xs text-gray-400">Lädt…</div>;
   if (!t) return <div className="p-3 text-xs text-gray-400">Tour nicht gefunden.</div>;
 
+  // Map-Routing: Start-Block sichtbar — IN_PROGRESS-Label
+  // signalisiert wenn Tour überladen ist.
+  const isOverloaded = t.overload?.isOverloaded === true;
   const statusOptions: { value: NvTourMutableStatus; label: string }[] = [
     { value: 'PLANNING', label: 'Geplant' },
-    { value: 'IN_PROGRESS', label: 'In Fahrt' },
+    {
+      value: 'IN_PROGRESS',
+      label: isOverloaded ? 'In Fahrt (Tour überladen!)' : 'In Fahrt',
+    },
     { value: 'COMPLETED', label: 'Abgeschlossen' },
     { value: 'CANCELLED', label: 'Storniert' },
   ];

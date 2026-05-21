@@ -299,6 +299,10 @@ export default function NewShipmentPage() {
   const suggestionRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [customerRef, setCustomerRef] = useState('');
   const [transportType, setTransportType] = useState<string>(TRANSPORT_TYPE_DEFAULT);
+  // Map-Routing P1: classification override (empty = Auto-Ableitung BE).
+  const [classification, setClassification] = useState<
+    '' | 'SAMMELGUT' | 'CHARTER_UMSCHLAG' | 'CHARTER_DIREKT'
+  >('');
   const [loadingSelect, setLoadingSelect] = useState('');
   const [deliveryStreetName, setDeliveryStreetName] = useState('');
   const [deliveryHouseNumber, setDeliveryHouseNumber] = useState('');
@@ -1320,6 +1324,7 @@ export default function NewShipmentPage() {
         loadingCountryCode,
         deliveryCountryCode: deliveryForm.countryCode,
         transportType,
+        classification: classification || undefined,
         customerRef: customerRef || undefined,
         loadingDate,
         loadingTimeFrom: lf,
@@ -1930,6 +1935,25 @@ export default function NewShipmentPage() {
                 {TRANSPORT_TYPE_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
+              </select>
+              {/* Map-Routing P1: Classification-Override (Auto ist BE-default). */}
+              <label className="block text-[10px] uppercase tracking-wide text-gray-500 mt-2 mb-1">
+                Klassifizierung (Override)
+              </label>
+              <select
+                value={classification}
+                onChange={(e) =>
+                  setClassification(
+                    e.target.value as typeof classification,
+                  )
+                }
+                className="w-full text-sm rounded-md border border-gray-300 bg-white px-2 py-1.5"
+                title="Leer = automatisch nach Gewicht/Sattel/PLZ-Gebiet"
+              >
+                <option value="">— Auto (BE-Ableitung) —</option>
+                <option value="SAMMELGUT">Sammelgut</option>
+                <option value="CHARTER_UMSCHLAG">Charter-Umschlag</option>
+                <option value="CHARTER_DIREKT">Charter-Direkt</option>
               </select>
             </div>
 

@@ -166,4 +166,17 @@ export class CreateShipmentDto {
   @IsOptional()
   @IsString()
   customerNote?: string | null;
+
+  /**
+   * Map-Routing P1: Manual classification-Override.
+   * Wenn unset → Auto-Ableitung BE-side (classifyShipment-lib).
+   */
+  @ApiPropertyOptional({
+    enum: ['SAMMELGUT', 'CHARTER_UMSCHLAG', 'CHARTER_DIREKT'],
+    description:
+      'Sendungs-Klassifizierung. Override; sonst auto-abgeleitet.',
+  })
+  @IsOptional()
+  @IsString()
+  classification?: 'SAMMELGUT' | 'CHARTER_UMSCHLAG' | 'CHARTER_DIREKT';
 }

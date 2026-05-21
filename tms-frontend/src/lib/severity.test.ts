@@ -9,11 +9,16 @@ import {
   SEVERITY_TOKENS,
 } from './severity';
 
-// Test-Helper: fixed "today" for date-based rules.
-// Today is 2026-05-20 per CLAUDE.md currentDate.
-const TODAY = '2026-05-20';
-const YESTERDAY = '2026-05-19';
-const TOMORROW = '2026-05-21';
+// Test-Helper: dynamische Tages-Relativ-Daten (kein hardcoded
+// 2026-05-20 mehr — tagewechsel-stabil).
+function isoDay(offsetDays: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+const TODAY = isoDay(0);
+const YESTERDAY = isoDay(-1);
+const TOMORROW = isoDay(1);
 
 describe('getShipmentSeverity', () => {
   it('overdue (status=new + loading_date past) → L1', () => {

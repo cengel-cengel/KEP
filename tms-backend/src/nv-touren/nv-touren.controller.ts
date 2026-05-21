@@ -189,6 +189,16 @@ export class NvTourenController {
     return this.svc.geocodeTourStops(tourId);
   }
 
+  // Sprint Map-Routing: nearby-shipments ≤20km um Tour-Stops.
+  @Get(':id/nearby-shipments')
+  nearbyShipments(
+    @Param('id') tourId: string,
+    @Query('radius_km') radius_km?: string,
+  ) {
+    const r = radius_km ? Number(radius_km) : 20;
+    return this.svc.nearbyShipments(tourId, Number.isFinite(r) ? r : 20);
+  }
+
   @Get(':id/cost-components')
   costComponentsByTour(@Param('id') tourId: string) {
     return this.svc.getCostComponentsByTour(tourId);

@@ -128,6 +128,33 @@ export type TourStopPin = {
   risk_severity?: string | null;
 };
 
+/** Map-Routing: Nearby-Pin (gray dashed border, ≤20km nicht-disp). */
+function makeNearbyIcon() {
+  const html = `
+    <div style="
+      width:24px;height:32px;position:relative;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,.3));
+    ">
+      <svg viewBox="0 0 24 32" width="24" height="32">
+        <path d="M12 0 C 18 0 24 5 24 12 C 24 19 12 32 12 32 C 12 32 0 19 0 12 C 0 5 6 0 12 0 Z"
+              fill="white" stroke="#6b7280" stroke-width="2" stroke-dasharray="3 2"/>
+      </svg>
+      <div style="
+        position:absolute;top:3px;left:0;right:0;
+        text-align:center;color:#374151;
+        font-size:11px;font-weight:600;line-height:18px;
+        font-family:system-ui,sans-serif;
+      ">+</div>
+    </div>
+  `;
+  return L.divIcon({
+    html,
+    iconSize: [24, 32],
+    iconAnchor: [12, 30],
+    className: 'nv-dispo-nearby-pin',
+  });
+}
+
 function makeWarehouseIcon() {
   const html = `
     <div style="
@@ -167,10 +194,24 @@ export default function NvDispoMap({
   selectedStopId,
   tourStopColor,
   tourStatus,
+  nearbyShipments,
+  onNearbyClick,
 }: {
   shipments: MapShipment[];
   clickedSequence: string[];
   onPinClick: (shipmentId: string) => void;
+  /** Map-Routing Sprint: nearby ≤20km nicht-disponierte
+   *  Sendungen. Distinct gray-dashed pin. */
+  nearbyShipments?: Array<{
+    id: string;
+    shipment_number: string;
+    lat: number;
+    lng: number;
+    customer_name?: string | null;
+    distance_km?: number;
+  }>;
+  /** Pin-Klick → optimistic addStop (Caller). */
+  onNearbyClick?: (shipmentId: string) => void;
   onReset?: () => void;
   onRouteError?: (msg: string) => void;
   tourStops?: TourStopPin[];
@@ -201,6 +242,8 @@ export default function NvDispoMap({
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const polylineRef = useRef<L.Polyline | null>(null);
   const tourMarkersRef = useRef<Map<string, L.Marker>>(new Map());
+  // Map-Routing: Nearby-Pins (≤20km nicht-disponiert).
+  const nearbyMarkersRef = useRef<Map<string, L.Marker>>(new Map());
   // S-7 Marker-Cluster für Tour-Stops (Warehouse-Pins bleiben einzeln).
   const tourClusterRef = useRef<L.MarkerClusterGroup | null>(null);
   const tourPolylineRef = useRef<L.Polyline | null>(null);
@@ -362,6 +405,37 @@ export default function NvDispoMap({
     }
     // Auto-Fit übernimmt zentrale useEffect (shipments + tourStops).
   }, [shipments, clickedIndex, onPinClick, pendingAddIds]);
+
+  // Map-Routing: Nearby-Pins-Rendering (Diff-Update).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const seen = new Set<string>();
+    for (const n of nearbyShipments ?? []) {
+      seen.add(n.id);
+      const icon = makeNearbyIcon();
+      const tip = `${n.shipment_number} · ${n.customer_name ?? ''}${
+        n.distance_km != null ? ` · ${n.distance_km.toFixed(1)} km` : ''
+      }`;
+      const existing = nearbyMarkersRef.current.get(n.id);
+      if (existing) {
+        existing.setLatLng([n.lat, n.lng]);
+        existing.unbindTooltip();
+        existing.bindTooltip(tip, { direction: 'top', offset: [0, -30] });
+      } else {
+        const m = L.marker([n.lat, n.lng], { icon }).addTo(map);
+        m.bindTooltip(tip, { direction: 'top', offset: [0, -30] });
+        m.on('click', () => onNearbyClick?.(n.id));
+        nearbyMarkersRef.current.set(n.id, m);
+      }
+    }
+    for (const [id, m] of nearbyMarkersRef.current) {
+      if (!seen.has(id)) {
+        map.removeLayer(m);
+        nearbyMarkersRef.current.delete(id);
+      }
+    }
+  }, [nearbyShipments, onNearbyClick]);
 
   // Zentraler Auto-Fit: alle Shipments + Tour-Stops (inkl. Lager-Pins).
   useEffect(() => {

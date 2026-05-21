@@ -26,6 +26,8 @@ import {
   findBestToursForShipmentPrecise,
   type MatchTourCandidate,
 } from '../lib/tourMatcher.lib';
+import { buildTourRoute } from '../lib/routeGeometry.lib';
+import { deriveIsCharter } from '../lib/tourCharterDerive.lib';
 import { computeFvSchedule } from './fv-scheduler.lib';
 
 /**
@@ -528,7 +530,9 @@ export class ToursService {
     });
 
     setImmediate(() => {
-      void this.safeRecomputeFvSchedule(tourId);
+      void this.safeRecomputeIsCharterFv(tourId).then(() => {
+        void this.safeRecomputeFvSchedule(tourId);
+      });
     });
 
     return this.findOne(tourId);
@@ -562,7 +566,9 @@ export class ToursService {
     });
 
     setImmediate(() => {
-      void this.safeRecomputeFvSchedule(tourId);
+      void this.safeRecomputeIsCharterFv(tourId).then(() => {
+        void this.safeRecomputeFvSchedule(tourId);
+      });
     });
 
     return this.findOne(tourId);
@@ -608,7 +614,9 @@ export class ToursService {
       void this.safeRouteOnlyFv(tourId);
     });
     setImmediate(() => {
-      void this.safeRecomputeFvSchedule(tourId);
+      void this.safeRecomputeIsCharterFv(tourId).then(() => {
+        void this.safeRecomputeFvSchedule(tourId);
+      });
     });
 
     return this.findOne(tourId);
@@ -1206,7 +1214,9 @@ export class ToursService {
       void this.safeOptimizeFvTour(tourId);
     });
     setImmediate(() => {
-      void this.safeRecomputeFvSchedule(tourId);
+      void this.safeRecomputeIsCharterFv(tourId).then(() => {
+        void this.safeRecomputeFvSchedule(tourId);
+      });
     });
 
     return { ok: true, added: adds.length, removed: removes.length };
@@ -1233,6 +1243,27 @@ export class ToursService {
     }
   }
 
+  /** Map-Routing P1: tour.is_charter ableiten nach Stop-Set. */
+  private async safeRecomputeIsCharterFv(tourId: string) {
+    try {
+      const shipments = await this.prisma.shipments.findMany({
+        where: { tour_id: tourId, deleted_at: null },
+        select: { classification: true },
+      });
+      const next = deriveIsCharter({
+        shipments: shipments.map((s) => ({ classification: s.classification })),
+      });
+      await this.prisma.tours.update({
+        where: { id: tourId },
+        data: { is_charter: next },
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `safeRecomputeIsCharterFv(${tourId}) failed: ${err?.message ?? err}`,
+      );
+    }
+  }
+
   /** W-2.1: recompute planned_arrival_fv/departure + risk pro Stop. */
   private async safeRecomputeFvSchedule(tourId: string) {
     try {
@@ -1245,12 +1276,13 @@ export class ToursService {
   }
 
   async recomputeFvSchedule(tourId: string) {
-    const tour = await this.prisma.tours.findUnique({
+    const tour: any = await this.prisma.tours.findUnique({
       where: { id: tourId },
       select: {
         id: true,
         tour_date: true,
         departure_time: true,
+        is_charter: true,
         hub_start_address: { select: { lat: true, lng: true } },
         shipments: {
           where: { deleted_at: null },
@@ -1271,13 +1303,35 @@ export class ToursService {
     });
     if (!tour || tour.shipments.length === 0) return null;
 
-    const startCoord =
-      tour.hub_start_address?.lat != null && tour.hub_start_address?.lng != null
-        ? {
-            lat: Number(tour.hub_start_address.lat),
-            lng: Number(tour.hub_start_address.lng),
-          }
-        : null;
+    // Map-Routing P0 + Fix#1: startCoord-Logik IDENTISCH zu
+    // buildTourRoute-FV-Fallback. Eine Wahrheit zwischen
+    // Polyline-Start und Schedule-Start.
+    //   is_charter        → null (kein WH-Vorlauf)
+    //   !is_charter:
+    //     hub_start vorh. → hub_start
+    //     sonst           → default-warehouse-coord
+    const isCharter = (tour as { is_charter?: boolean }).is_charter ?? false;
+    let startCoord: { lat: number; lng: number } | null = null;
+    if (!isCharter) {
+      if (
+        tour.hub_start_address?.lat != null &&
+        tour.hub_start_address?.lng != null
+      ) {
+        startCoord = {
+          lat: Number(tour.hub_start_address.lat),
+          lng: Number(tour.hub_start_address.lng),
+        };
+      } else {
+        // Fix#1: default-warehouse-Fallback (matched routeOnlyForFvTour).
+        const wh = await this.prisma.warehouses.findFirst({
+          where: { is_default: true, active: true },
+          select: { lat: true, lng: true },
+        });
+        if (wh && wh.lat != null && wh.lng != null) {
+          startCoord = { lat: Number(wh.lat), lng: Number(wh.lng) };
+        }
+      }
+    }
 
     const sched = computeFvSchedule({
       tourDate: tour.tour_date,
@@ -1331,7 +1385,7 @@ export class ToursService {
    * Persistiert polyline_geometry + geplante_km.
    */
   async routeOnlyForFvTour(tourId: string) {
-    const tour = await this.prisma.tours.findUnique({
+    const tour: any = await this.prisma.tours.findUnique({
       where: { id: tourId },
       include: {
         hub_start_address: { select: { lat: true, lng: true } },
@@ -1352,38 +1406,61 @@ export class ToursService {
       this.logger.warn(`routeOnlyForFvTour(${tourId}): tour nicht gefunden`);
       return null;
     }
+    const isCharter = (tour as { is_charter?: boolean }).is_charter ?? false;
 
-    const stopCoords: Array<[number, number]> = [];
+    const stops: Array<{ id: string; lat: number; lng: number }> = [];
     for (const s of tour.shipments) {
       const addr = s.addresses_shipments_loading_address_idToaddresses;
       if (!addr || addr.lat == null || addr.lng == null) continue;
       const lat = Number(addr.lat);
       const lng = Number(addr.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-      stopCoords.push([lng, lat]);
+      stops.push({ id: s.id, lat, lng });
     }
-    if (stopCoords.length === 0) {
+    if (stops.length === 0) {
       this.logger.warn(
         `routeOnlyForFvTour(${tourId}): no shipment coords — skip`,
       );
       return null;
     }
 
-    const hubStart = tour.hub_start_address;
-    const hubEnd = tour.hub_end_address;
-    const hasHub =
-      hubStart?.lat != null &&
-      hubStart?.lng != null &&
-      hubEnd?.lat != null &&
-      hubEnd?.lng != null;
+    // Map-Routing P0: hub_start/end fallback auf default-warehouse
+    // wenn FV-Tour keinen eigenen Hub hat (non-Charter only).
+    let startHub: { lat: number; lng: number } | null = null;
+    let endHub: { lat: number; lng: number } | null = null;
+    if (!isCharter) {
+      if (tour.hub_start_address?.lat != null && tour.hub_start_address?.lng != null) {
+        startHub = {
+          lat: Number(tour.hub_start_address.lat),
+          lng: Number(tour.hub_start_address.lng),
+        };
+      }
+      if (tour.hub_end_address?.lat != null && tour.hub_end_address?.lng != null) {
+        endHub = {
+          lat: Number(tour.hub_end_address.lat),
+          lng: Number(tour.hub_end_address.lng),
+        };
+      }
+      // Fallback default-warehouse wenn beide Hubs fehlen.
+      if (!startHub && !endHub) {
+        const wh = await this.prisma.warehouses.findFirst({
+          where: { is_default: true, active: true },
+          select: { lat: true, lng: true },
+        });
+        if (wh && wh.lat != null && wh.lng != null) {
+          startHub = { lat: Number(wh.lat), lng: Number(wh.lng) };
+          endHub = startHub;
+        }
+      }
+    }
 
-    const coords: Array<[number, number]> = hasHub
-      ? [
-          [Number(hubStart!.lng), Number(hubStart!.lat)],
-          ...stopCoords,
-          [Number(hubEnd!.lng), Number(hubEnd!.lat)],
-        ]
-      : stopCoords;
+    const routeCoords = buildTourRoute({
+      stops,
+      startHub,
+      endHub,
+      isCharter,
+    });
+    const coords: Array<[number, number]> = routeCoords.map((r) => r.coord);
     if (coords.length < 2) {
       this.logger.warn(
         `routeOnlyForFvTour(${tourId}): <2 coords — skip`,
@@ -1418,7 +1495,7 @@ export class ToursService {
    * - Sonst: nur recalc KM (Distance aus shipment-loading-Adressen)
    */
   async optimizeFvTour(tourId: string) {
-    const tour = await this.prisma.tours.findUnique({
+    const tour: any = await this.prisma.tours.findUnique({
       where: { id: tourId },
       include: {
         hub_start_address: {
@@ -1441,15 +1518,16 @@ export class ToursService {
       },
     });
     if (!tour) throw new NotFoundException(`Tour ${tourId} nicht gefunden`);
+    const isCharter = (tour as { is_charter?: boolean }).is_charter ?? false;
 
-    const stopsWithCoords: Array<{ id: string; coord: [number, number] }> = [];
+    const stopsWithCoords: Array<{ id: string; lat: number; lng: number }> = [];
     for (const s of tour.shipments) {
       const addr = s.addresses_shipments_loading_address_idToaddresses;
       if (!addr || addr.lat == null || addr.lng == null) continue;
       const lat = Number(addr.lat);
       const lng = Number(addr.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-      stopsWithCoords.push({ id: s.id, coord: [lng, lat] });
+      stopsWithCoords.push({ id: s.id, lat, lng });
     }
     if (stopsWithCoords.length === 0) {
       this.logger.warn(
@@ -1458,19 +1536,42 @@ export class ToursService {
       return null;
     }
 
-    const hubStart = tour.hub_start_address;
-    const hubEnd = tour.hub_end_address;
-    const hasHub =
-      hubStart?.lat != null &&
-      hubStart?.lng != null &&
-      hubEnd?.lat != null &&
-      hubEnd?.lng != null;
+    // Map-Routing P0: hub fallback default-warehouse (non-Charter).
+    let startHub: { lat: number; lng: number } | null = null;
+    let endHub: { lat: number; lng: number } | null = null;
+    if (!isCharter) {
+      if (tour.hub_start_address?.lat != null && tour.hub_start_address?.lng != null) {
+        startHub = {
+          lat: Number(tour.hub_start_address.lat),
+          lng: Number(tour.hub_start_address.lng),
+        };
+      }
+      if (tour.hub_end_address?.lat != null && tour.hub_end_address?.lng != null) {
+        endHub = {
+          lat: Number(tour.hub_end_address.lat),
+          lng: Number(tour.hub_end_address.lng),
+        };
+      }
+      if (!startHub && !endHub) {
+        const wh = await this.prisma.warehouses.findFirst({
+          where: { is_default: true, active: true },
+          select: { lat: true, lng: true },
+        });
+        if (wh && wh.lat != null && wh.lng != null) {
+          startHub = { lat: Number(wh.lat), lng: Number(wh.lng) };
+          endHub = startHub;
+        }
+      }
+    }
 
-    if (!hasHub || stopsWithCoords.length === 1) {
-      // Fallback: Distance aus shipment-coords ohne Reorder
-      const coords: Array<[number, number]> = stopsWithCoords.map(
-        (s) => s.coord,
-      );
+    if (stopsWithCoords.length === 1) {
+      const routeCoords = buildTourRoute({
+        stops: stopsWithCoords,
+        startHub,
+        endHub,
+        isCharter,
+      });
+      const coords: Array<[number, number]> = routeCoords.map((r) => r.coord);
       if (coords.length < 2) {
         await this.prisma.tours.update({
           where: { id: tourId },
@@ -1490,20 +1591,16 @@ export class ToursService {
       return km;
     }
 
-    // Hub-Pinning + Trip-Optimize
-    const whStartCoord: [number, number] = [
-      Number(hubStart!.lng),
-      Number(hubStart!.lat),
-    ];
-    const whEndCoord: [number, number] = [
-      Number(hubEnd!.lng),
-      Number(hubEnd!.lat),
-    ];
-    const coords: Array<[number, number]> = [
-      whStartCoord,
-      ...stopsWithCoords.map((s) => s.coord),
-      whEndCoord,
-    ];
+    // TSP-Optimize mit buildTourRoute (Hubs nur wenn non-Charter).
+    const routeCoords = buildTourRoute({
+      stops: stopsWithCoords,
+      startHub,
+      endHub,
+      isCharter,
+    });
+    const coords: Array<[number, number]> = routeCoords.map((r) => r.coord);
+    const hubCountStart = isCharter ? 0 : startHub ? 1 : 0;
+    const hubCountEnd = isCharter ? 0 : endHub ? 1 : 0;
     const result = await routeTrip(coords);
     if (!result) {
       this.logger.warn(`optimizeFvTour(${tourId}): trip null — fallback km`);
@@ -1523,8 +1620,9 @@ export class ToursService {
     const lastIdx = coords.length - 1;
     const newOrderStopIds: string[] = [];
     for (const inputIdx of result.optimizedOrder) {
-      if (inputIdx === 0 || inputIdx === lastIdx) continue;
-      const stopIdx = inputIdx - 1;
+      if (hubCountStart && inputIdx === 0) continue;
+      if (hubCountEnd && inputIdx === lastIdx) continue;
+      const stopIdx = inputIdx - hubCountStart;
       if (stopIdx >= 0 && stopIdx < stopsWithCoords.length) {
         newOrderStopIds.push(stopsWithCoords[stopIdx].id);
       }
@@ -1643,5 +1741,107 @@ export class ToursService {
         cloned_item_count: plan.clonedItemCount,
       };
     });
+  }
+
+  /**
+   * Sprint Map-Routing: nearby-shipments für FV.
+   * Filter: FV-eligible (deleted_at=null, tour_id=null, status='new',
+   * transport_type ∈ FV_TRANSPORT_TYPES). Haversine ≤ radius_km zu
+   * mindestens 1 Tour-Stop.
+   */
+  async nearbyShipmentsFv(tourId: string, radius_km = 20) {
+    const tour: any = await this.prisma.tours.findUnique({
+      where: { id: tourId },
+      include: {
+        shipments: {
+          where: { deleted_at: null },
+          include: {
+            addresses_shipments_loading_address_idToaddresses: {
+              select: { lat: true, lng: true },
+            },
+          },
+        },
+      },
+    });
+    if (!tour) throw new NotFoundException(`Tour ${tourId} nicht gefunden`);
+    const stopCoords: Array<{ lat: number; lng: number }> = [];
+    for (const sh of tour.shipments) {
+      const a = sh.addresses_shipments_loading_address_idToaddresses;
+      if (a?.lat != null && a?.lng != null) {
+        stopCoords.push({ lat: Number(a.lat), lng: Number(a.lng) });
+      }
+    }
+    if (stopCoords.length === 0) return [];
+
+    const candidates = await this.prisma.shipments.findMany({
+      where: {
+        deleted_at: null,
+        tour_id: null,
+        status: { in: ['new', 'in_warehouse'] },
+        transport_type: { in: [...FV_TRANSPORT_TYPES] },
+      },
+      select: {
+        id: true,
+        shipment_number: true,
+        weight_kg: true,
+        ldm: true,
+        loading_date: true,
+        customers: { select: { id: true, name: true } },
+        addresses_shipments_loading_address_idToaddresses: {
+          select: { lat: true, lng: true, zip: true, city: true },
+        },
+      },
+      take: 500,
+    });
+    const out: Array<{
+      id: string;
+      shipment_number: string;
+      weight_kg: number | null;
+      ldm: number | null;
+      customer_name: string | null;
+      lat: number;
+      lng: number;
+      zip: string | null;
+      city: string | null;
+      distance_km: number;
+    }> = [];
+    for (const c of candidates) {
+      const a = c.addresses_shipments_loading_address_idToaddresses;
+      if (!a?.lat || !a?.lng) continue;
+      const cLat = Number(a.lat);
+      const cLng = Number(a.lng);
+      let minDist = Number.POSITIVE_INFINITY;
+      for (const sc of stopCoords) {
+        const R = 6371;
+        const dLat = ((cLat - sc.lat) * Math.PI) / 180;
+        const dLng = ((cLng - sc.lng) * Math.PI) / 180;
+        const sinDLat = Math.sin(dLat / 2);
+        const sinDLng = Math.sin(dLng / 2);
+        const aH =
+          sinDLat * sinDLat +
+          Math.cos((sc.lat * Math.PI) / 180) *
+            Math.cos((cLat * Math.PI) / 180) *
+            sinDLng *
+            sinDLng;
+        const dd = 2 * R * Math.atan2(Math.sqrt(aH), Math.sqrt(1 - aH));
+        if (dd < minDist) minDist = dd;
+      }
+      if (minDist <= radius_km) {
+        out.push({
+          id: c.id,
+          shipment_number: c.shipment_number,
+          weight_kg: c.weight_kg ? Number(c.weight_kg) : null,
+          ldm: c.ldm ? Number(c.ldm) : null,
+          customer_name: c.customers?.name ?? null,
+          lat: cLat,
+          lng: cLng,
+          zip: a.zip ?? null,
+          city: a.city ?? null,
+          distance_km: minDist,
+        });
+      }
+    }
+    out.sort((a, b) => a.distance_km - b.distance_km);
+    return out;
   }
 }

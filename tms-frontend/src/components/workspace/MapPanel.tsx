@@ -24,7 +24,8 @@
  * ResizablePanel).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query';
+import { api } from '../../lib/api';
 import { ChevronRight, ExternalLink } from 'lucide-react';
 import NvDispoMap, {
   type MapShipment,
@@ -229,6 +230,98 @@ export default function MapPanel({
     return pins;
   }, [activeTour, mode]);
 
+  // Map-Routing: nearby-shipments-Query (≤20km um Tour-Stops).
+  const nearbyQ = useQuery<
+    Array<{
+      id: string;
+      shipment_number: string;
+      lat: number;
+      lng: number;
+      customer_name?: string | null;
+      distance_km: number;
+    }>
+  >({
+    queryKey: [
+      mode === 'nv' ? 'nv-nearby' : 'fv-nearby',
+      activeTourViewId,
+    ],
+    queryFn: async () => {
+      if (!activeTourViewId) return [];
+      const base = mode === 'nv' ? '/nv-touren' : '/tours';
+      const { data } = await api.get(`${base}/${activeTourViewId}/nearby-shipments`);
+      return data as Array<{
+        id: string;
+        shipment_number: string;
+        lat: number;
+        lng: number;
+        customer_name?: string | null;
+        distance_km: number;
+      }>;
+    },
+    enabled: !!activeTourViewId,
+    staleTime: 30_000,
+  });
+
+  // Map-Routing F.1: addStop-Mutation mit Optimistic-Pin-Remove.
+  // onMutate: nimmt Pin instant aus nearbyQ raus (visual feedback < 16ms).
+  // onError: rollback (Pin wieder rein) + error-Toast.
+  // onSuccess: invalidate für authoritative-state-refresh.
+  const addNearbyMut = useMutation({
+    mutationFn: async (shipmentId: string) => {
+      if (!activeTourViewId) throw new Error('no active tour');
+      if (mode === 'nv') {
+        await api.post(`/nv-touren/${activeTourViewId}/stops`, {
+          shipment_id: shipmentId,
+          stop_type: 'PICKUP',
+        });
+      } else {
+        await api.post(`/tours/${activeTourViewId}/batch-stops`, {
+          adds: [shipmentId],
+        });
+      }
+    },
+    onMutate: async (shipmentId) => {
+      const nearbyKey = [
+        mode === 'nv' ? 'nv-nearby' : 'fv-nearby',
+        activeTourViewId,
+      ];
+      await qc.cancelQueries({ queryKey: nearbyKey });
+      const prevNearby = qc.getQueryData<
+        Array<{ id: string }> | undefined
+      >(nearbyKey);
+      if (prevNearby) {
+        qc.setQueryData(
+          nearbyKey,
+          prevNearby.filter((p) => p.id !== shipmentId),
+        );
+      }
+      return { prevNearby };
+    },
+    onSuccess: () => {
+      const detailKey =
+        mode === 'nv'
+          ? ['nv-tour-detail', activeTourViewId]
+          : ['fv-tour-detail', activeTourViewId];
+      qc.invalidateQueries({ queryKey: detailKey });
+      qc.invalidateQueries({
+        queryKey: [mode === 'nv' ? 'nv-nearby' : 'fv-nearby', activeTourViewId],
+      });
+      qc.invalidateQueries({
+        queryKey: [mode === 'nv' ? 'nv-elig' : 'fv-eligible'],
+      });
+    },
+    onError: (err: any, _shipId, ctx) => {
+      // Rollback Pin in nearby-Liste.
+      if (ctx?.prevNearby) {
+        qc.setQueryData(
+          [mode === 'nv' ? 'nv-nearby' : 'fv-nearby', activeTourViewId],
+          ctx.prevNearby,
+        );
+      }
+      onError?.(`Pin-Add fehlgeschlagen (${err?.response?.status ?? '?'}).`);
+    },
+  });
+
   const tourPolyline = useMemo(() => {
     if (!activeTour) return null;
     // FV-Tour hat polyline_geometry direkt; NV-Tour ebenfalls.
@@ -360,6 +453,8 @@ export default function MapPanel({
             tourStatus={
               (activeTour as { status?: string } | undefined)?.status ?? null
             }
+            nearbyShipments={nearbyQ.data ?? []}
+            onNearbyClick={(id) => addNearbyMut.mutate(id)}
           />
         )}
       </div>

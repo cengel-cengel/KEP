@@ -153,11 +153,27 @@ interface NvTourDetail {
       loading_time_to?: string | null;
       delivery_time_from?: string | null;
       delivery_time_to?: string | null;
+      // TEIL B Build-Fix: Felder die StopRow nutzt müssen im Type
+      // stehen — sonst bricht tsc -b mit noUnusedLocals/strict-checks.
+      classification?: string | null;
+      package_count?: number | null;
+      length_cm?: number | null;
+      width_cm?: number | null;
+      height_cm?: number | null;
+      shipment_package_items?: Array<{ stackable: boolean }>;
+      cost_components?: Array<{
+        id: string;
+        nv_tour_id?: string | null;
+        total_eur?: string | number | null;
+        phase: string;
+      }>;
       addresses_shipments_loading_address_idToaddresses?: {
+        street?: string | null;
         zip?: string | null;
         city?: string | null;
       } | null;
       addresses_shipments_delivery_address_idToaddresses?: {
+        street?: string | null;
         zip?: string | null;
         city?: string | null;
       } | null;

@@ -13,7 +13,7 @@
  */
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Box, Pencil, Trash2, Truck } from 'lucide-react';
+import { Box, Pencil, Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { prefetchNvLoadingTour } from '../../lib/prefetchHelpers';
 import type { NvTourMutableStatus } from '../../lib/nvTourStatus';
@@ -24,12 +24,16 @@ import CapacityBars, { type CapacityData } from './CapacityBars';
 export default function TourCard({
   tour,
   onDrop,
-  onMoveStop,
-  onDeleteStop,
+  // TEIL A Refactor: per-Stop-Aktionen wandern in TourDetailsTab.
+  // Props bleiben Teil der API für Backward-Compat (BoardPanel-
+  // Callsite reicht sie noch durch) — underscore-prefix signalisiert
+  // TS dass sie absichtlich nicht genutzt sind.
+  onMoveStop: _onMoveStop,
+  onDeleteStop: _onDeleteStop,
   onDeleteTour,
   onOpenKosten,
-  onOpenDrillDown,
-  onOpenDetail,
+  onOpenDrillDown: _onOpenDrillDown,
+  onOpenDetail: _onOpenDetail,
   onSetTourStatus,
   onToggleTourView,
   isActive,

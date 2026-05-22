@@ -13,12 +13,11 @@
  */
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, Box, Eye, Package, Pencil, Trash2, Truck } from 'lucide-react';
+import { Box, Pencil, Trash2, Truck } from 'lucide-react';
 import { api } from '../../lib/api';
 import { prefetchNvLoadingTour } from '../../lib/prefetchHelpers';
 import type { NvTourMutableStatus } from '../../lib/nvTourStatus';
-import type { NvTour, Stop } from '../../lib/nvTypes';
-import type { CostComponent } from './CostDrillDownModal';
+import type { NvTour } from '../../lib/nvTypes';
 import { usePanel } from '../../state/panel';
 import CapacityBars, { type CapacityData } from './CapacityBars';
 
@@ -53,57 +52,61 @@ export default function TourCard({
 }) {
   const qc = useQueryClient();
   const { selectNvTour } = usePanel();
-  const costsQ = useQuery<CostComponent[]>({
-    queryKey: ['nv-tour-cost-comp', tour.id],
-    queryFn: async () =>
-      (await api.get<CostComponent[]>(`/nv-touren/${tour.id}/cost-components`))
-        .data,
-    staleTime: 30_000,
-  });
   const capQ = useQuery<CapacityData>({
     queryKey: ['nv-tour-capacity', tour.id],
     queryFn: async () =>
       (await api.get(`/nv-touren/${tour.id}/capacity`)).data,
     staleTime: 0,
   });
-  const costsByShipment = useMemo(() => {
-    const m = new Map<string, CostComponent>();
-    for (const c of costsQ.data ?? []) {
-      if (c.shipment_id) m.set(c.shipment_id, c);
-    }
-    return m;
-  }, [costsQ.data]);
+  // TEIL A: costsQ + costsByShipment entfernt — wurden nur für
+  // pro-Sendung-Drilldown im (jetzt entfernten) ul-Block genutzt.
   const tourAggregates = useMemo(() => {
-    // Stopps = distinct loading- bzw. delivery-Adressen (mode-spezifisch
-    // pro Stop). Gleicher Algo wie computeStopGroups in stop-list.
-    const seen = new Set<string>();
-    let sumErloes = 0;
-    // P0-13: defensive null-guard (tour.stops kann fehlen direkt nach
-    // tour-create, vor first refetch).
+    // TEIL A: Kachel-Refactor — neue Felder:
+    //   Paletten (Hauptzahl) = Σ shipment.package_count
+    //     Stückmenge, stapel-unabhängig.
+    //   Boden-Verbrauch (Klammer) = Σ shipment.effective_pallets
+    //     BE recalcAggregateForShipment ist Stapel-aware:
+    //     heightFactor = floor(SATTEL_HOEHE/H) wenn stackable,
+    //     sonst 1. eff_pallets = qty / heightFactor. Deckt 2- UND
+    //     3-stöckig automatisch ab (H=110→2, H=73→3).
+    //     Zeigt "belegte Bodenplätze" = Restraum-Indikator für
+    //     "passt noch was drauf?".
+    //   kg = Σ shipment.weight_kg
+    //   ldm = Σ shipment.ldm
+    //   tour-kosten = tour.total_kosten_eur
+    //   DB-Platzhalter — Tarifwerk später.
+    //
+    // Dedup pro Sendung (Multi-Stop-Sendungen würden sonst doppelt
+    // zählen): Set<shipment-id>.
+    const seenShipments = new Set<string>();
+    let sumPackages = 0;
+    let sumBoden = 0;
+    let sumKg = 0;
+    let sumLdm = 0;
     for (const s of tour.stops ?? []) {
       const sh: any = s.shipment;
-      const addr =
-        s.stop_type === 'DELIVERY'
-          ? sh?.addresses_shipments_delivery_address_idToaddresses
-          : sh?.addresses_shipments_loading_address_idToaddresses;
-      const key = addr
-        ? `${addr.street ?? ''}|${addr.zip ?? ''}|${addr.city ?? ''}`
-        : `__none-${s.id}`;
-      seen.add(key);
-      const fr = sh?.freight_revenue;
-      if (fr != null) {
-        const n = Number(fr);
-        if (Number.isFinite(n)) sumErloes += n;
-      }
+      if (!sh?.id || seenShipments.has(sh.id)) continue;
+      seenShipments.add(sh.id);
+      const pkg = Number(sh.package_count ?? 0);
+      if (Number.isFinite(pkg)) sumPackages += pkg;
+      const boden = Number(sh.effective_pallets ?? sh.package_count ?? 0);
+      if (Number.isFinite(boden)) sumBoden += boden;
+      const kg = Number(sh.weight_kg ?? 0);
+      if (Number.isFinite(kg)) sumKg += kg;
+      const ldm = Number(sh.ldm ?? 0);
+      if (Number.isFinite(ldm)) sumLdm += ldm;
     }
-    const distinctStops = seen.size;
     const totalKosten = tour.total_kosten_eur
       ? Number(tour.total_kosten_eur)
       : 0;
-    const perStop =
-      distinctStops > 0 && totalKosten > 0 ? totalKosten / distinctStops : 0;
-    const sumDB = sumErloes - totalKosten;
-    return { distinctStops, totalKosten, perStop, sumErloes, sumDB };
+    return {
+      shipmentCount: seenShipments.size,
+      sumPackages,
+      sumBoden: Math.round(sumBoden * 100) / 100,
+      sumKg: Math.round(sumKg),
+      sumLdm: Math.round(sumLdm * 100) / 100,
+      totalKosten,
+    };
   }, [tour.stops, tour.total_kosten_eur]);
 
   const [hovered, setHovered] = useState(false);
@@ -218,83 +221,48 @@ export default function TourCard({
               </span>
             )}
           </div>
+          {/* TEIL A: Kachel-Aggregat — Paletten (Stückmenge,
+              Hauptzahl) + Boden-Verbrauch (Klammer, Restraum-
+              Indikator), kg, ldm, Kosten, DB-Placeholder.
+              Sub schon im Title-Header oben. */}
           <div className="text-xs text-gray-500 flex items-center gap-1 flex-wrap">
-            {(() => {
-              const parts: React.ReactNode[] = [];
-              parts.push(
-                <span key="stopps">
-                  Stopps:{' '}
-                  <span className="font-mono text-gray-700">
-                    {tourAggregates.distinctStops}
-                  </span>
-                </span>,
-              );
-              if (tour.geplante_km != null) {
-                parts.push(
-                  <span key="km">
-                    KM:{' '}
-                    <span className="font-mono text-slate-600">
-                      {Number(tour.geplante_km).toFixed(0)}
-                    </span>
-                  </span>,
-                );
-              }
-              if (tourAggregates.perStop > 0) {
-                parts.push(
-                  <span key="perstop">
-                    Ø/Stop:{' '}
-                    <span className="font-mono text-gray-700">
-                      €{tourAggregates.perStop.toFixed(0)}
-                    </span>
-                  </span>,
-                );
-              }
-              if (tourAggregates.sumErloes > 0) {
-                parts.push(
-                  <span key="erloes">
-                    Erlös:{' '}
-                    <span className="font-mono text-green-700">
-                      €{tourAggregates.sumErloes.toFixed(0)}
-                    </span>
-                  </span>,
-                );
-              }
-              if (tourAggregates.totalKosten > 0) {
-                parts.push(
-                  <span key="kosten">
-                    Kosten:{' '}
-                    <span className="font-mono text-rose-700">
-                      €{tourAggregates.totalKosten.toFixed(0)}
-                    </span>
-                  </span>,
-                );
-              }
-              if (
-                tourAggregates.sumErloes > 0 &&
-                tourAggregates.totalKosten > 0
-              ) {
-                parts.push(
-                  <span key="db">
-                    DB:{' '}
-                    <span
-                      className={`font-mono ${
-                        tourAggregates.sumDB >= 0
-                          ? 'text-green-700'
-                          : 'text-rose-700'
-                      }`}
-                    >
-                      €{tourAggregates.sumDB.toFixed(0)}
-                    </span>
-                  </span>,
-                );
-              }
-              return parts.map((p, i) => (
-                <span key={i} className="inline-flex items-center gap-1">
-                  {i > 0 && <span className="text-gray-300">·</span>}
-                  {p}
-                </span>
-              ));
-            })()}
+            <span title={`${tourAggregates.sumPackages} Paletten · ${tourAggregates.sumBoden.toFixed(1)} Bodenplätze belegt (stapel-aware)`}>
+              Paletten:{' '}
+              <span className="font-mono text-gray-700">
+                {tourAggregates.sumPackages}
+              </span>{' '}
+              <span className="text-gray-400">
+                ({tourAggregates.sumBoden.toFixed(0)} Boden)
+              </span>
+            </span>
+            <span className="text-gray-300">·</span>
+            <span>
+              kg:{' '}
+              <span className="font-mono text-gray-700">
+                {tourAggregates.sumKg}
+              </span>
+            </span>
+            <span className="text-gray-300">·</span>
+            <span>
+              ldm:{' '}
+              <span className="font-mono text-gray-700">
+                {tourAggregates.sumLdm.toFixed(2)}
+              </span>
+            </span>
+            <span className="text-gray-300">·</span>
+            <span>
+              Kosten:{' '}
+              <span className="font-mono text-rose-700">
+                {tourAggregates.totalKosten > 0
+                  ? `€${tourAggregates.totalKosten.toFixed(0)}`
+                  : '—'}
+              </span>
+            </span>
+            <span className="text-gray-300">·</span>
+            <span title="Deckungsbeitrag — kommt mit Tarifwerk">
+              DB:{' '}
+              <span className="font-mono text-gray-400">—</span>
+            </span>
           </div>
           <CapacityBars cap={capQ.data} />
         </div>
@@ -355,218 +323,6 @@ export default function TourCard({
           </button>
         </div>
       </div>
-      <ul className="divide-y divide-gray-100">
-        {(() => {
-          // Adress-Gruppierung: aufeinanderfolgende Stops mit gleicher
-          // Loading- bzw. Delivery-Adresse erhalten dieselbe Stop-Nr.
-          type Group = {
-            stopNr: number;
-            addressLabel: string;
-            firstIdx: number;
-            lastIdx: number;
-            items: { stop: Stop; idx: number }[];
-          };
-          const groups: Group[] = [];
-          let currentNr = 0;
-          let lastKey: string | null = null;
-          (tour.stops ?? []).forEach((s, idx) => {
-            const sh = s.shipment;
-            const addr =
-              s.stop_type === 'DELIVERY'
-                ? sh?.addresses_shipments_delivery_address_idToaddresses
-                : sh?.addresses_shipments_loading_address_idToaddresses;
-            const key = addr
-              ? `${addr.street ?? ''}|${addr.zip ?? ''}|${addr.city ?? ''}`
-              : `__none-${s.id}`;
-            if (key !== lastKey) {
-              currentNr += 1;
-              lastKey = key;
-              const label = addr
-                ? [
-                    [addr.zip, addr.city].filter(Boolean).join(' '),
-                    addr.street,
-                    addr.name,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')
-                : '— Adresse fehlt —';
-              groups.push({
-                stopNr: currentNr,
-                addressLabel: label,
-                firstIdx: idx,
-                lastIdx: idx,
-                items: [],
-              });
-            }
-            const g = groups[groups.length - 1];
-            g.lastIdx = idx;
-            g.items.push({ stop: s, idx });
-          });
-          return groups.map((g) => (
-            <li key={`group-${g.firstIdx}`} className="text-sm">
-              <div className="px-3 py-1.5 flex items-center gap-2 bg-gray-50 border-b border-gray-100">
-                <span className="text-xs font-mono font-semibold text-gray-700 w-10">
-                  Stop {g.stopNr}
-                </span>
-                {g.items[0].stop.stop_type === 'DELIVERY' ? (
-                  <Truck size={14} className="text-purple-700" />
-                ) : (
-                  <Package size={14} className="text-blue-700" />
-                )}
-                <span className="text-xs text-gray-700 truncate flex-1">
-                  {g.addressLabel}
-                </span>
-                <button
-                  onClick={() => onMoveStop(g.firstIdx, -1)}
-                  disabled={g.firstIdx === 0}
-                  className="text-gray-500 hover:text-gray-700 disabled:opacity-30"
-                  title="Stop nach oben"
-                >
-                  <ArrowUp size={14} />
-                </button>
-                <button
-                  onClick={() => onMoveStop(g.lastIdx, 1)}
-                  disabled={g.lastIdx === (tour.stops ?? []).length - 1}
-                  className="text-gray-500 hover:text-gray-700 disabled:opacity-30"
-                  title="Stop nach unten"
-                >
-                  <ArrowDown size={14} />
-                </button>
-                <button
-                  onClick={() => {
-                    const n = g.items.length;
-                    if (
-                      !confirm(
-                        n === 1
-                          ? 'Stop löschen?'
-                          : `${n} Stops an diesem Halt löschen?`,
-                      )
-                    )
-                      return;
-                    for (const it of g.items) onDeleteStop(it.stop.id);
-                  }}
-                  className="text-red-500 hover:text-red-700"
-                  title={
-                    g.items.length === 1
-                      ? 'Stop löschen'
-                      : `${g.items.length} Stops löschen`
-                  }
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-              <ul className="divide-y divide-gray-50">
-                {g.items.map(({ stop: s }) => (
-                  <li
-                    key={s.id}
-                    className="px-3 py-1 pl-12 grid grid-cols-[24px_1fr_64px_72px_64px_64px_110px_80px] gap-2 items-center"
-                  >
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (s.shipment) onOpenDetail(s.shipment.id);
-                      }}
-                      disabled={!s.shipment}
-                      className="text-gray-500 hover:text-blue-700 disabled:opacity-30"
-                      title="Sendungs-Detail"
-                    >
-                      <Eye size={14} />
-                    </button>
-                    <span className="font-mono text-xs truncate">
-                      {s.shipment?.shipment_number ?? '—'}
-                    </span>
-                    {(() => {
-                      const sh = s.shipment;
-                      const cell = (
-                        v: string | number | null | undefined,
-                        unit: string,
-                        decimals = 0,
-                      ) => {
-                        if (v == null) {
-                          return <span className="text-gray-300">—</span>;
-                        }
-                        const n = Number(v);
-                        if (!Number.isFinite(n) || n === 0) {
-                          return <span className="text-gray-300">—</span>;
-                        }
-                        return (
-                          <>
-                            <span className="font-mono">
-                              {n.toFixed(decimals)}
-                            </span>
-                            <span className="text-gray-400 ml-0.5">
-                              {unit}
-                            </span>
-                          </>
-                        );
-                      };
-                      const dimsCell = () => {
-                        const L = sh?.length_cm;
-                        const W = sh?.width_cm;
-                        const H = sh?.height_cm;
-                        if (L == null && W == null && H == null) {
-                          return <span className="text-gray-300">—</span>;
-                        }
-                        return (
-                          <span className="font-mono">
-                            {L ?? '—'}×{W ?? '—'}×{H ?? '—'}
-                            <span className="text-gray-400 ml-0.5">cm</span>
-                          </span>
-                        );
-                      };
-                      const cc = sh?.id
-                        ? costsByShipment.get(sh.id)
-                        : null;
-                      return (
-                        <>
-                          <span className="text-xs text-right">
-                            {cell(sh?.package_count, 'Pak', 0)}
-                          </span>
-                          <span className="text-xs text-right">
-                            {cell(sh?.weight_kg, 'kg', 0)}
-                          </span>
-                          <span className="text-xs text-right">
-                            {cell(sh?.ldm, 'LDM', 2)}
-                          </span>
-                          <span
-                            className="text-xs text-right"
-                            title="Stack-aware Plätze (Fallback Pak)"
-                          >
-                            {cell(
-                              sh?.effective_pallets ?? sh?.package_count,
-                              'Pl',
-                              1,
-                            )}
-                          </span>
-                          <span className="text-xs text-right">
-                            {dimsCell()}
-                          </span>
-                          <span className="text-xs text-right">
-                            {cc && cc.total_eur ? (
-                              <button
-                                onClick={() =>
-                                  sh &&
-                                  onOpenDrillDown(sh.id, sh.shipment_number)
-                                }
-                                className="font-mono text-green-700 hover:underline"
-                                title="Cost-Breakdown"
-                              >
-                                €{Number(cc.total_eur).toFixed(0)}
-                              </button>
-                            ) : (
-                              <span className="text-gray-300">—</span>
-                            )}
-                          </span>
-                        </>
-                      );
-                    })()}
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ));
-        })()}
-      </ul>
       <div
         className={`px-3 py-2 text-xs text-center border-t ${
           hovered ? 'text-blue-700' : 'text-gray-400'

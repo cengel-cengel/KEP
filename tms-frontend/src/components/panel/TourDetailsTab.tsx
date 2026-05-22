@@ -813,6 +813,7 @@ function NvTourBody({ tourId }: { tourId: string }) {
           geocodePending={geocodeMut.isPending}
           tourDatum={t.datum}
           tourTitle={titleStr}
+          tourId={t.id}
           onRemoveStop={(stopId) => {
             if (confirm('Stop von Tour entfernen?')) {
               removeStopMut.mutate(stopId);
@@ -992,6 +993,8 @@ interface NvStopsSubTabsProps {
   geocodePending: boolean;
   tourDatum: string;
   tourTitle: string;
+  /** TEIL B: für StopRow-Vorholkosten-Filter (cost_components.nv_tour_id). */
+  tourId: string;
   /** Sprint C: ContextMenu-Action für Stop-Remove (mit confirm). */
   onRemoveStop: (stopId: string) => void;
   /** Sprint C: ContextMenu-Action "in andere Tour" → MoveStopDialog. */
@@ -1019,6 +1022,7 @@ function NvStopsSubTabs({
   geocodePending,
   tourDatum,
   tourTitle,
+  tourId,
   onRemoveStop,
   onMoveStop,
   onSetStopStatus,
@@ -1085,6 +1089,7 @@ function NvStopsSubTabs({
       {subTab === 'stopps' && (
         <NvStopsView
           stops={stops}
+          tourId={tourId}
           selectedStopId={selectedStopId}
           setSelectedStopId={setSelectedStopId}
           tourDatum={tourDatum}
@@ -1144,6 +1149,7 @@ function SubTabBtn({
 
 function NvStopsView({
   stops,
+  tourId,
   selectedStopId,
   setSelectedStopId,
   tourDatum,
@@ -1154,6 +1160,8 @@ function NvStopsView({
   onSplitShipment,
 }: {
   stops: NonNullable<NvTourDetail['stops']>;
+  /** TEIL B: für StopRow-Vorholkosten-Filter. */
+  tourId: string;
   selectedStopId: string | null;
   setSelectedStopId: (id: string | null) => void;
   tourDatum: string;
@@ -1186,6 +1194,7 @@ function NvStopsView({
         <StopRow
           key={s.id}
           stop={s}
+          tourId={tourId}
           isSelected={selectedStopId === s.id}
           onToggleSelect={() =>
             setSelectedStopId(selectedStopId === s.id ? null : s.id)
@@ -1279,56 +1288,147 @@ function NvStopsView({
 
 function StopRow({
   stop,
+  tourId,
   isSelected,
   onToggleSelect,
   onOpenMenu,
 }: {
   stop: NonNullable<NvTourDetail['stops']>[number];
+  /** TEIL B: cost_components.nv_tour_id-Filter für Vorholkosten. */
+  tourId: string;
   isSelected: boolean;
   onToggleSelect: () => void;
   onOpenMenu: (x: number, y: number) => void;
 }) {
   const lp = useLongPress((x, y) => onOpenMenu(x, y));
+  const sh = stop.shipment;
+  const pickupAddr =
+    stop.stop_type === 'PICKUP'
+      ? sh?.addresses_shipments_loading_address_idToaddresses
+      : sh?.addresses_shipments_delivery_address_idToaddresses;
+  // TEIL B: Stapelbarkeit-Aggregat (alle Items stackable=true → "ja").
+  const items = sh?.shipment_package_items ?? [];
+  const allStackable =
+    items.length > 0 && items.every((i) => i.stackable !== false);
+  // TEIL B: Zeitfenster — DB Time-Typ kommt als HH:MM:SS string ODER
+  // Date-string. Wir snippen die ersten 5 Zeichen für HH:MM.
+  const tw = formatTimeWindow(
+    stop.stop_type === 'PICKUP'
+      ? sh?.loading_time_from
+      : sh?.delivery_time_from,
+    stop.stop_type === 'PICKUP'
+      ? sh?.loading_time_to
+      : sh?.delivery_time_to,
+  );
+  // TEIL B: Vorholkosten für DIESE Tour (filter nv_tour_id).
+  const vorlauf = (sh?.cost_components ?? []).find(
+    (c) => c.phase === 'VORLAUF' && c.nv_tour_id === tourId,
+  );
+  const vorlaufEur =
+    vorlauf?.total_eur != null ? Number(vorlauf.total_eur) : null;
+  const classification = (sh as { classification?: string } | undefined)
+    ?.classification;
+  // TEIL B: Sendungsgrößen (L×B×H aus shipment-Top-Level wenn da,
+  // sonst aus dem ersten/größten item — wir nutzen Top-Level einfach).
+  const sizeStr = [sh?.length_cm, sh?.width_cm, sh?.height_cm]
+    .filter((v): v is number => typeof v === 'number' && v > 0)
+    .map((v) => Math.round(v))
+    .join('×');
   return (
     <button
       type="button"
       data-stop-id={stop.id}
       onClick={onToggleSelect}
       {...lp}
-      className={`w-full text-left text-xs flex items-center gap-2 py-0.5 px-1 rounded ${
+      className={`w-full text-left text-xs px-2 py-1 rounded ${
         isSelected
           ? 'bg-amber-50 border-l-2 border-amber-500'
           : 'hover:bg-gray-50 border-l-2 border-transparent'
       }`}
     >
-      <span className="text-gray-400 font-mono w-5 text-right">
-        {stop.position}.
-      </span>
-      <StopStatusBadge status={stop.status} compact />
-      <span className="font-mono">
-        {stop.shipment?.shipment_number ?? '—'}
-      </span>
-      <span className="text-[10px] text-gray-500">
-        {stop.stop_type ?? ''}
-      </span>
-      {(stop.shipment as { classification?: string } | undefined)
-        ?.classification === 'CHARTER_UMSCHLAG' && (
-        <span
-          className="text-[9px] rounded bg-amber-100 text-amber-800 px-1 py-0.5 uppercase font-medium"
-          title="Charter-Umschlag (2-Tour-Flow)"
-        >
-          CU
+      {/* Header-Zeile (kompakt, wie vorher) */}
+      <div className="flex items-center gap-2">
+        <span className="text-gray-400 font-mono w-5 text-right">
+          {stop.position}.
         </span>
-      )}
-      {stop.notizen && (
-        <StickyNote
-          size={11}
-          className="text-amber-600 ml-auto"
-          aria-label={`Notiz: ${stop.notizen}`}
-        />
+        <StopStatusBadge status={stop.status} compact />
+        <span className="font-mono">
+          {sh?.shipment_number ?? '—'}
+        </span>
+        <span className="text-[10px] text-gray-500">
+          {stop.stop_type ?? ''}
+        </span>
+        {classification === 'CHARTER_UMSCHLAG' && (
+          <span
+            className="text-[9px] rounded bg-amber-100 text-amber-800 px-1 py-0.5 uppercase font-medium"
+            title="Charter-Umschlag (2-Tour-Flow)"
+          >
+            CU
+          </span>
+        )}
+        {stop.notizen && (
+          <StickyNote
+            size={11}
+            className="text-amber-600 ml-auto"
+            aria-label={`Notiz: ${stop.notizen}`}
+          />
+        )}
+      </div>
+      {/* Detail-Zeile (TEIL B: Sendername + Adresse + Pak/Stapel/Größe + Zeit + Vorholkosten) */}
+      {sh && (
+        <div className="pl-7 mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0 text-[10px] text-gray-600">
+          {sh.customers?.name && (
+            <span className="font-medium text-gray-700 truncate max-w-[180px]">
+              {sh.customers.name}
+            </span>
+          )}
+          {pickupAddr?.zip && (
+            <span title={`${pickupAddr.street ?? ''} ${pickupAddr.zip} ${pickupAddr.city ?? ''}`}>
+              {pickupAddr.zip} {pickupAddr.city ?? ''}
+            </span>
+          )}
+          {sh.package_count != null && (
+            <span>{sh.package_count} Pak</span>
+          )}
+          {items.length > 0 && (
+            <span title={`${items.length} Items, alle stapelbar: ${allStackable ? 'ja' : 'nein'}`}>
+              {allStackable ? '↕ stapelbar' : '⊗ nicht stapelbar'}
+            </span>
+          )}
+          {sizeStr && <span title="L×B×H cm">{sizeStr} cm</span>}
+          {tw && <span title="Zeitfenster">⏱ {tw}</span>}
+          {vorlaufEur != null && (
+            <span
+              className="text-emerald-700 font-mono"
+              title="Vorholkosten (VORLAUF-Anteil)"
+            >
+              € {vorlaufEur.toFixed(2)}
+            </span>
+          )}
+        </div>
       )}
     </button>
   );
+}
+
+/**
+ * TEIL B: HH:MM-Format aus DB Time-Typ (kommt als ISO/HH:MM:SS).
+ * Returns null wenn beide leer.
+ */
+function formatTimeWindow(
+  from: string | null | undefined,
+  to: string | null | undefined,
+): string | null {
+  const fmt = (v: string | null | undefined): string | null => {
+    if (!v) return null;
+    // DB-Time-String z.B. "1970-01-01T08:00:00.000Z" oder "08:00:00".
+    const m = /(\d{2}):(\d{2})/.exec(v);
+    return m ? `${m[1]}:${m[2]}` : null;
+  };
+  const a = fmt(from);
+  const b = fmt(to);
+  if (a && b) return `${a}–${b}`;
+  return a ?? b ?? null;
 }
 
 function NotizEditor({

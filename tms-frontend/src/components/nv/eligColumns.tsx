@@ -75,11 +75,20 @@ export function eligColumns(
     {
       key: 'badges',
       header: 'Status',
-      width: 150,
+      width: 180,
       render: (s) => {
         const b = pickupBadge(s.loading_date);
+        const c = classificationBadge(s.classification);
         return (
           <span className="flex flex-wrap gap-1">
+            {c && (
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${c.cls}`}
+                title={c.title}
+              >
+                {c.label}
+              </span>
+            )}
             {s.is_stamm_kunde && (
               <span
                 className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700"
@@ -101,4 +110,36 @@ export function eligColumns(
       },
     },
   ];
+}
+
+/**
+ * TEIL C: 3-stufige Classification-Badges für NV-Eligible-Liste
+ * (FV-Pattern aus R2.3 — dort "CU" als amber). SG=grau (Default),
+ * CU=amber, CD=rose.
+ */
+function classificationBadge(
+  classification: string | null | undefined,
+): { label: string; cls: string; title: string } | null {
+  switch (classification) {
+    case 'SAMMELGUT':
+      return {
+        label: 'SG',
+        cls: 'bg-gray-100 text-gray-700',
+        title: 'Sammelgut (< 3t)',
+      };
+    case 'CHARTER_UMSCHLAG':
+      return {
+        label: 'CU',
+        cls: 'bg-amber-100 text-amber-800',
+        title: 'Charter-Umschlag (NV-Vorholung → Lager → FV-Hauptlauf)',
+      };
+    case 'CHARTER_DIREKT':
+      return {
+        label: 'CD',
+        cls: 'bg-rose-100 text-rose-800',
+        title: 'Charter-Direkt (ohne Umschlag)',
+      };
+    default:
+      return null;
+  }
 }

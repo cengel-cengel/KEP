@@ -485,30 +485,29 @@ export default function NvDispoMap({
     }
   }, [previewPolylineCoords]);
 
-  // Bug-Fix 2a: stabiler Auto-Fit.
-  // Vorher: deps [shipments, tourStops] → feuerte bei jedem invalidate
-  //   (z.B. nach pin-add → Stop dazu → Map sprang zurück → "Fokus
-  //   springt"-Bug).
-  // Jetzt: Initial-Fit via hasFittedRef + Re-Fit nur bei expliziter
-  //   fitTriggerKey-Änderung (z.B. activeTour-Wechsel vom Caller).
-  // Backward-Compat: wenn fitTriggerKey undefined ist (Legacy-Caller),
-  //   feuert weiterhin der alte Pfad. Caller die den Fix wollen,
-  //   reichen activeTourViewId als Key durch.
+  // Bug-Fix 2a + D: stabiler Auto-Fit, Sig-basiert.
+  // Sig = `${fitTriggerKey}:${(tourStops?.length ?? 0) > 0}`
+  //   key-Wechsel (Tour-Switch) ODER stops-loaded-Übergang triggert.
+  //   identische Sig (z.B. nach Pin-Add: N+1 stops, still loaded)
+  //   triggert NICHT → kein Fokus-Spring.
+  // Vorher (bce40f4): nur lastFitKeyRef === fitTriggerKey. Beim
+  //   Initial-Tour-Klick fittete der Effect zu früh (ohne stops,
+  //   tour-detail-Query lädt noch) → hasFittedRef=true → nachfolgender
+  //   Re-Render mit Stops triggerte nicht mehr. Fokus blieb auf
+  //   eligible-coords, Stops + Lager ausserhalb des Frame.
   const hasFittedRef = useRef(false);
-  const lastFitKeyRef = useRef<string | null | undefined>(undefined);
+  const lastFitSigRef = useRef<string | null>(null);
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Fit-Bedingung:
-    //   Legacy-Mode (fitTriggerKey === undefined): jeder shipments/
-    //     tourStops-Wechsel triggert (alter Bug, kompatibel).
-    //   Neuer Mode: nur Initial + bei explizitem Key-Wechsel.
     const isLegacy = fitTriggerKey === undefined;
+    const stopsLoaded = (tourStops?.length ?? 0) > 0;
+    const sig = `${fitTriggerKey ?? 'legacy'}:${stopsLoaded}`;
     let shouldFit = isLegacy;
     if (!isLegacy) {
       if (!hasFittedRef.current) shouldFit = true;
-      else if (lastFitKeyRef.current !== fitTriggerKey) shouldFit = true;
+      else if (lastFitSigRef.current !== sig) shouldFit = true;
     }
     if (!shouldFit) return;
 
@@ -532,7 +531,7 @@ export default function NvDispoMap({
           animate: false,
         });
         hasFittedRef.current = true;
-        lastFitKeyRef.current = fitTriggerKey;
+        lastFitSigRef.current = sig;
       }
     }, 200);
     return () => window.clearTimeout(id);

@@ -121,6 +121,11 @@ const TOUR_INCLUDE = {
           height_cm: true,
           effective_pallets: true,
           freight_revenue: true,
+          // TEIL B: Zeitfenster für Detailbild-Sendungszeile
+          loading_time_from: true,
+          loading_time_to: true,
+          delivery_time_from: true,
+          delivery_time_to: true,
           addresses_shipments_loading_address_idToaddresses: {
             select: {
               id: true,
@@ -144,6 +149,21 @@ const TOUR_INCLUDE = {
             },
           },
           shipment_package_items: { select: { stackable: true } },
+          // TEIL B: Vorholkosten vorab — kein N+1 (vorher hätten wir
+          // pro Stop /shipments/:id/cost-components separat geholt).
+          // Filter phase=VORLAUF reicht; FE summiert die Records pro
+          // Sendung (mehrere möglich wenn Sendung schon in mehreren
+          // Touren war — wir zeigen den Wert für die NV-Tour dieser
+          // Stop-View an, FE picks via nv_tour_id).
+          cost_components: {
+            where: { phase: 'VORLAUF' },
+            select: {
+              id: true,
+              nv_tour_id: true,
+              total_eur: true,
+              phase: true,
+            },
+          },
         },
       },
     },

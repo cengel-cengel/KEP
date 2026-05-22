@@ -59,6 +59,9 @@ export type EligibleShipment = {
   matched_tour_gebiet_id: string | null;
   matched_tour_gebiet_code: string | null;
   is_stamm_kunde: boolean;
+  /** TEIL C: classification-Indikator (Migration 47).
+   *  SAMMELGUT (default) / CHARTER_UMSCHLAG / CHARTER_DIREKT. */
+  classification?: string | null;
 };
 
 export type Stop = {
@@ -84,8 +87,24 @@ export type Stop = {
     freight_revenue?: string | number | null;
     /** R2.3: Charter-Umschlag-Marker im NV-Stop-Row. */
     classification?: string | null;
+    /** TEIL B: Customer-Name für Detailbild-Sendungszeile. */
+    customers?: { id: string; name: string; customer_number?: string } | null;
+    /** TEIL B: Zeitfenster (HH:MM via DB Time-Typ). */
+    loading_time_from?: string | null;
+    loading_time_to?: string | null;
+    delivery_time_from?: string | null;
+    delivery_time_to?: string | null;
     addresses_shipments_loading_address_idToaddresses?: AddressGeo | null;
     addresses_shipments_delivery_address_idToaddresses?: AddressGeo | null;
+    /** TEIL B: Stapelbarkeit-Indikator (alle Items stackable=true). */
+    shipment_package_items?: Array<{ stackable: boolean }>;
+    /** TEIL B: Vorholkosten-Aggregat aus TOUR_INCLUDE. */
+    cost_components?: Array<{
+      id: string;
+      nv_tour_id?: string | null;
+      total_eur?: string | number | null;
+      phase: string;
+    }>;
   };
 };
 

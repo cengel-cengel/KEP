@@ -11,18 +11,24 @@ export interface CreateTourStammTour {
   default_subunternehmer_id?: string | null;
 }
 
+/**
+ * Payload-Shape stimmt 1:1 mit BE CreateNvTourDto überein.
+ * (Vorheriger Bug: stamm_tour_id war falsch + datum fehlte +
+ * kosten{} nested gestripped vom whitelist).
+ *
+ * datum wird vom Caller (BoardPanel) aus workspace.datum
+ * eingespeist — Modal kennt es nicht.
+ */
 export interface CreateTourPayload {
-  stamm_tour_id: string;
+  nv_stamm_tour_id: string;
   subunternehmer_id: string | null;
   angefahrene_km: number | null;
   stunden_geleistet: number | null;
-  kosten?: {
-    fahrer: number | null;
-    fahrzeug: number;
-    kraftstoff: number;
-    dispo: number;
-    sonstige: number;
-  };
+  fahrer_kosten_eur?: number | null;
+  fahrzeug_kosten_eur?: number | null;
+  kraftstoff_kosten_eur?: number | null;
+  dispo_kosten_eur?: number | null;
+  sonstige_kosten_eur?: number | null;
 }
 
 interface SubFull {
@@ -110,20 +116,21 @@ export default function CreateTourModal({
     const fahrer = computeFahrer(selectedSub, 0, km, stunden);
     const hasTarif =
       selectedSub && selectedSub.tarif_typ !== 'SPOT' && fahrer !== null;
+    const costs = hasTarif
+      ? {
+          fahrer_kosten_eur: fahrer,
+          fahrzeug_kosten_eur: TOUR_KOSTEN_DEFAULTS.fahrzeug,
+          kraftstoff_kosten_eur: TOUR_KOSTEN_DEFAULTS.kraftstoff,
+          dispo_kosten_eur: TOUR_KOSTEN_DEFAULTS.dispo,
+          sonstige_kosten_eur: TOUR_KOSTEN_DEFAULTS.sonstige,
+        }
+      : {};
     onCreate({
-      stamm_tour_id: stammTourId,
+      nv_stamm_tour_id: stammTourId,
       subunternehmer_id: subId || null,
       angefahrene_km: km,
       stunden_geleistet: stunden,
-      kosten: hasTarif
-        ? {
-            fahrer,
-            fahrzeug: TOUR_KOSTEN_DEFAULTS.fahrzeug,
-            kraftstoff: TOUR_KOSTEN_DEFAULTS.kraftstoff,
-            dispo: TOUR_KOSTEN_DEFAULTS.dispo,
-            sonstige: TOUR_KOSTEN_DEFAULTS.sonstige,
-          }
-        : undefined,
+      ...costs,
     });
   };
 

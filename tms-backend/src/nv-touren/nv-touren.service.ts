@@ -1080,6 +1080,15 @@ export class NvTourenService {
           dto.subunternehmer_id ?? stamm.default_subunternehmer_id ?? undefined,
         fahrzeug_typ: dto.fahrzeug_typ ?? stamm.fahrzeug_typ ?? undefined,
         notizen: dto.notizen ?? undefined,
+        // NV-4 Bug-Fix: Kosten-Felder bei Erstellung übernehmen
+        // (vorher still vom whitelist gestripped + verloren).
+        angefahrene_km: dto.angefahrene_km ?? undefined,
+        stunden_geleistet: dto.stunden_geleistet ?? undefined,
+        fahrer_kosten_eur: dto.fahrer_kosten_eur ?? undefined,
+        fahrzeug_kosten_eur: dto.fahrzeug_kosten_eur ?? undefined,
+        kraftstoff_kosten_eur: dto.kraftstoff_kosten_eur ?? undefined,
+        dispo_kosten_eur: dto.dispo_kosten_eur ?? undefined,
+        sonstige_kosten_eur: dto.sonstige_kosten_eur ?? undefined,
       },
       include: TOUR_INCLUDE,
     });

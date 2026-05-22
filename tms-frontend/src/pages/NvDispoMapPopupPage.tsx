@@ -361,29 +361,23 @@ export default function NvDispoMapPopupPage() {
 
   const createTourMut = useMutation({
     mutationFn: async (input: CreateTourPayload) => {
+      // Single-Call (Bug-Fix): DTO erlaubt jetzt km/stunden/kosten
+      // direkt im POST. Vorheriger 2-Call (POST + PATCH) war
+      // Workaround für den DTO-Mismatch.
       const created = (
         await api.post('/nv-touren', {
-          nv_stamm_tour_id: input.stamm_tour_id,
+          nv_stamm_tour_id: input.nv_stamm_tour_id,
           datum,
           subunternehmer_id: input.subunternehmer_id ?? undefined,
+          angefahrene_km: input.angefahrene_km ?? undefined,
+          stunden_geleistet: input.stunden_geleistet ?? undefined,
+          fahrer_kosten_eur: input.fahrer_kosten_eur ?? undefined,
+          fahrzeug_kosten_eur: input.fahrzeug_kosten_eur ?? undefined,
+          kraftstoff_kosten_eur: input.kraftstoff_kosten_eur ?? undefined,
+          dispo_kosten_eur: input.dispo_kosten_eur ?? undefined,
+          sonstige_kosten_eur: input.sonstige_kosten_eur ?? undefined,
         })
       ).data as { id: string };
-      const patch: any = {};
-      if (input.angefahrene_km != null)
-        patch.angefahrene_km = input.angefahrene_km;
-      if (input.stunden_geleistet != null)
-        patch.stunden_geleistet = input.stunden_geleistet;
-      if (input.kosten && input.kosten.fahrer != null) {
-        patch.fahrer_kosten_eur = input.kosten.fahrer;
-        patch.fahrzeug_kosten_eur = input.kosten.fahrzeug;
-        patch.kraftstoff_kosten_eur = input.kosten.kraftstoff;
-        patch.dispo_kosten_eur = input.kosten.dispo;
-        patch.sonstige_kosten_eur = input.kosten.sonstige;
-        patch.kosten_modus = 'TARIF';
-      }
-      if (Object.keys(patch).length > 0) {
-        await api.patch(`/nv-touren/${created.id}`, patch);
-      }
       return created;
     },
     onSuccess: broadcastInvalidate,
@@ -674,6 +668,8 @@ export default function NvDispoMapPopupPage() {
           onPinClick={onPinClick}
           onReset={() => setClickedSequence([])}
           onRouteError={(msg) => setBanner(msg)}
+          // Bug-Fix 2a: Fit-Key = activeTour-id (kein Spring nach Add).
+          fitTriggerKey={activeTour?.id ?? 'no-tour'}
         />
       </div>
 

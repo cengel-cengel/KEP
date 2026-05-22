@@ -566,8 +566,14 @@ export default function BoardPanel({
           onClose={() => setShowCreateTour(false)}
           onCreate={(payload: CreateTourPayload) => {
             void (async () => {
+              // Bug-Fix: datum aus workspace.datum (Modal kennt es
+              // nicht). Ohne datum-Field hat BE @IsDateString() 400-t.
+              const fullPayload = {
+                ...payload,
+                datum,
+              };
               const created = await dispo.createTour.mutateAsync({
-                payload: payload as unknown as Record<string, unknown>,
+                payload: fullPayload as unknown as Record<string, unknown>,
               });
               setShowCreateTour(false);
               broadcastInvalidate();

@@ -201,6 +201,7 @@ export default function NvDispoMap({
   nearbyShipments,
   onNearbyClick,
   previewPolylineCoords,
+  fitTriggerKey,
 }: {
   shipments: MapShipment[];
   clickedSequence: string[];
@@ -242,6 +243,11 @@ export default function NvDispoMap({
   tourStopColor?: string;
   /** S-7: Tour-Status für Polyline-Color (planned/in_progress/late/completed). */
   tourStatus?: string | null;
+  /** Bug-Fix 2a: stabiler Auto-Fit-Trigger. Auto-Fit feuert NUR beim
+   *  ersten Render UND wenn dieser Key wechselt (z.B. activeTour-id).
+   *  Wenn nicht gesetzt → Legacy-Verhalten (bei jedem shipments/stops-
+   *  Update — historisch, aber führt zu Fokus-Sprüngen bei Invalidate). */
+  fitTriggerKey?: string | null;
 }) {
   // Subscribe to external pending store — re-rendert NUR diesen
   // Component bei Pending-Mutation (kein Page-Wide-Re-Render).
@@ -479,10 +485,33 @@ export default function NvDispoMap({
     }
   }, [previewPolylineCoords]);
 
-  // Zentraler Auto-Fit: alle Shipments + Tour-Stops (inkl. Lager-Pins).
+  // Bug-Fix 2a: stabiler Auto-Fit.
+  // Vorher: deps [shipments, tourStops] → feuerte bei jedem invalidate
+  //   (z.B. nach pin-add → Stop dazu → Map sprang zurück → "Fokus
+  //   springt"-Bug).
+  // Jetzt: Initial-Fit via hasFittedRef + Re-Fit nur bei expliziter
+  //   fitTriggerKey-Änderung (z.B. activeTour-Wechsel vom Caller).
+  // Backward-Compat: wenn fitTriggerKey undefined ist (Legacy-Caller),
+  //   feuert weiterhin der alte Pfad. Caller die den Fix wollen,
+  //   reichen activeTourViewId als Key durch.
+  const hasFittedRef = useRef(false);
+  const lastFitKeyRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+
+    // Fit-Bedingung:
+    //   Legacy-Mode (fitTriggerKey === undefined): jeder shipments/
+    //     tourStops-Wechsel triggert (alter Bug, kompatibel).
+    //   Neuer Mode: nur Initial + bei explizitem Key-Wechsel.
+    const isLegacy = fitTriggerKey === undefined;
+    let shouldFit = isLegacy;
+    if (!isLegacy) {
+      if (!hasFittedRef.current) shouldFit = true;
+      else if (lastFitKeyRef.current !== fitTriggerKey) shouldFit = true;
+    }
+    if (!shouldFit) return;
+
     const coords: [number, number][] = [];
     for (const s of shipments) {
       const ll = toLatLng(s.loading_address);
@@ -502,10 +531,12 @@ export default function NvDispoMap({
           maxZoom: 14,
           animate: false,
         });
+        hasFittedRef.current = true;
+        lastFitKeyRef.current = fitTriggerKey;
       }
     }, 200);
     return () => window.clearTimeout(id);
-  }, [shipments, tourStops]);
+  }, [shipments, tourStops, fitTriggerKey]);
 
   // OSRM-Route bei Aenderung der clickedSequence
   useEffect(() => {

@@ -197,6 +197,9 @@ export default function FvDispoMapPopupPage() {
             tourPolyline={tourQ.data.polyline_geometry ?? null}
             previewPolylineCoords={previewPolyline}
             clickedSequence={[]}
+            // Bug-Fix 2a: stabiler Fit-Key (Pop-out zeigt 1 Tour,
+            // kein Spring nach nearby-add Invalidate).
+            fitTriggerKey={tourId || 'no-tour'}
             onPinClick={() => {
               /* FV map ist read-only (Pop-out zeigt eine Tour). */
             }}

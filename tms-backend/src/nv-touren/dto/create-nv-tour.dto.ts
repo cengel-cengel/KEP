@@ -2,11 +2,14 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsDateString,
   IsIn,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
+  Min,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export const NV_TOUR_STATUS = [
   'PLANNING',
@@ -44,4 +47,55 @@ export class CreateNvTourDto {
   @IsOptional()
   @IsIn(NV_TOUR_STATUS as readonly string[])
   status?: string;
+
+  // NV-4: Kosten-Felder bei Erstellung (FE CreateTourModal sendet sie;
+  // Service mappt 1:1 auf nv_touren-Spalten Migration 26/27).
+  @ApiPropertyOptional({ minimum: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  angefahrene_km?: number | null;
+
+  @ApiPropertyOptional({ minimum: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  stunden_geleistet?: number | null;
+
+  @ApiPropertyOptional({ minimum: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  fahrer_kosten_eur?: number | null;
+
+  @ApiPropertyOptional({ minimum: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  fahrzeug_kosten_eur?: number | null;
+
+  @ApiPropertyOptional({ minimum: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  kraftstoff_kosten_eur?: number | null;
+
+  @ApiPropertyOptional({ minimum: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  dispo_kosten_eur?: number | null;
+
+  @ApiPropertyOptional({ minimum: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  sonstige_kosten_eur?: number | null;
 }

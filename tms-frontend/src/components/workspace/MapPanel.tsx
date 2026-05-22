@@ -470,6 +470,10 @@ export default function MapPanel({
             tourStops={tourStops}
             tourPolyline={tourPolyline as FvTourDetail['polyline_geometry']}
             clickedSequence={clickedSequence}
+            // Bug-Fix 2a: Auto-Fit nur bei tour-Wechsel, nicht bei
+            // jedem shipments-Invalidate (vermeidet Fokus-Spring nach
+            // Pin-Add).
+            fitTriggerKey={activeTourViewId ?? 'no-tour'}
             onPinClick={handlePinClick}
             onTourStopClick={(stopId) => {
               // A' Sprint: Marker-Click → Selected-Sync (Bidirektional)

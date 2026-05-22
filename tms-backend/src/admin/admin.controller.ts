@@ -17,8 +17,8 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { BackfillCoordinatesService } from './backfill-coordinates.service';
 import { ShipmentsService } from '../shipments/shipments.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { NvTourenService } from '../nv-touren/nv-touren.service';
 import { ToursService } from '../tours/tours.service';
+import { RecomputeService } from './recompute.service';
 
 class StartBackfillDto {
   @IsOptional()
@@ -38,8 +38,8 @@ export class AdminController {
     private readonly backfill: BackfillCoordinatesService,
     private readonly shipments: ShipmentsService,
     private readonly prisma: PrismaService,
-    private readonly nvTouren: NvTourenService,
     private readonly tours: ToursService,
+    private readonly recompute: RecomputeService,
   ) {}
 
   @Post('backfill-coordinates')
@@ -133,109 +133,19 @@ export class AdminController {
   ): Promise<{ started: boolean; mode: string; count_nv: number; count_fv: number }> {
     const batchSize = Math.min(50, Math.max(1, body.batchSize ?? 10));
     const mode = body.mode ?? 'all';
+    const { count_nv, count_fv } = await this.recompute.countActive(mode);
 
-    const [nvCount, fvCount] = await Promise.all([
-      mode === 'fv'
-        ? Promise.resolve(0)
-        : this.prisma.nv_touren.count({
-            where: { status: { in: ['PLANNING', 'IN_PROGRESS'] } },
-          }),
-      mode === 'nv'
-        ? Promise.resolve(0)
-        : this.prisma.tours.count({
-            where: { status: { in: ['planned', 'dispatched'] } },
-          }),
-    ]);
-
-    // Fire-and-forget background-loop.
+    // Fire-and-forget — Loop lebt in RecomputeService (DRY).
     setImmediate(() => {
-      void this.runRecomputeLoop(mode, batchSize, nvCount, fvCount);
+      void this.recompute.runRecomputeLoop(mode, batchSize);
     });
 
     return {
       started: true,
       mode,
-      count_nv: nvCount,
-      count_fv: fvCount,
+      count_nv,
+      count_fv,
     };
-  }
-
-  /** Background-Loop für recomputeAllTours. */
-  private async runRecomputeLoop(
-    mode: 'nv' | 'fv' | 'all',
-    batchSize: number,
-    nvCount: number,
-    fvCount: number,
-  ): Promise<void> {
-    this.logger.log(
-      `recompute-all-tours START mode=${mode} nv=${nvCount} fv=${fvCount} batch=${batchSize}`,
-    );
-
-    if (mode !== 'fv') {
-      let offset = 0;
-      let processed = 0;
-      let errors = 0;
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const batch = await this.prisma.nv_touren.findMany({
-          where: { status: { in: ['PLANNING', 'IN_PROGRESS'] } },
-          select: { id: true },
-          orderBy: { id: 'asc' },
-          skip: offset,
-          take: batchSize,
-        });
-        if (batch.length === 0) break;
-        for (const t of batch) {
-          try {
-            await this.nvTouren.recomputeTourFull(t.id);
-            processed++;
-          } catch (err: any) {
-            errors++;
-            this.logger.warn(
-              `nv recompute ${t.id} failed: ${err?.message ?? err}`,
-            );
-          }
-        }
-        offset += batch.length;
-        this.logger.log(
-          `recompute-all NV: ${processed}/${nvCount} (errors=${errors})`,
-        );
-      }
-    }
-
-    if (mode !== 'nv') {
-      let offset = 0;
-      let processed = 0;
-      let errors = 0;
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const batch = await this.prisma.tours.findMany({
-          where: { status: { in: ['planned', 'dispatched'] } },
-          select: { id: true },
-          orderBy: { id: 'asc' },
-          skip: offset,
-          take: batchSize,
-        });
-        if (batch.length === 0) break;
-        for (const t of batch) {
-          try {
-            await this.tours.recomputeTourFull(t.id);
-            processed++;
-          } catch (err: any) {
-            errors++;
-            this.logger.warn(
-              `fv recompute ${t.id} failed: ${err?.message ?? err}`,
-            );
-          }
-        }
-        offset += batch.length;
-        this.logger.log(
-          `recompute-all FV: ${processed}/${fvCount} (errors=${errors})`,
-        );
-      }
-    }
-
-    this.logger.log('recompute-all-tours DONE');
   }
 
   /**

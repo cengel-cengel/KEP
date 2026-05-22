@@ -38,26 +38,56 @@ function makeFvSvcMock() {
   } as unknown as ToursService;
 }
 
+function makeRecomputeMock(opts: {
+  count_nv?: number;
+  count_fv?: number;
+} = {}) {
+  return {
+    countActive: jest.fn().mockResolvedValue({
+      count_nv: opts.count_nv ?? 0,
+      count_fv: opts.count_fv ?? 0,
+    }),
+    runRecomputeLoop: jest.fn().mockResolvedValue({
+      mode: 'all',
+      count_nv: opts.count_nv ?? 0,
+      count_fv: opts.count_fv ?? 0,
+      processed_nv: 0,
+      processed_fv: 0,
+      errors_nv: 0,
+      errors_fv: 0,
+      duration_ms: 1,
+    }),
+  } as any;
+}
+
 function makeController(
   prisma: any,
-  nv: NvTourenService,
+  _nv: NvTourenService,
   fv: ToursService,
+  recompute: any = makeRecomputeMock(),
 ): AdminController {
+  // R3+ Constructor-Order: backfill, shipments, prisma, tours, recompute.
+  // _nv-Parameter bleibt für API-Kompatibilität, intern nicht mehr genutzt
+  // (Loop lebt jetzt in RecomputeService).
   return new AdminController(
     {} as any, // backfill
     {} as any, // shipments
     prisma,
-    nv,
     fv,
+    recompute,
   );
 }
 
 describe('AdminController.recomputeAllTours', () => {
   it('leere Tour-Menge → started:true, counts:0, kein Throw', async () => {
     const prisma = makePrismaEmpty();
-    const nv = makeNvSvcMock();
-    const fv = makeFvSvcMock();
-    const ctrl = makeController(prisma, nv, fv);
+    const recompute = makeRecomputeMock({ count_nv: 0, count_fv: 0 });
+    const ctrl = makeController(
+      prisma,
+      makeNvSvcMock(),
+      makeFvSvcMock(),
+      recompute,
+    );
 
     const out = await ctrl.recomputeAllTours({});
     expect(out).toEqual({
@@ -66,28 +96,39 @@ describe('AdminController.recomputeAllTours', () => {
       count_nv: 0,
       count_fv: 0,
     });
-    expect(prisma.nv_touren.count).toHaveBeenCalledTimes(1);
-    expect(prisma.tours.count).toHaveBeenCalledTimes(1);
+    expect(recompute.countActive).toHaveBeenCalledTimes(1);
   });
 
   it('mode=nv → skipped fv-count', async () => {
     const prisma = makePrismaEmpty();
-    prisma.nv_touren.count = jest.fn().mockResolvedValue(3);
-    const ctrl = makeController(prisma, makeNvSvcMock(), makeFvSvcMock());
+    const recompute = makeRecomputeMock({ count_nv: 3, count_fv: 0 });
+    const ctrl = makeController(
+      prisma,
+      makeNvSvcMock(),
+      makeFvSvcMock(),
+      recompute,
+    );
     const out = await ctrl.recomputeAllTours({ mode: 'nv' });
     expect(out.mode).toBe('nv');
     expect(out.count_nv).toBe(3);
     expect(out.count_fv).toBe(0);
+    expect(recompute.countActive).toHaveBeenCalledWith('nv');
   });
 
   it('mode=fv → skipped nv-count', async () => {
     const prisma = makePrismaEmpty();
-    prisma.tours.count = jest.fn().mockResolvedValue(5);
-    const ctrl = makeController(prisma, makeNvSvcMock(), makeFvSvcMock());
+    const recompute = makeRecomputeMock({ count_nv: 0, count_fv: 5 });
+    const ctrl = makeController(
+      prisma,
+      makeNvSvcMock(),
+      makeFvSvcMock(),
+      recompute,
+    );
     const out = await ctrl.recomputeAllTours({ mode: 'fv' });
     expect(out.mode).toBe('fv');
     expect(out.count_nv).toBe(0);
     expect(out.count_fv).toBe(5);
+    expect(recompute.countActive).toHaveBeenCalledWith('fv');
   });
 
   it('batchSize clamped: <1 → 1, >50 → 50', async () => {

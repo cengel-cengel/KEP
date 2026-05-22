@@ -1,62 +1,39 @@
-# Railway Cron — recompute-all-tours
+# Nightly-Recompute — in-process Scheduler
 
 ## Zweck
 
-Nightly-Recompute aller aktiven Touren (NV + FV). Triggert
-`POST /admin/cron/recompute-all-tours` mit `CronAuthGuard`.
+Nightly-Recompute aller aktiven Touren (NV + FV). Läuft täglich
+02:00 **Europe/Berlin** (DST-safe) im **tms-backend-Prozess** selbst
+— kein externer Cron-Service nötig.
 
-Background: Recompute fires `recomputeTourFull(tourId)` pro Tour
-(safe-Methoden, idempotent, swallow-per-Tour-Errors). Use-Case
-nach Schema- oder Logik-Änderungen (z.B. classification, cost-
-rates, is_charter-derive).
+Background: `RecomputeSchedulerService.@Cron('0 2 * * *')` →
+`RecomputeService.runRecomputeLoop('all', 10)` → fires
+`recomputeTourFull(tourId)` pro Tour (safe-Methoden, idempotent,
+swallow-per-Tour-Errors). Use-Case nach Schema- oder Logik-
+Änderungen (z.B. classification, cost-rates, is_charter-derive).
 
 ## Setup
 
-### 1. ENV-Variable setzen
+Nichts. Der `@nestjs/schedule`-Decorator wird automatisch beim
+NestJS-Bootstrap registriert (`ScheduleModule.forRoot()` in
+`app.module.ts`). Solange tms-backend läuft, läuft der Cron.
 
-Railway-Dashboard → tms-backend Service → Variables:
+## Manuelle Trigger-Pfade (HTTP-Endpoints)
 
-```
-CRON_SECRET=<32+ char random string>
-```
+Falls man den Recompute ad-hoc anstoßen will (z.B. nach Migration):
 
-Generate-Beispiel (lokal):
+| Pfad | Auth | Use-Case |
+|---|---|---|
+| `POST /admin/recompute-all-tours` | JwtAuthGuard | Mensch via UI/curl |
+| `POST /admin/cron/recompute-all-tours` | CronAuthGuard (`X-Cron-Secret`) | Externer Caller (Railway-Cron-Service, Monitoring-Tool, on-demand-Diagnose) |
 
-```bash
-openssl rand -hex 32
-```
+Beide HTTP-Endpoints rufen `RecomputeService.runRecomputeLoop`
+— identische Logik, eigener Auth-Pfad.
 
-**Fail-closed**: wenn `CRON_SECRET` nicht gesetzt ist, lehnt der
-Guard alle Cron-Calls mit HTTP 503 ab. Nie offen.
-
-### 2. Cron-Service anlegen
-
-Railway-Dashboard → New Service → Cron.
-
-| Feld | Wert |
-|---|---|
-| Schedule | `0 3 * * *` (täglich 03:00 UTC) |
-| Command | siehe unten |
-
-Command:
+### Manueller Test (CRON_SECRET-Endpoint)
 
 ```bash
-curl -sfX POST \
-  -H "X-Cron-Secret: $CRON_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"mode":"all","batchSize":10}' \
-  https://tms-backend-production-1950.up.railway.app/admin/cron/recompute-all-tours
-```
-
-`CRON_SECRET` als ENV-Var auf dem Cron-Service teilen (gleicher
-Wert wie tms-backend-Service).
-
-### 3. Verifikation
-
-Manueller Test ohne Cron-Service:
-
-```bash
-# OK (200/202):
+# OK (202):
 curl -X POST -H "X-Cron-Secret: $CRON_SECRET" \
   https://tms-backend-production-1950.up.railway.app/admin/cron/recompute-all-tours
 
@@ -69,28 +46,54 @@ curl -X POST -H "X-Cron-Secret: falsch" \
   https://tms-backend-production-1950.up.railway.app/admin/cron/recompute-all-tours
 ```
 
-Railway-Backend-Log sollte zeigen:
+## ENV-Variable
 
 ```
-[CronController] CRON recompute-all-tours START mode=all nv=N fv=M
-[CronController] CRON nv: N/N (errors=0)
-[CronController] CRON fv: M/M (errors=0)
-[CronController] CRON recompute-all-tours DONE
+CRON_SECRET=<32+ char random string>     # NUR für HTTP-Endpoint /admin/cron/*
 ```
 
-## Architektur-Note
+**Fail-closed**: ohne `CRON_SECRET` lehnt der Guard alle Cron-Calls
+mit HTTP 503 ab. Der **In-Process-Scheduler** ist DAVON unabhängig
+und läuft trotzdem.
 
-Zwei getrennte Endpoints:
+Generieren: `openssl rand -hex 32`.
 
-- `POST /admin/recompute-all-tours` — **JwtAuthGuard** (Mensch via UI)
-- `POST /admin/cron/recompute-all-tours` — **CronAuthGuard** (Railway-Cron)
+## Verifikation Live-Log
 
-Kein Guard-Mix. CronController + AdminController teilen Logik
-nicht — minimal-redundante runRecomputeLoop bewusst dupliziert,
-damit Auth-Kontamination ausgeschlossen ist.
+Railway-Backend-Log sollte nach 02:00 Berlin-Zeit zeigen:
+
+```
+[RecomputeService] recompute START mode=all nv=N fv=M batch=10
+[RecomputeService] recompute NV: N/N (errors=0)
+[RecomputeService] recompute FV: M/M (errors=0)
+[RecomputeService] recompute DONE mode=all nv=N/N fv=M/M errors=0 duration=Xms
+[RecomputeSchedulerService] nightlyRecompute OK nv=N/N fv=M/M errors=0 duration=Xms
+```
+
+## Architektur
+
+```
+                ┌────────────────────────────────────────────┐
+                │  RecomputeService.runRecomputeLoop()       │
+                │  (DRY — eine Methode, eine Quelle)         │
+                └─────────────────▲──────────────────────────┘
+                                  │
+            ┌─────────────────────┼─────────────────────┐
+            │                     │                     │
+   ┌────────┴─────────┐  ┌────────┴────────┐  ┌────────┴──────────┐
+   │ AdminController  │  │ CronController  │  │ RecomputeScheduler│
+   │ /admin/recompute │  │ /admin/cron/    │  │ @Cron('0 2 * * *')│
+   │ JwtAuthGuard     │  │ recompute       │  │ Europe/Berlin     │
+   │ (Mensch)         │  │ CronAuthGuard   │  │ (in-process)      │
+   └──────────────────┘  └─────────────────┘  └───────────────────┘
+```
+
+3 Trigger-Pfade, eine Loop-Implementation. Auth-Pfade getrennt
+(kein Guard-Mix). Scheduler bypassed HTTP → kein Round-Trip
+zur eigenen API.
 
 ## Backlog
 
 Wenn später mehr Cron-Jobs nötig (z.B. nightly-eligibility-
-backfill, classification-refresh), eigenen Endpoint pro Job
-unter `/admin/cron/*`. Guard teilen sich alle.
+backfill, classification-refresh): zusätzlicher @Cron-Decorator
+im RecomputeSchedulerService oder eigener SchedulerService.

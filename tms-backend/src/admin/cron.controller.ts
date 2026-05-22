@@ -6,10 +6,10 @@
  *   - /admin/*       → JwtAuthGuard (Mensch via UI)
  *   - /admin/cron/*  → CronAuthGuard (Railway-Cron via Secret-Header)
  *
- * Railway-Cron-Konfiguration (railway.json `crons[]`):
- *   path: "/admin/cron/recompute-all-tours"
- *   schedule: "0 3 * * *"  (nightly 03:00 UTC)
- *   header:  "X-Cron-Secret: $CRON_SECRET" (env)
+ * Behält den HTTP-Endpoint als Manual-Trigger-Pfad (Railway-Cron-
+ * Service, externe Tools, on-demand-Diagnose). Der Scheduler
+ * (RecomputeSchedulerService @Cron) ruft die SELBE Service-Methode
+ * direkt — kein HTTP-Loop nötig.
  */
 import {
   Body,
@@ -22,26 +22,17 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CronAuthGuard } from '../auth/cron-auth.guard';
-import { PrismaService } from '../prisma/prisma.service';
-import { NvTourenService } from '../nv-touren/nv-touren.service';
-import { ToursService } from '../tours/tours.service';
+import { RecomputeService } from './recompute.service';
 
 @ApiTags('admin-cron')
 @UseGuards(CronAuthGuard)
 @Controller('admin/cron')
 export class CronController {
   private readonly logger = new Logger(CronController.name);
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly nvTouren: NvTourenService,
-    private readonly tours: ToursService,
-  ) {}
+  constructor(private readonly recompute: RecomputeService) {}
 
   /**
-   * Nightly-Recompute aller aktiven Touren. Spiegelt
-   * AdminController.recomputeAllTours (JWT) — eigene Implementation
-   * damit die JWT-Variante NICHT aufgeweicht werden muss.
-   * Fire-and-forget. HTTP 202 sofort, Background-Loop läuft weiter.
+   * Fire-and-forget. HTTP 202 sofort, Background-Loop läuft.
    */
   @Post('recompute-all-tours')
   @HttpCode(HttpStatus.ACCEPTED)
@@ -50,104 +41,20 @@ export class CronController {
   ): Promise<{ started: boolean; mode: string; count_nv: number; count_fv: number }> {
     const batchSize = Math.min(50, Math.max(1, body.batchSize ?? 10));
     const mode = body.mode ?? 'all';
-
-    const [nvCount, fvCount] = await Promise.all([
-      mode === 'fv'
-        ? Promise.resolve(0)
-        : this.prisma.nv_touren.count({
-            where: { status: { in: ['PLANNING', 'IN_PROGRESS'] } },
-          }),
-      mode === 'nv'
-        ? Promise.resolve(0)
-        : this.prisma.tours.count({
-            where: { status: { in: ['planned', 'dispatched'] } },
-          }),
-    ]);
+    const { count_nv, count_fv } = await this.recompute.countActive(mode);
 
     setImmediate(() => {
-      void this.runRecomputeLoop(mode, batchSize, nvCount, fvCount);
+      void this.recompute.runRecomputeLoop(mode, batchSize);
     });
 
     this.logger.log(
-      `CRON recompute-all-tours START mode=${mode} nv=${nvCount} fv=${fvCount}`,
+      `CRON recompute-all-tours TRIGGER mode=${mode} nv=${count_nv} fv=${count_fv}`,
     );
     return {
       started: true,
       mode,
-      count_nv: nvCount,
-      count_fv: fvCount,
+      count_nv,
+      count_fv,
     };
-  }
-
-  /** Background-Loop (mirror AdminController.runRecomputeLoop). */
-  private async runRecomputeLoop(
-    mode: 'nv' | 'fv' | 'all',
-    batchSize: number,
-    nvCount: number,
-    fvCount: number,
-  ): Promise<void> {
-    if (mode !== 'fv') {
-      let offset = 0;
-      let processed = 0;
-      let errors = 0;
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const batch = await this.prisma.nv_touren.findMany({
-          where: { status: { in: ['PLANNING', 'IN_PROGRESS'] } },
-          select: { id: true },
-          orderBy: { id: 'asc' },
-          skip: offset,
-          take: batchSize,
-        });
-        if (batch.length === 0) break;
-        for (const t of batch) {
-          try {
-            await this.nvTouren.recomputeTourFull(t.id);
-            processed++;
-          } catch (err: any) {
-            errors++;
-            this.logger.warn(
-              `cron nv ${t.id} failed: ${err?.message ?? err}`,
-            );
-          }
-        }
-        offset += batch.length;
-        this.logger.log(
-          `CRON nv: ${processed}/${nvCount} (errors=${errors})`,
-        );
-      }
-    }
-    if (mode !== 'nv') {
-      let offset = 0;
-      let processed = 0;
-      let errors = 0;
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const batch = await this.prisma.tours.findMany({
-          where: { status: { in: ['planned', 'dispatched'] } },
-          select: { id: true },
-          orderBy: { id: 'asc' },
-          skip: offset,
-          take: batchSize,
-        });
-        if (batch.length === 0) break;
-        for (const t of batch) {
-          try {
-            await this.tours.recomputeTourFull(t.id);
-            processed++;
-          } catch (err: any) {
-            errors++;
-            this.logger.warn(
-              `cron fv ${t.id} failed: ${err?.message ?? err}`,
-            );
-          }
-        }
-        offset += batch.length;
-        this.logger.log(
-          `CRON fv: ${processed}/${fvCount} (errors=${errors})`,
-        );
-      }
-    }
-    this.logger.log('CRON recompute-all-tours DONE');
   }
 }

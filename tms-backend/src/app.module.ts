@@ -6,6 +6,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { BullModule } from '@nestjs/bull';
 
 import { AppController } from './app.controller';
@@ -51,6 +52,10 @@ import { WarehousesModule } from './warehouses/warehouses.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
+
+    // R3+ Nightly-Recompute: in-process Scheduler (kein externer Cron-
+    // Service nötig). RecomputeSchedulerService nutzt @Cron-Decorator.
+    ScheduleModule.forRoot(),
 
     // Rate Limiting – Schutz vor API-Missbrauch
     ThrottlerModule.forRootAsync({

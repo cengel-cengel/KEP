@@ -185,10 +185,48 @@ export default function MapPanel({
   );
   const activeTour = tourDetailQ.data;
 
+  // R3+ NV-Map-Polish: Default-Lager-Query für isWarehouse-Pin.
+  // Carlos: "ein Depot = Umschlagslager" → is_default. KEIN
+  // is_umschlag-Switch (das ist R3-B Charter-FV-Hub-only).
+  const defaultWhQ = useQuery<{
+    id: string;
+    name: string;
+    lat: number | string | null;
+    lng: number | string | null;
+  } | null>({
+    queryKey: ['warehouses', 'default'],
+    queryFn: async () => (await api.get('/warehouses/default')).data ?? null,
+    staleTime: 5 * 60_000,
+  });
+
+  // R3+ NV-Map-Polish: Sub-Gebiet-Filter wenn activeTour gesetzt.
+  // Sub-Tour-Gebiet hat Vorrang vor Stamm-Tour-Gebiet (Carlos:
+  // "nur zugewiesene Gebiete"). Fallback Stamm-Tour-Gebiet wenn
+  // Sub keinen oder Sub gar nicht gesetzt.
+  const activeSubGebietCode = useMemo<string | null>(() => {
+    if (mode !== 'nv' || !activeTour) return null;
+    const nv = activeTour as NvTour & {
+      subunternehmer?: {
+        nv_tour_gebiet?: { code?: string | null } | null;
+      } | null;
+      nv_stamm_tour?: {
+        nv_tour_gebiet?: { code?: string | null } | null;
+      } | null;
+    };
+    return (
+      nv.subunternehmer?.nv_tour_gebiet?.code ??
+      nv.nv_stamm_tour?.nv_tour_gebiet?.code ??
+      null
+    );
+  }, [activeTour, mode]);
+
   // NV: MapShipment[] aus eligible (mit Farbcode).
+  // R3+ Sub-Gebiet-Filter: wenn activeTour gesetzt + Sub-Gebiet
+  // bekannt, filtere Sendungen auf matched_tour_gebiet_code.
+  // Ohne activeTour: alle eligible (alte Verhalten).
   const mapShipmentsNv = useMemo<MapShipment[]>(() => {
     if (mode !== 'nv') return [];
-    return (eligNvQ.data ?? []).map((s) => ({
+    const all = (eligNvQ.data ?? []).map((s) => ({
       id: s.id,
       shipment_number: s.shipment_number,
       customer: s.customer ?? null,
@@ -198,7 +236,9 @@ export default function MapPanel({
         undefined,
       tour_gebiet_code: s.matched_tour_gebiet_code,
     }));
-  }, [mode, eligNvQ.data, farbenMap]);
+    if (!activeSubGebietCode) return all;
+    return all.filter((s) => s.tour_gebiet_code === activeSubGebietCode);
+  }, [mode, eligNvQ.data, farbenMap, activeSubGebietCode]);
 
   // C1-B: Preview-Polyline-State während OSRM-Roundtrip.
   // Wird durch addNearbyMut.onMutate gesetzt, durch
@@ -208,6 +248,10 @@ export default function MapPanel({
   >(null);
 
   // Tour-Stops aus aktiver Tour (mode-aware).
+  // R3+ NV-Map-Polish: für NV werden 2 isWarehouse-Pins
+  // (Start + End am default-WH) gerahmt — analog FV-Pattern in
+  // buildFvTourStops. Visueller Konsistenz mit buildTourRoute-
+  // Logik (NV-Rundkurs [wh, ...stops, wh]).
   const tourStops = useMemo<TourStopPin[] | undefined>(() => {
     if (!activeTour) return undefined;
     if (mode === 'fv') {
@@ -215,7 +259,7 @@ export default function MapPanel({
     }
     // NV: stops kommen aus tour.stops mit shipment.addresses.
     const nvTour = activeTour as NvTour;
-    const pins: TourStopPin[] = [];
+    const stopPins: TourStopPin[] = [];
     for (const s of nvTour.stops ?? []) {
       const sh = s.shipment;
       const addr =
@@ -226,7 +270,7 @@ export default function MapPanel({
       const lat = Number(addr.lat);
       const lng = Number(addr.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-      pins.push({
+      stopPins.push({
         id: s.id,
         position: s.position,
         shipment_number: sh?.shipment_number ?? undefined,
@@ -235,8 +279,35 @@ export default function MapPanel({
         risk_severity: (s as { risk_severity?: string | null }).risk_severity,
       });
     }
-    return pins;
-  }, [activeTour, mode]);
+    // Warehouse-Pins prepend+append wenn default-WH coords da sind
+    // UND non-Charter (Charter hat keinen Rundkurs).
+    const wh = defaultWhQ.data;
+    const isCharter = (nvTour as { is_charter?: boolean }).is_charter ?? false;
+    if (!isCharter && wh && wh.lat != null && wh.lng != null) {
+      const whLat = Number(wh.lat);
+      const whLng = Number(wh.lng);
+      if (Number.isFinite(whLat) && Number.isFinite(whLng)) {
+        const whStart: TourStopPin = {
+          id: `wh-start-${wh.id}`,
+          position: 0,
+          lat: whLat,
+          lng: whLng,
+          isWarehouse: true,
+          label: wh.name,
+        };
+        const whEnd: TourStopPin = {
+          id: `wh-end-${wh.id}`,
+          position: stopPins.length + 1,
+          lat: whLat,
+          lng: whLng,
+          isWarehouse: true,
+          label: wh.name,
+        };
+        return [whStart, ...stopPins, whEnd];
+      }
+    }
+    return stopPins;
+  }, [activeTour, mode, defaultWhQ.data]);
 
   // Map-Routing: nearby-shipments-Query (≤20km um Tour-Stops).
   const nearbyQ = useQuery<

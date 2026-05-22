@@ -85,6 +85,13 @@ const TOUR_INCLUDE = {
       max_ldm: true,
       max_gewicht_kg: true,
       has_adr_license: true,
+      // Für FE Sub-Gebiet-Filter (Map-eligible-Filter wenn activeTour
+      // gesetzt). Sub bedient sein Tour-Gebiet — Sendungen werden auf
+      // dessen code matched_tour_gebiet_code gefiltert.
+      nv_tour_gebiet_id: true,
+      nv_tour_gebiet: {
+        select: { id: true, code: true, name: true },
+      },
       business_partner: {
         select: { id: true, partner_number: true, name: true },
       },

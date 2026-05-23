@@ -42,7 +42,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useAuthOptional } from '../store/auth';
 
 export type WorkspaceMode = 'nv' | 'fv';
@@ -261,6 +261,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // ohne AuthProvider — Fallback liefert isAuthenticated=true,
   // damit der URL-Sync dort wie zuvor läuft.
   const { isAuthenticated } = useAuthOptional();
+  // Fix-C-2: URL-Sync zusätzlich skippen auf /login. Sonst:
+  //   eingeloggt + /login → PublicOnlyRoute Navigate → /
+  //   URL-Sync feuert dann auf / → ist OK
+  //   Aber Edge: wenn UseEffect noch /login als pathname sieht und
+  //   setParams('mode=nv&datum') feuert während Navigate-Replace
+  //   gleichzeitig läuft, überschreibt der URL-Sync den PublicOnly-
+  //   Redirect zurück zu /login?mode=nv. /login ist keine
+  //   Workspace-Route — der Sync hat dort nichts verloren.
+  const { pathname } = useLocation();
+  const isPublicRoute = pathname === '/login';
   const [mode, setModeState] = useState<WorkspaceMode>(() => {
     const url = params.get('mode');
     if (url === 'fv' || url === 'nv') return url;
@@ -315,11 +325,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, [layout]);
 
   // URL-Sync (replace, kein push — kein History-Spam):
-  // Fix-C: skip wenn !isAuthenticated, sonst überschreibt setParams
-  // den PrivateRoute-Navigate zu /login (Auth-Redirect-Bug).
+  // Fix-C:   skip wenn !isAuthenticated → schützt PrivateRoute-
+  //          Navigate zu /login.
+  // Fix-C-2: skip auf /login → schützt PublicOnlyRoute-Navigate
+  //          zu / (sonst rep /login → / → URL-Sync hängt mode= an
+  //          den Pfad bevor Navigate fertig, landet auf
+  //          /login?mode=nv).
   const lastUrlRef = useRef<string>('');
   useEffect(() => {
     if (!isAuthenticated) return;
+    if (isPublicRoute) return;
     const next = new URLSearchParams(params);
     next.set('mode', mode);
     next.set('datum', datum);
@@ -341,6 +356,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     params,
     setParams,
     isAuthenticated,
+    isPublicRoute,
   ]);
 
   const setMode = useCallback((m: WorkspaceMode) => setModeState(m), []);

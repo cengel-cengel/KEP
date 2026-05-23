@@ -76,6 +76,10 @@ test.describe('Auth-Redirect (4 Cases)', () => {
     await page.goto('/');
     // URL ist NICHT /login (PrivateRoute hat durchgelassen).
     await expect(page).not.toHaveURL(/\/login(\?|$)/);
+    // #root muss gerendert haben (kein weißer Bildschirm bei
+    // unvollständigen KPI-Daten).
+    const rootChildCount = await page.locator('#root > *').count();
+    expect(rootChildCount).toBeGreaterThan(0);
     // AppLayout-Marker: irgendein Nav-Text aus dem AppLayout.
     // Konkret: "Disposition" steht in der Top-Nav-Bar.
     await expect(page.getByText(/Disposition/i).first()).toBeVisible();
@@ -99,6 +103,9 @@ test.describe('Auth-Redirect (4 Cases)', () => {
     await page.goto('/login');
     // PublicOnlyRoute Navigate → / (URL endet NICHT auf /login).
     await expect(page).not.toHaveURL(/\/login(\?|$)/);
+    // #root nicht leer (fängt weiße Seite direkt).
+    const rootChildCount = await page.locator('#root > *').count();
+    expect(rootChildCount).toBeGreaterThan(0);
     // App rendert (AppLayout-Marker).
     await expect(page.getByText(/Disposition/i).first()).toBeVisible();
   });

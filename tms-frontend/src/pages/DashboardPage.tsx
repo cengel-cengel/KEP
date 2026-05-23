@@ -33,17 +33,22 @@ export default function DashboardPage() {
 
   const isLoading = kpisLoading;
   const dbPercent = kpis?.mtd?.cmPercent ?? 0;
+  // FIX A: KPI-Felder defensiv lesen — BE-Hiccup oder unvollständige
+  // Mock-Response (z.B. im E2E) darf nicht via .toFixed(undefined)
+  // weiße Seite verursachen.
+  const returnQuotePct = kpis?.returnQuotePct ?? 0;
+  const mtdReturnCostsEur = kpis?.mtdReturnCostsEur ?? 0;
 
   const cards = kpis
     ? [
-        { label: 'Sendungen heute', value: kpis.shipmentsToday, color: 'bg-[#1e40af]' },
-        { label: 'Offen', value: kpis.shipmentsPendingDispatch, color: 'bg-amber-500' },
-        { label: 'Touren heute', value: kpis.toursToday, color: 'bg-[#1e40af]' },
+        { label: 'Sendungen heute', value: kpis.shipmentsToday ?? 0, color: 'bg-[#1e40af]' },
+        { label: 'Offen', value: kpis.shipmentsPendingDispatch ?? 0, color: 'bg-amber-500' },
+        { label: 'Touren heute', value: kpis.toursToday ?? 0, color: 'bg-[#1e40af]' },
         { label: 'DB %', value: `${dbPercent.toFixed(1)}%`, color: dbPercentColor(dbPercent) },
-        { label: 'Retourenquote (MTD)', value: `${kpis.returnQuotePct.toFixed(1)}%`, color: returnQuoteColor(kpis.returnQuotePct) },
-        { label: 'Offene NV-Verfügungen', value: kpis.openNvDispositionsCount, color: 'bg-red-600' },
-        { label: 'Offene Schäden', value: kpis.openDamageReportsCount, color: 'bg-orange-500' },
-        { label: 'Retourenkosten (MTD)', value: `${kpis.mtdReturnCostsEur.toFixed(2)} €`, color: 'bg-[#1e40af]' },
+        { label: 'Retourenquote (MTD)', value: `${returnQuotePct.toFixed(1)}%`, color: returnQuoteColor(returnQuotePct) },
+        { label: 'Offene NV-Verfügungen', value: kpis.openNvDispositionsCount ?? 0, color: 'bg-red-600' },
+        { label: 'Offene Schäden', value: kpis.openDamageReportsCount ?? 0, color: 'bg-orange-500' },
+        { label: 'Retourenkosten (MTD)', value: `${mtdReturnCostsEur.toFixed(2)} €`, color: 'bg-[#1e40af]' },
       ]
     : [];
 

@@ -11,7 +11,12 @@
  */
 import type { DockviewApi, SerializedDockview } from 'dockview';
 
-export const LAYOUT_VERSION = 1;
+// S-2b: Bump von 1 → 2, weil das Default-Layout jetzt 4 Panels
+// (loadingPlan kam als Tab dazu). Alte v1-Layouts haben den View
+// nicht → Version-Mismatch fällt auf Default zurück, User sieht
+// den neuen Tab sofort. Trade-off: einmaliger Layout-Reset für
+// Bestands-User. OK in dieser Sprint-Phase.
+export const LAYOUT_VERSION = 2;
 export const LAYOUT_STORAGE_KEY = 'tms.workspace.docklayout';
 
 export interface VersionedLayout {

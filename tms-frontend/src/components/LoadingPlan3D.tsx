@@ -104,6 +104,23 @@ interface Props {
     targetId: string | null,
     dropPosY: number,
   ) => void;
+  /**
+   * S-2b: R3F Canvas-frameloop.
+   * - 'always' (default): rAF kontinuierlich, OrbitControls-damping
+   *    + Re-Pack-Tween laufen flüssig.
+   * - 'never': rAF gestoppt, GPU idle — für unsichtbare/Hintergrund-
+   *    Panels (visibility-gated vom Caller).
+   * Caller switcht zwischen 'always' und 'never' bei Visibility-
+   * Change; R3F re-subscribed rAF beim Wechsel.
+   */
+  frameloop?: 'always' | 'demand' | 'never';
+  /**
+   * S-2b: Read-Only-Modus für Panel-Embedding.
+   * Drag-Start unterdrückt + Hover-Cursor bleibt 'default' (statt
+   * 'grab'). Kamera-Orbit + Zoom bleiben aktiv. onPositionChange/
+   * onInsertAt feuern nicht, weil ohne Pointer-Down kein Drag.
+   */
+  readOnly?: boolean;
 }
 
 const AXLE_COLOR: Record<AxleStatus, string> = {
@@ -117,6 +134,8 @@ export default function LoadingPlan3D({
   packages,
   vehicleType,
   securementStraps = 0,
+  frameloop = 'always',
+  readOnly = false,
   onPositionChange,
   onPackageContextMenu,
   insertMode = false,
@@ -625,7 +644,7 @@ export default function LoadingPlan3D({
           </div>
         </div>
       )}
-      <Canvas camera={{ position: cameraPos, fov: 45 }} shadows>
+      <Canvas camera={{ position: cameraPos, fov: 45 }} shadows frameloop={frameloop}>
         <ambientLight intensity={0.5} />
         <directionalLight position={[8, 10, 5]} intensity={0.9} castShadow />
         <directionalLight position={[-5, 4, -3]} intensity={0.3} />
@@ -685,7 +704,8 @@ export default function LoadingPlan3D({
                 if (dragActive) return;
                 e.stopPropagation();
                 setHoveredId(p.id);
-                document.body.style.cursor = 'grab';
+                // S-2b: Read-Only → kein grab-Cursor (kein Drag).
+                if (!readOnly) document.body.style.cursor = 'grab';
               }}
               onPointerLeave={(e) => {
                 if (dragActive) return;
@@ -694,6 +714,9 @@ export default function LoadingPlan3D({
                 document.body.style.cursor = '';
               }}
               onPointerDown={(e) => {
+                // S-2b: Read-Only → Drag-Start unterdrücken (Orbit/Zoom
+                // bleibt, weil das auf Canvas-Ebene läuft, nicht hier).
+                if (readOnly) return;
                 if (dragActive) return;
                 // B-1: Right-Click (button=2) startet KEIN Drag.
                 if (e.nativeEvent.button === 2) return;

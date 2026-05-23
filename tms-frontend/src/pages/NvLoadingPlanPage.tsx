@@ -17,7 +17,7 @@ import {
   resolveFahrzeugTyp,
 } from '../lib/vehicleTypes';
 
-interface NvPackageItem {
+export interface NvPackageItem {
   id: string;
   line_index: number;
   package_type?: string | null;
@@ -33,7 +33,7 @@ interface NvPackageItem {
   rotation_deg?: number | null;
 }
 
-interface NvShipment {
+export interface NvShipment {
   id: string;
   shipment_number?: string | null;
   weight_kg?: string | number | null;
@@ -44,7 +44,7 @@ interface NvShipment {
   shipment_package_items: NvPackageItem[];
 }
 
-interface NvLoadingDetail {
+export interface NvLoadingDetail {
   id: string;
   datum: string;
   status: string;
@@ -77,7 +77,11 @@ const SHIPMENT_COLORS = [
  *   - posY-Overflow: package landet bei posY=0 (UI zeigt's
  *     dann am Vorne, user kann via Drag aussortieren)
  */
-function flattenPackages(
+/**
+ * S-2b: Export für LoadingPlanPanel (workspace-Panel) Wiederverwendung.
+ * Pure-Function — gleiche Logik die diese Page intern nutzt.
+ */
+export function flattenPackages(
   tour: NvLoadingDetail | null,
   trailerWidthCm: number,
   trailerLengthCm: number,

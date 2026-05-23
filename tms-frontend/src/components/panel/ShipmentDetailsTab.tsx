@@ -367,10 +367,43 @@ interface BestTourMatch {
   tour_number?: string | null;
   score: number;
   reason: string;
+  /** B1: Tour-Identitaet fuer die Empfehlungs-Card. */
+  datum?: string | null;
+  subunternehmer_name?: string | null;
+  stops_count?: number | null;
+  last_stop_city?: string | null;
+  used_ldm?: number | null;
+  max_ldm?: number | null;
+}
+
+interface AssignFeedback {
+  kind: 'ok' | 'err';
+  msg: string;
+}
+
+/**
+ * B1: Tour-Anzeige fuer die Empfehlungs-Card.
+ * Prioritaet: tour_number (FV) -> Subunternehmer-Name (NV) -> UUID-Prefix.
+ * Bewusst kein "NV"/"FV" davor in Bold, die mode-Badge steht links daneben.
+ */
+function tourDisplayName(m: BestTourMatch): string {
+  if (m.tour_number) return m.tour_number;
+  if (m.subunternehmer_name) return m.subunternehmer_name;
+  return m.tour_id.slice(0, 8);
+}
+
+function formatDatum(iso?: string | null): string | null {
+  if (!iso) return null;
+  // ISO "2026-05-23T…" → "23.05."
+  const d = iso.length >= 10 ? iso.slice(0, 10) : iso;
+  const parts = d.split('-');
+  if (parts.length !== 3) return null;
+  return `${parts[2]}.${parts[1]}.`;
 }
 
 function BestTourSection({ shipmentId }: { shipmentId: string }) {
   const qc = useQueryClient();
+  const [feedback, setFeedback] = useState<AssignFeedback | null>(null);
   const matchQ = useQuery<BestTourMatch[]>({
     queryKey: ['shipment-best-match', shipmentId],
     queryFn: async () =>
@@ -383,25 +416,44 @@ function BestTourSection({ shipmentId }: { shipmentId: string }) {
   });
 
   const assignMut = useMutation({
-    mutationFn: async (vars: { tour_id: string; mode: 'nv' | 'fv' }) => {
+    mutationFn: async (vars: {
+      tour_id: string;
+      mode: 'nv' | 'fv';
+      label: string;
+    }) => {
       const url =
         vars.mode === 'fv'
           ? `/tours/${vars.tour_id}/batch-stops`
           : `/nv-touren/${vars.tour_id}/batch-stops`;
       await api.post(url, { adds: [shipmentId], removes: [] });
+      return { label: vars.label };
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['fv-touren'] });
       qc.invalidateQueries({ queryKey: ['nv-touren'] });
       qc.invalidateQueries({ queryKey: ['fv-eligible'] });
       qc.invalidateQueries({ queryKey: ['nv-elig'] });
       qc.invalidateQueries({ queryKey: ['shipment-best-match', shipmentId] });
+      // B1: Sichtbares Success-Feedback (5s lokal — ContextPanel hat
+      // keinen globalen Toast-Layer ueber AppLayout).
+      setFeedback({ kind: 'ok', msg: `Zugeordnet zu ${res.label}.` });
+      window.setTimeout(() => setFeedback(null), 5000);
+    },
+    onError: (e: any) => {
+      // BE liefert NestJS-Standard { message: '…' } in error.response.data.
+      const beMsg = e?.response?.data?.message;
+      const msg = Array.isArray(beMsg)
+        ? beMsg.join(', ')
+        : typeof beMsg === 'string'
+          ? beMsg
+          : 'Zuordnen fehlgeschlagen.';
+      setFeedback({ kind: 'err', msg });
     },
   });
 
   if (matchQ.isLoading) return null;
   const matches = matchQ.data ?? [];
-  if (matches.length === 0) return null;
+  if (matches.length === 0 && !feedback) return null;
 
   return (
     <section>
@@ -409,6 +461,19 @@ function BestTourSection({ shipmentId }: { shipmentId: string }) {
         <Sparkles size={11} />
         Empfehlungen
       </h3>
+      {feedback && (
+        <div
+          onClick={() => setFeedback(null)}
+          className={`mb-1.5 cursor-pointer rounded border px-2 py-1 text-[11px] ${
+            feedback.kind === 'ok'
+              ? 'bg-green-50 border-green-300 text-green-800'
+              : 'bg-red-50 border-red-300 text-red-800'
+          }`}
+          title="Schliessen"
+        >
+          {feedback.msg}
+        </div>
+      )}
       <div className="space-y-1.5">
         {matches.map((m) => {
           const col =
@@ -417,6 +482,18 @@ function BestTourSection({ shipmentId }: { shipmentId: string }) {
               : m.score >= 40
                 ? 'border-amber-300 bg-amber-50'
                 : 'border-gray-300 bg-gray-50';
+          const datum = formatDatum(m.datum);
+          const ldmRatio =
+            m.max_ldm != null && m.max_ldm > 0 && m.used_ldm != null
+              ? Math.round((m.used_ldm / m.max_ldm) * 100)
+              : null;
+          const subRow = [
+            m.stops_count != null ? `${m.stops_count} Stops` : null,
+            m.last_stop_city ? `zuletzt ${m.last_stop_city}` : null,
+            ldmRatio != null ? `${ldmRatio}% ldm` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
           return (
             <div
               key={m.tour_id}
@@ -426,24 +503,34 @@ function BestTourSection({ shipmentId }: { shipmentId: string }) {
                 <span className="text-[10px] font-mono uppercase text-gray-500">
                   {m.mode}
                 </span>
-                <span className="font-mono font-semibold">
-                  {m.tour_number ?? m.tour_id.slice(0, 8)}
+                <span className="font-semibold truncate" title={m.tour_id}>
+                  {tourDisplayName(m)}
                 </span>
+                {datum && (
+                  <span className="text-[10px] text-gray-600">{datum}</span>
+                )}
                 <span className="ml-auto text-[10px] font-mono text-gray-700">
                   Score {m.score}
                 </span>
               </div>
+              {subRow && (
+                <div className="text-[10px] text-gray-600 mt-0.5">{subRow}</div>
+              )}
               <div className="text-[10px] text-gray-600 mt-0.5">
                 {m.reason}
               </div>
               <button
                 onClick={() =>
-                  assignMut.mutate({ tour_id: m.tour_id, mode: m.mode })
+                  assignMut.mutate({
+                    tour_id: m.tour_id,
+                    mode: m.mode,
+                    label: tourDisplayName(m),
+                  })
                 }
                 disabled={assignMut.isPending}
                 className="mt-1 px-2 py-0.5 text-[10px] bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
               >
-                Zuordnen
+                {assignMut.isPending ? 'Ordne zu…' : 'Zuordnen'}
               </button>
             </div>
           );

@@ -36,6 +36,15 @@ export interface MatchTourCandidate {
   last_stop_lat?: number | null;
   last_stop_lng?: number | null;
   customer_ids?: string[];
+  /**
+   * B1: UI-Identifikation der Tour fuer ContextPanel-Empfehlungen.
+   * Bei NV = nv_subunternehmer.name, bei FV = subcontractors.name.
+   * Stop-Count + letzte-Stop-Stadt geben dem User Kontext, welchen
+   * Round er da gerade vorgeschlagen bekommt.
+   */
+  subunternehmer_name?: string | null;
+  stops_count?: number | null;
+  last_stop_city?: string | null;
 }
 
 export interface BestTourMatch {
@@ -45,6 +54,13 @@ export interface BestTourMatch {
   score: number;
   factors: { name: string; value: number; weight: number }[];
   reason: string;
+  /** B1: Tour-Identitaet fuer Empfehlungs-Cards. */
+  datum?: string | null;
+  subunternehmer_name?: string | null;
+  stops_count?: number | null;
+  last_stop_city?: string | null;
+  used_ldm?: number | null;
+  max_ldm?: number | null;
 }
 
 const W_GEO = 0.4;
@@ -178,6 +194,15 @@ export function findBestToursForShipment(
       score,
       factors,
       reason: buildReason(km, factors),
+      datum:
+        t.datum instanceof Date
+          ? t.datum.toISOString()
+          : (t.datum as string | null | undefined) ?? null,
+      subunternehmer_name: t.subunternehmer_name ?? null,
+      stops_count: t.stops_count ?? null,
+      last_stop_city: t.last_stop_city ?? null,
+      used_ldm: t.used_ldm != null ? Number(t.used_ldm) : null,
+      max_ldm: t.max_ldm != null ? Number(t.max_ldm) : null,
     });
   }
   out.sort((a, b) => b.score - a.score);
@@ -298,6 +323,15 @@ export async function findBestToursForShipmentPrecise(
       score,
       factors,
       reason: buildReason(km, factors),
+      datum:
+        t.datum instanceof Date
+          ? t.datum.toISOString()
+          : (t.datum as string | null | undefined) ?? null,
+      subunternehmer_name: t.subunternehmer_name ?? null,
+      stops_count: t.stops_count ?? null,
+      last_stop_city: t.last_stop_city ?? null,
+      used_ldm: t.used_ldm != null ? Number(t.used_ldm) : null,
+      max_ldm: t.max_ldm != null ? Number(t.max_ldm) : null,
     });
   }
   out.sort((a, b) => b.score - a.score);

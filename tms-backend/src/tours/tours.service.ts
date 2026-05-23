@@ -1262,7 +1262,10 @@ export class ToursService {
         ? Number(ship.addresses_shipments_loading_address_idToaddresses.lng)
         : null;
 
-    // FV-Touren-Pool (planned/dispatched)
+    // FV-Touren-Pool (planned/dispatched).
+    // B1: + subcontractors.name (Sub/Fahrer), + _count.shipments (Stop-
+    // Anzahl), + city aus last-stop loading-address — fuer Empfehlungs-
+    // Cards im ContextPanel.
     const fvTours = await this.prisma.tours.findMany({
       where: { status: { in: ['planned', 'dispatched'] } },
       select: {
@@ -1274,6 +1277,8 @@ export class ToursService {
         max_weight_kg: true,
         total_ldm: true,
         total_weight_kg: true,
+        subcontractors: { select: { name: true } },
+        _count: { select: { shipments: { where: { deleted_at: null } } } },
         shipments: {
           where: { deleted_at: null },
           orderBy: { tour_position: 'desc' },
@@ -1281,7 +1286,7 @@ export class ToursService {
           select: {
             customer_id: true,
             addresses_shipments_loading_address_idToaddresses: {
-              select: { lat: true, lng: true },
+              select: { lat: true, lng: true, city: true },
             },
           },
         },
@@ -1289,7 +1294,8 @@ export class ToursService {
       take: 100,
     });
 
-    // NV-Touren-Pool (PLANNING/IN_PROGRESS)
+    // NV-Touren-Pool (PLANNING/IN_PROGRESS).
+    // B1: + subunternehmer.name, + _count.stops, + city analog FV.
     const nvTours = await this.prisma.nv_touren.findMany({
       where: { status: { in: ['PLANNING', 'IN_PROGRESS'] } },
       select: {
@@ -1297,8 +1303,9 @@ export class ToursService {
         datum: true,
         status: true,
         subunternehmer: {
-          select: { max_ldm: true, max_gewicht_kg: true },
+          select: { name: true, max_ldm: true, max_gewicht_kg: true },
         },
+        _count: { select: { stops: true } },
         stops: {
           orderBy: { position: 'desc' },
           take: 1,
@@ -1309,7 +1316,7 @@ export class ToursService {
                 ldm: true,
                 weight_kg: true,
                 addresses_shipments_loading_address_idToaddresses: {
-                  select: { lat: true, lng: true },
+                  select: { lat: true, lng: true, city: true },
                 },
               },
             },
@@ -1347,6 +1354,11 @@ export class ToursService {
           customer_ids: t.shipments
             .map((s) => s.customer_id)
             .filter((id): id is string => !!id),
+          subunternehmer_name: t.subcontractors?.name ?? null,
+          stops_count: t._count?.shipments ?? null,
+          last_stop_city:
+            last?.addresses_shipments_loading_address_idToaddresses?.city ??
+            null,
         };
       }),
       ...nvTours.map((t) => {
@@ -1378,6 +1390,11 @@ export class ToursService {
                 )
               : null,
           customer_ids: last?.customer_id ? [last.customer_id] : [],
+          subunternehmer_name: t.subunternehmer?.name ?? null,
+          stops_count: t._count?.stops ?? null,
+          last_stop_city:
+            last?.addresses_shipments_loading_address_idToaddresses?.city ??
+            null,
         };
       }),
     ];

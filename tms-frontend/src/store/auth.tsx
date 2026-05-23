@@ -60,3 +60,22 @@ export function useAuth(): AuthContextValue {
   }
   return ctx;
 }
+
+/**
+ * Optional-Variant — Fallback wenn KEIN AuthProvider gemountet
+ * ist (z.B. Render-Tests). Returns { isAuthenticated: true } als
+ * sicheren Default damit Test-Render-Trees ohne AuthProvider
+ * weiterhin funktionieren (WorkspaceProvider URL-Sync läuft dann
+ * wie zuvor). Im Prod-Tree IST AuthProvider immer da (main.tsx).
+ */
+export function useAuthOptional(): AuthContextValue {
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    return {
+      isAuthenticated: true,
+      login: () => {},
+      logout: () => {},
+    };
+  }
+  return ctx;
+}

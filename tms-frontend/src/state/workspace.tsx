@@ -43,6 +43,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useAuthOptional } from '../store/auth';
 
 export type WorkspaceMode = 'nv' | 'fv';
 export type WorkspaceSort = 'auto' | 'date' | 'land';
@@ -251,6 +252,15 @@ const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [params, setParams] = useSearchParams();
+  // Fix-C: Bei ausgeloggtem User darf der URL-Sync NICHT laufen,
+  // sonst überschreibt setParams (replace) den PrivateRoute-Navigate
+  // zu /login und die App landet auf "/?mode=nv&datum=..." → weiße
+  // Seite. WorkspaceProvider ist innerhalb AuthProvider gemountet
+  // (siehe main.tsx).
+  // useAuthOptional: Render-Tests mounten WorkspaceProvider ggf.
+  // ohne AuthProvider — Fallback liefert isAuthenticated=true,
+  // damit der URL-Sync dort wie zuvor läuft.
+  const { isAuthenticated } = useAuthOptional();
   const [mode, setModeState] = useState<WorkspaceMode>(() => {
     const url = params.get('mode');
     if (url === 'fv' || url === 'nv') return url;
@@ -305,8 +315,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, [layout]);
 
   // URL-Sync (replace, kein push — kein History-Spam):
+  // Fix-C: skip wenn !isAuthenticated, sonst überschreibt setParams
+  // den PrivateRoute-Navigate zu /login (Auth-Redirect-Bug).
   const lastUrlRef = useRef<string>('');
   useEffect(() => {
+    if (!isAuthenticated) return;
     const next = new URLSearchParams(params);
     next.set('mode', mode);
     next.set('datum', datum);
@@ -320,7 +333,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       lastUrlRef.current = str;
       setParams(next, { replace: true });
     }
-  }, [mode, datum, filter.search, filter.tourStatuses, params, setParams]);
+  }, [
+    mode,
+    datum,
+    filter.search,
+    filter.tourStatuses,
+    params,
+    setParams,
+    isAuthenticated,
+  ]);
 
   const setMode = useCallback((m: WorkspaceMode) => setModeState(m), []);
   const setDatum = useCallback((iso: string) => setDatumState(iso), []);

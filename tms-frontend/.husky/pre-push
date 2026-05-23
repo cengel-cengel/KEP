@@ -1,0 +1,23 @@
+#!/usr/bin/env sh
+# Pre-Push-Hook — fängt Build-Brüche bevor der Push raus geht.
+# Lehre aus dem Auth-Redirect-Bug 23.05.2026: `tsc --noEmit`
+# allein reicht NICHT (composite-Build `tsc -b` ist strenger,
+# unused-locals/parameters). Wir prüfen das, was Vercel/Railway
+# auch baut.
+
+set -e
+
+# Dauer-Budget: <40s. Aktuell FE ~4s + BE ~10s = ~14s. OK.
+# Tests sind bewusst NICHT im Hook (vitest+jest ~40s; CI-Job).
+
+echo "▶ FE build (tsc -b + vite build)…"
+cd tms-frontend
+npm run --silent build
+cd ..
+
+echo "▶ BE build (nest build)…"
+cd tms-backend
+npm run --silent build
+cd ..
+
+echo "✓ Builds OK — Push fortsetzen."

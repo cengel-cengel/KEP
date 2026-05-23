@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepare": "( cd .. && husky tms-frontend/.husky ) || true"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
@@ -54,6 +55,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
+    "husky": "^9.1.7",
     "jsdom": "^29.1.1",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.56.1",

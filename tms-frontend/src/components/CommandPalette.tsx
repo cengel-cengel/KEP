@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { registerHotkey } from '../lib/hotkeys';
-import { listSavedViews, setActiveViewId } from '../lib/savedViews';
 
 /**
  * W-3 Command Palette.
@@ -13,14 +12,19 @@ import { listSavedViews, setActiveViewId } from '../lib/savedViews';
  * Commands:
  *  - Navigation (Dashboard/Workspace/Stammdaten/etc.)
  *  - Modus-Switch (NV/FV)
- *  - Saved Views (gespeicherte Ansichten dynamisch)
+ *
+ * S-3b-2 Cleanup: dynamische "Ansicht: …"-Commands aus der alten
+ * localStorage-Liste sind entfernt. Benannte Layouts werden jetzt
+ * im "Ansichten"-Dropdown der WorkspaceTopBar verwaltet (Backend,
+ * pro Modus). Kein Cmd+K-Pfad dorthin noetig, weil Mode-Switch
+ * + URL-Navigate die Workspace-Auswahl bereits abdeckt.
  */
 
 interface Command {
   id: string;
   label: string;
   hint?: string;
-  category: 'Navigation' | 'Modus' | 'Ansicht' | 'Aktion';
+  category: 'Navigation' | 'Modus' | 'Aktion';
   run: () => void;
 }
 
@@ -134,18 +138,6 @@ export default function CommandPalette() {
         run: () => navigate('/workspace?mode=fv'),
       },
     ];
-    for (const v of listSavedViews()) {
-      cmds.push({
-        id: `view.${v.id}`,
-        label: `Ansicht: ${v.name}`,
-        hint: v.mode.toUpperCase(),
-        category: 'Ansicht',
-        run: () => {
-          setActiveViewId(v.id);
-          navigate(`/workspace?mode=${v.mode}`);
-        },
-      });
-    }
     return cmds;
   }, [navigate]);
 

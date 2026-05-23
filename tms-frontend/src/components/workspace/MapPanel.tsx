@@ -33,6 +33,7 @@ import NvDispoMap, {
   type TourStopPin,
 } from '../nv/NvDispoMap';
 import { useWorkspace, useWorkspaceLayout } from '../../state/workspace';
+import { useWorkspaceRuntime } from '../../workspace/runtime/WorkspaceRuntimeContext';
 import { useEligibleShipments, useTourDetail } from '../../hooks/useDispoData';
 import {
   buildFvTourStops,
@@ -52,41 +53,21 @@ interface FvTourDetail extends FvTourDetailLite {
   } | null;
 }
 
-export interface MapPanelProps {
-  /** Active-Tour-Highlight (Source-of-Truth WorkspacePage-Coordinator). */
-  activeTourViewId: string | null;
-  /** Pin-Click-Handler (NV-only via useNvPendingSync). */
-  onPinClick?: (shipmentId: string) => void;
-  /** Tour-Stop-Click-Handler (NV-only via useNvPendingSync). */
-  onTourStopClick?: (stopId: string) => void;
-  /** Banner/Error-Reporter (Route-Calc-Fehler etc.). */
-  onError?: (msg: string) => void;
-  /** Optional farben-Map aus tour_gebiete (für NV-Pin-Colors). */
-  farbenMap?: Map<string, string>;
-  /** A' Sprint: Selected-Stop für visuelles Highlight (Cross-Panel). */
-  selectedStopId?: string | null;
-  /** A' Sprint: Stop-Marker-Click → setSelectedStopId (bidirektional). */
-  onSelectStop?: (stopId: string | null) => void;
-  /** P0-12.1: Drop-Handler für DnD aus QueuePanel/BoardPanel.
-   *  payload.source='list' bzw. 'map'. Caller entscheidet was passiert
-   *  (add to activeTour, oder pending-bucket wenn keine). */
-  onDrop?: (shipmentIds: string[], source?: 'list' | 'map') => void;
-}
-
-export default function MapPanel({
-  activeTourViewId,
-  onPinClick,
-  onTourStopClick,
-  onError,
-  farbenMap,
-  selectedStopId,
-  onSelectStop,
-  onDrop,
-}: MapPanelProps) {
+export default function MapPanel() {
   const qc = useQueryClient();
-  const { mode, datum } = useWorkspace();
+  const { mode, datum, selectedStopId, setSelectedStopId } = useWorkspace();
   const { layout, setLayout } = useWorkspaceLayout();
   const { mapCollapsed } = layout;
+  // S-1: Coordinator-State aus Runtime-Context (vorher Props).
+  const {
+    activeTourViewId,
+    onPinClick,
+    onTourStopClick,
+    onError,
+    farbenMap,
+    onMapDrop: onDrop,
+  } = useWorkspaceRuntime();
+  const onSelectStop = setSelectedStopId;
   // P0-12.1: DnD-Hover-State (ring-blue während Drag-Over).
   const [dropHover, setDropHover] = useState(false);
 
@@ -435,9 +416,7 @@ export default function MapPanel({
     // FV-Tour hat polyline_geometry direkt; NV-Tour ebenfalls.
     const p = (activeTour as { polyline_geometry?: unknown })
       .polyline_geometry;
-    return (p as MapPanelProps['onPinClick'] extends infer _
-      ? FvTourDetail['polyline_geometry']
-      : null) ?? null;
+    return (p as FvTourDetail['polyline_geometry']) ?? null;
   }, [activeTour]);
 
   const [clickedSequence, setClickedSequence] = useState<string[]>([]);

@@ -6,24 +6,23 @@
  *   mode='nv' → NvEligibleTree (W-3.2.C extract)
  *
  * State (page-lokal):
- *   selected: Set<string>       Multi-Select (NV-Mode)
  *   expandedGroup: string|null  Collapse-State (NV-Mode)
  *   draggingId: string|null     DnD-Ghost
  *   lastClickedRef              Shift-Click Range-Anchor
  *
- * DnD-Source: 'application/json' { shipmentIds[], source }
- * (vereinheitlicht, FV+NV gleicher Payload nach W-3.2.C).
+ * Shared-State via WorkspaceRuntimeContext (S-1):
+ *   selected (Set<string>) — Multi-Select cross-panel
+ *   onFvBulkAdd — Bulk-Add aus FV-Tree
+ *
+ * DnD-Source: 'application/json' { shipmentIds[], source }.
  *
  * Konsumiert FilterBar oben, useEligibleShipments für Daten.
- *
- * DORMANT: wird in SCHRITT 5 (WorkspacePage) wired. NvDispoPage +
- * FvDispoPage konsumieren die alte inline-Rendering weiter, bis
- * SCHRITT 6 Pages → Shells.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { useWorkspace, useWorkspaceFilter } from '../../state/workspace';
+import { useWorkspaceRuntime } from '../../workspace/runtime/WorkspaceRuntimeContext';
 import { useEligibleShipments } from '../../hooks/useDispoData';
 import { usePanel } from '../../state/panel';
 import FilterBar from './FilterBar';
@@ -53,27 +52,12 @@ function saveExpanded(v: string | null) {
   }
 }
 
-export interface QueuePanelProps {
-  /** Optional Override für eligible-Daten (z.B. SSR/Tests). */
-  shipmentsOverride?: EligibleShipment[] | FvTreeShipment[];
-  /** Callback wenn QueuePanel im FV-Mode "+ Alle in neue Tour"
-   *  triggert (Bulk-Add für eine Relation-Group). */
-  onFvBulkAdd?: (shipmentIds: string[], label: string) => void;
-  /** Controlled-Selection (für Cross-Panel-Bulk in WorkspacePage).
-   *  Wenn undefined: internal state. */
-  selected?: Set<string>;
-  onSelectionChange?: (next: Set<string>) => void;
-}
-
-export default function QueuePanel({
-  shipmentsOverride,
-  onFvBulkAdd,
-  selected: selectedProp,
-  onSelectionChange,
-}: QueuePanelProps) {
+export default function QueuePanel() {
   const { mode, datum } = useWorkspace();
   const { filter } = useWorkspaceFilter();
   const panel = usePanel();
+  // S-1: Selection + Bulk-Add aus Runtime-Context.
+  const { selected, setSelected, onFvBulkAdd } = useWorkspaceRuntime();
 
   // tour_gebiete für FilterBar (NV-only; FV ignoriert).
   const tourGebieteQ = useQuery<TourGebiet[]>({
@@ -93,17 +77,11 @@ export default function QueuePanel({
       pickupMode: mode === 'nv' ? filter.pickupMode : undefined,
     },
   );
-  const eligible = (shipmentsOverride ?? eligQ.data ?? []) as
+  const eligible = (eligQ.data ?? []) as
     | EligibleShipment[]
     | FvTreeShipment[];
 
-  // === Multi-Select: controlled wenn Props vorhanden, sonst internal ===
-  const [selectedLocal, setSelectedLocal] = useState<Set<string>>(new Set());
-  const selected = selectedProp ?? selectedLocal;
-  const setSelected = (next: Set<string>) => {
-    if (onSelectionChange) onSelectionChange(next);
-    else setSelectedLocal(next);
-  };
+  // === Multi-Select: aus Runtime-Context (S-1) ===
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const lastClickedRef = useRef<string | null>(null);
 
@@ -268,7 +246,7 @@ export default function QueuePanel({
         {!eligQ.isLoading && mode === 'fv' && (
           <FvShipmentTree
             shipments={eligible as FvTreeShipment[]}
-            onBulkAdd={(ids, label) => onFvBulkAdd?.(ids, label)}
+            onBulkAdd={(ids, label) => onFvBulkAdd(ids, label)}
           />
         )}
       </div>

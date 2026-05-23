@@ -88,16 +88,21 @@ import MapPanel from './MapPanel';
 import WorkspacePage from '../../pages/WorkspacePage';
 import { WorkspaceProvider } from '../../state/workspace';
 import { PanelProvider } from '../../state/panel';
+import { WorkspaceRuntimeProvider } from '../../workspace/runtime/WorkspaceRuntimeContext';
 
 function Wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
+  // S-1: WorkspaceRuntimeProvider INNERHALB workspace + panel
+  // (consistent mit prod-Tree via main.tsx + WorkspacePage).
   return (
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <WorkspaceProvider>
-          <PanelProvider>{children}</PanelProvider>
+          <PanelProvider>
+            <WorkspaceRuntimeProvider>{children}</WorkspaceRuntimeProvider>
+          </PanelProvider>
         </WorkspaceProvider>
       </MemoryRouter>
     </QueryClientProvider>
@@ -149,7 +154,7 @@ describe('MapPanel — smoke', () => {
     expect(() =>
       render(
         <Wrapper>
-          <MapPanel activeTourViewId={null} />
+          <MapPanel />
         </Wrapper>,
       ),
     ).not.toThrow();

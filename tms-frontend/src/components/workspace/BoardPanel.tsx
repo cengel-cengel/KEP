@@ -33,6 +33,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Sparkles } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useWorkspace, useWorkspaceFilter } from '../../state/workspace';
+import { useWorkspaceRuntime } from '../../workspace/runtime/WorkspaceRuntimeContext';
 import {
   useDispoMutations,
   useAddStop,
@@ -71,64 +72,24 @@ interface FvTourListItem {
   auto_consolidated?: boolean;
 }
 
-export interface BoardPanelProps {
-  /** Active-Tour-Highlight Sync nach oben (SCHRITT 5 — Cross-Panel). */
-  activeTourViewId?: string | null;
-  onActiveTourChange?: (id: string | null) => void;
-  /** FV-Bulk-Chain: aus QueuePanel.onFvBulkAdd nach oben gereicht,
-   *  dann hier als pendingBulk in BoardPanel → CreateFvTourModal-
-   *  open + createMut.onSuccess → batchMut(adds). */
-  pendingBulk?: { shipmentIds: string[]; label: string } | null;
-  /** Callback wenn CreateFvTourModal pendingBulk konsumiert hat
-   *  (Reset oben). */
-  onBulkConsumed?: () => void;
-  /** Multi-Select-IDs aus QueuePanel — Drop-Target empfängt
-   *  Multi-Drag-Payloads über DnD. Bulk-Picker-Btn nutzt sie. */
-  selectedShipmentIds?: string[];
-  onClearSelection?: () => void;
-  /** Error-Reporter (Banner) — Konsument je nach Layer
-   *  (SCHRITT 5: WorkspacePage.setBanner). */
-  onError?: (msg: string) => void;
-  /** Optional success/info reporter. */
-  onInfo?: (msg: string) => void;
-  /** W-3.2.D: NV-Pin→CreateTour-Chain. WorkspacePage incrementiert
-   *  diesen Counter wenn QuickAddBar.onCreateNew getriggert wird.
-   *  BoardPanel öffnet dann CreateTourModal. */
-  createTourTrigger?: number;
-  /** W-3.2.D: Callback nach erfolgreichem Tour-Create. WorkspacePage
-   *  hängt addStop({newId, pendingPinShipmentId}) dran. */
-  onTourCreated?: (tourId: string) => void;
-}
-
-export default function BoardPanel({
-  activeTourViewId: activeTourViewIdProp,
-  onActiveTourChange,
-  pendingBulk,
-  onBulkConsumed,
-  selectedShipmentIds,
-  onClearSelection,
-  onError,
-  onInfo,
-  createTourTrigger,
-  onTourCreated,
-}: BoardPanelProps) {
+export default function BoardPanel() {
   const { mode, datum } = useWorkspace();
   const { filter } = useWorkspaceFilter();
   const qc = useQueryClient();
   const panel = usePanel();
-
-  // === Active-Tour-Highlight (Source-of-Truth optional Prop-lifted) ===
-  const [activeTourViewIdLocal, setActiveTourViewIdLocal] = useState<
-    string | null
-  >(null);
-  const activeTourViewId =
-    activeTourViewIdProp !== undefined
-      ? activeTourViewIdProp
-      : activeTourViewIdLocal;
-  const setActiveTourViewId = (id: string | null) => {
-    if (onActiveTourChange) onActiveTourChange(id);
-    else setActiveTourViewIdLocal(id);
-  };
+  // S-1: Coordinator-State aus Runtime-Context (vorher Props).
+  const {
+    activeTourViewId,
+    setActiveTourViewId,
+    pendingBulk,
+    onBulkConsumed,
+    selectedShipmentIds,
+    onClearSelection,
+    onError,
+    onInfo,
+    createTourTrigger,
+    onTourCreatedByBoard: onTourCreated,
+  } = useWorkspaceRuntime();
 
   // === BroadcastChannel für Pop-out-Map-Invalidate =================
   const popupChannelRef = useRef<BroadcastChannel | null>(null);

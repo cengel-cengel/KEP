@@ -17,12 +17,13 @@ const baseEvt = {
 };
 
 describe('invalidateForEvent', () => {
-  it('tour.updated invalidiert 6 query-keys (incl. eligible-listen)', () => {
+  it('tour.updated invalidiert 7 query-keys (incl. eligible-listen + loading-keys)', () => {
     const qc = mockQc();
     invalidateForEvent(qc, {
       ...baseEvt,
       event: 'tour.updated',
     } as RealtimeEvent);
+    expect(qc.invalidateQueries).toHaveBeenCalledTimes(7);
     const keys = qc.invalidateQueries.mock.calls.map(
       (c: any[]) => c[0].queryKey,
     );
@@ -32,19 +33,21 @@ describe('invalidateForEvent', () => {
         ['nv-touren'],
         ['fv-tour-detail', 'tour-1'],
         ['nv-loading', 'tour-1'],
+        // B2: FV-Beladeplan-Symmetrie zum NV-Pendant.
+        ['loading', 'optimize', 'tour-1'],
         ['fv-eligible'],
         ['nv-elig'],
       ]),
     );
   });
 
-  it('shipment.assigned invalidiert 6 query-keys', () => {
+  it('shipment.assigned invalidiert 7 query-keys (incl. loading-keys)', () => {
     const qc = mockQc();
     invalidateForEvent(qc, {
       ...baseEvt,
       event: 'shipment.assigned',
     } as RealtimeEvent);
-    expect(qc.invalidateQueries).toHaveBeenCalledTimes(6);
+    expect(qc.invalidateQueries).toHaveBeenCalledTimes(7);
     const keys = qc.invalidateQueries.mock.calls.map(
       (c: any[]) => c[0].queryKey,
     );
@@ -56,6 +59,8 @@ describe('invalidateForEvent', () => {
         ['nv-touren'],
         ['fv-tour-detail', 'tour-1'],
         ['nv-loading', 'tour-1'],
+        // B2: FV-Beladeplan-Symmetrie zum NV-Pendant.
+        ['loading', 'optimize', 'tour-1'],
       ]),
     );
   });

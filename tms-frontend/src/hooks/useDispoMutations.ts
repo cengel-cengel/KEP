@@ -63,11 +63,21 @@ function invalidateMode(
   if (mode === 'fv') {
     qc.invalidateQueries({ queryKey: ['fv-touren'] });
     qc.invalidateQueries({ queryKey: ['fv-eligible'] });
-    if (tourId) qc.invalidateQueries({ queryKey: ['fv-tour-detail', tourId] });
+    if (tourId) {
+      qc.invalidateQueries({ queryKey: ['fv-tour-detail', tourId] });
+      // B2: FV-Beladeplan (LoadingPlanPanel + LoadingPlanPage) liest
+      // ['loading', 'optimize', tourId] — sonst stale nach Drop/Assign.
+      qc.invalidateQueries({ queryKey: ['loading', 'optimize', tourId] });
+    }
   } else {
     qc.invalidateQueries({ queryKey: ['nv-touren'] });
     qc.invalidateQueries({ queryKey: ['nv-elig'] });
-    if (tourId) qc.invalidateQueries({ queryKey: ['nv-tour-detail', tourId] });
+    if (tourId) {
+      qc.invalidateQueries({ queryKey: ['nv-tour-detail', tourId] });
+      // B2: NV-Beladeplan (LoadingPlanPanel + NvLoadingPlanPage) liest
+      // ['nv-loading', tourId] — sonst stale nach Drop/Assign.
+      qc.invalidateQueries({ queryKey: ['nv-loading', tourId] });
+    }
   }
 }
 

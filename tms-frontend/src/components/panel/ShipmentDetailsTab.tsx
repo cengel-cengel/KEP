@@ -428,12 +428,22 @@ function BestTourSection({ shipmentId }: { shipmentId: string }) {
       await api.post(url, { adds: [shipmentId], removes: [] });
       return { label: vars.label };
     },
-    onSuccess: (res) => {
+    onSuccess: (res, vars) => {
       qc.invalidateQueries({ queryKey: ['fv-touren'] });
       qc.invalidateQueries({ queryKey: ['nv-touren'] });
       qc.invalidateQueries({ queryKey: ['fv-eligible'] });
       qc.invalidateQueries({ queryKey: ['nv-elig'] });
       qc.invalidateQueries({ queryKey: ['shipment-best-match', shipmentId] });
+      // B2: Beladeplan-Refresh nach Zuordnung — Mode-abhaengig.
+      // LoadingPlanPanel im Workspace + Vollansicht-Pages hoeren auf
+      // diese Keys.
+      if (vars.mode === 'fv') {
+        qc.invalidateQueries({
+          queryKey: ['loading', 'optimize', vars.tour_id],
+        });
+      } else {
+        qc.invalidateQueries({ queryKey: ['nv-loading', vars.tour_id] });
+      }
       // B1: Sichtbares Success-Feedback (5s lokal — ContextPanel hat
       // keinen globalen Toast-Layer ueber AppLayout).
       setFeedback({ kind: 'ok', msg: `Zugeordnet zu ${res.label}.` });

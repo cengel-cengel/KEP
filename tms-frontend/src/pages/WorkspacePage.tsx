@@ -1,31 +1,33 @@
 /**
- * S-1 WorkspacePage — nach State-Entkopplung.
+ * S-2a WorkspacePage — DockRuntime statt react-resizable-panels.
  *
- * State + Callbacks leben jetzt in WorkspaceRuntimeContext
- * (src/workspace/runtime/). Hier nur noch:
- *   - useWorkspaceLayout (Resize-Sizes)
- *   - useWorkspace (mode für QuickAddBar-Bedingung)
- *   - JSX-Layout: TopBar + Banner + QuickAddBar + Group/Panels
+ * State + Callbacks: WorkspaceRuntimeContext (seit S-1).
+ * Layout: DockRuntime (dockview) statt Group/Panel (rrp).
  *
- * Panels lesen ihre Daten/Callbacks via useWorkspaceRuntime().
+ * S-2a-Scope (laut Prompt):
+ *   - 3 Spalten Queue | Board | Map mit DEFAULT_LAYOUT-Größen
+ *   - defaultRenderer='always' global (Map-Instance überlebt Move)
+ *   - KEIN Persist (S-3)
+ *   - KEINE Tabs (entstehen organisch via User-Move in S-4)
+ *   - KEIN Map-Collapse-Parity (kein S-2a-Blocker)
+ *   - ContextPanel bleibt Overlay (nicht dockbar in Phase 1)
  *
- * Layout-Persistence:
- *   onLayoutChanged feuert 1× pro Pointer-Release (kein Spam).
- *   PanelGroup:-Storage-Cleanup als One-shot on-mount (Alt-Reste
- *   aus W-3.2.C-Zwischenstand).
+ * useWorkspaceLayout bleibt vorerst importiert (von anderen Stellen
+ * konsumiert, z.B. workspace.tsx). DockRuntime nutzt es noch nicht —
+ * Layout-Persistence kommt in S-3 via serializeLayout.
+ *
+ * PanelGroup:-Storage-Cleanup BLEIBT als one-shot — alt-Keys aus
+ * der rrp-Phase entfernen, schadet dockview nicht.
  */
-import { useEffect, useMemo } from 'react';
-import { Group, Panel, Separator, type Layout } from 'react-resizable-panels';
+import { useEffect } from 'react';
 import WorkspaceTopBar from '../components/workspace/WorkspaceTopBar';
-import QueuePanel from '../components/workspace/QueuePanel';
-import BoardPanel from '../components/workspace/BoardPanel';
-import MapPanel from '../components/workspace/MapPanel';
 import QuickAddBar from '../components/nv/QuickAddBar';
-import { useWorkspace, useWorkspaceLayout } from '../state/workspace';
+import { useWorkspace } from '../state/workspace';
 import {
   useWorkspaceRuntime,
   WorkspaceRuntimeProvider,
 } from '../workspace/runtime/WorkspaceRuntimeContext';
+import DockRuntime from '../workspace/dock/DockRuntime';
 
 export default function WorkspacePage() {
   return (
@@ -37,7 +39,6 @@ export default function WorkspacePage() {
 
 function WorkspacePageInner() {
   const { mode, setMode } = useWorkspace();
-  const { layout, setLayout } = useWorkspaceLayout();
   const {
     pinAddShipmentId,
     banner,
@@ -48,35 +49,8 @@ function WorkspacePageInner() {
     onQuickAddCreateNew,
   } = useWorkspaceRuntime();
 
-  // Default-Layout für PanelGroup (flexGrow-Map keyed auf Panel-id).
-  // Sizes in % aus workspace.layout (queueSize+boardSize+mapSize=100).
-  const defaultLayout = useMemo<Layout>(
-    () => ({
-      queue: layout.queueSize,
-      board: layout.boardSize,
-      map: layout.mapSize,
-    }),
-    // Nur initial — sonst zerstört User-Resize.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
-
-  // Persist Resize → workspace.layout.
-  // react-resizable-panels v4: onLayoutChanged feuert NACH Pointer-
-  // Release (1× pro Resize, kein Debounce nötig).
-  const onLayoutChanged = (next: Layout) => {
-    const total =
-      (next.queue ?? 0) + (next.board ?? 0) + (next.map ?? 0);
-    if (total <= 0) return;
-    const norm = 100 / total;
-    setLayout({
-      queueSize: Math.round((next.queue ?? layout.queueSize) * norm),
-      boardSize: Math.round((next.board ?? layout.boardSize) * norm),
-      mapSize: Math.round((next.map ?? layout.mapSize) * norm),
-    });
-  };
-
   // W-3.2.D Layout-Storage Cleanup (alt-Keys mit Prefix 'PanelGroup:').
+  // Bleibt aus rrp-Zeit; schadet dockview nicht, räumt nur localStorage.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -120,31 +94,7 @@ function WorkspacePageInner() {
       )}
 
       <div className="flex-1 min-h-0">
-        <Group
-          id="tms-workspace-panels"
-          orientation="horizontal"
-          defaultLayout={defaultLayout}
-          onLayoutChanged={onLayoutChanged}
-          className="h-full"
-        >
-          <Panel id="queue" minSize={20} defaultSize={layout.queueSize}>
-            <QueuePanel />
-          </Panel>
-          <Separator className="w-1 bg-gray-200 hover:bg-blue-300 transition-colors" />
-          <Panel id="board" minSize={30} defaultSize={layout.boardSize}>
-            <BoardPanel />
-          </Panel>
-          <Separator className="w-1 bg-gray-200 hover:bg-blue-300 transition-colors" />
-          <Panel
-            id="map"
-            minSize={0}
-            defaultSize={layout.mapSize}
-            collapsible
-            collapsedSize={2}
-          >
-            <MapPanel />
-          </Panel>
-        </Group>
+        <DockRuntime />
       </div>
     </div>
   );

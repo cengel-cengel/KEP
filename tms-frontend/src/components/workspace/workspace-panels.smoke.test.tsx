@@ -71,6 +71,8 @@ vi.mock('../nv/BulkTourPicker', () => ({
 
 // react-resizable-panels braucht ResizeObserver/measure-DOM — in jsdom
 // nicht verfügbar. Pass-through-Stubs (Layout-Sizes irrelevant für Smoke).
+// (Lib wird seit S-2a nicht mehr aktiv genutzt; Stub bleibt als Schutz
+//  falls irgendwo ein Import übersehen wurde.)
 vi.mock('react-resizable-panels', () => ({
   Group: ({ children }: { children: ReactNode }) => (
     <div data-testid="panel-group">{children}</div>
@@ -79,6 +81,14 @@ vi.mock('react-resizable-panels', () => ({
     <div data-testid="panel">{children}</div>
   ),
   Separator: () => <div data-testid="panel-separator" />,
+}));
+
+// S-2a: dockview braucht ResizeObserver — jsdom hat es nicht. Stub
+// als render-without-crash-Marker. WorkspacePage-Smoke prüft TopBar/
+// Banner/QuickAddBar-Pfad, nicht die Dock-Innenlogik (dafür sind
+// Playwright-E2E im echten Browser zuständig).
+vi.mock('../../workspace/dock/DockRuntime', () => ({
+  default: () => <div data-testid="dock-runtime-stub" />,
 }));
 
 // ─── Imports AFTER vi.mock ─────────────────────────────────────

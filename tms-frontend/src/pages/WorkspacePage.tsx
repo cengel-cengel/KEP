@@ -19,7 +19,8 @@
  * PanelGroup:-Storage-Cleanup BLEIBT als one-shot — alt-Keys aus
  * der rrp-Phase entfernen, schadet dockview nicht.
  */
-import { useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import type { DockviewApi, SerializedDockview } from 'dockview';
 import WorkspaceTopBar from '../components/workspace/WorkspaceTopBar';
 import QuickAddBar from '../components/nv/QuickAddBar';
 import { useWorkspace } from '../state/workspace';
@@ -28,6 +29,7 @@ import {
   WorkspaceRuntimeProvider,
 } from '../workspace/runtime/WorkspaceRuntimeContext';
 import DockRuntime from '../workspace/dock/DockRuntime';
+import { useWorkspaceLayouts } from '../hooks/useWorkspaceLayouts';
 
 export default function WorkspacePage() {
   return (
@@ -49,6 +51,34 @@ function WorkspacePageInner() {
     onQuickAddCreateNew,
   } = useWorkspaceRuntime();
 
+  // S-3b-2: Backend-Layouts pro mode (nv|fv). DockRuntime restored
+  // is_default in Pass-2 wenn lokal nichts gespeichert ist.
+  // TopBar konsumiert die gleiche Query fuer Liste/Save/Default/etc.
+  const { layouts } = useWorkspaceLayouts(mode);
+  const backendDefaultLayout = useMemo<SerializedDockview | null>(
+    () => layouts.find((l) => l.is_default)?.layout_json ?? null,
+    [layouts],
+  );
+
+  // S-3b-2: Dockview-Api-Ref fuer imperative Save/Load aus TopBar.
+  const dockApiRef = useRef<DockviewApi | null>(null);
+  const onApiReady = useCallback((api: DockviewApi) => {
+    dockApiRef.current = api;
+  }, []);
+  const getCurrentLayout = useCallback(
+    (): SerializedDockview | null => dockApiRef.current?.toJSON() ?? null,
+    [],
+  );
+  const applyLayout = useCallback((layout: SerializedDockview) => {
+    const api = dockApiRef.current;
+    if (!api) return;
+    try {
+      api.fromJSON(layout);
+    } catch {
+      /* Inkompatibel — silent, User sieht keine Aenderung. */
+    }
+  }, []);
+
   // W-3.2.D Layout-Storage Cleanup (alt-Keys mit Prefix 'PanelGroup:').
   // Bleibt aus rrp-Zeit; schadet dockview nicht, räumt nur localStorage.
   useEffect(() => {
@@ -67,7 +97,12 @@ function WorkspacePageInner() {
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
-      <WorkspaceTopBar mode={mode} onModeChange={setMode} />
+      <WorkspaceTopBar
+        mode={mode}
+        onModeChange={setMode}
+        getCurrentLayout={getCurrentLayout}
+        applyLayout={applyLayout}
+      />
 
       {banner && (
         <div
@@ -94,7 +129,10 @@ function WorkspacePageInner() {
       )}
 
       <div className="flex-1 min-h-0">
-        <DockRuntime />
+        <DockRuntime
+          onApiReady={onApiReady}
+          backendDefaultLayout={backendDefaultLayout}
+        />
       </div>
     </div>
   );

@@ -1,24 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, ChevronDown, Plus, RotateCcw, Trash2, Wifi, WifiOff } from 'lucide-react';
+import type { SerializedDockview } from 'dockview';
 import {
-  listSavedViews,
-  saveView,
-  deleteView,
-  setActiveViewId,
-  getActiveViewId,
-  type SavedView,
-  type WorkspaceMode,
-} from '../../lib/savedViews';
+  AlertTriangle,
+  ChevronDown,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Star,
+  Trash2,
+  Wifi,
+  WifiOff,
+} from 'lucide-react';
 import {
   getRealtimeStatus,
   onRealtimeStatus,
   type RealtimeStatus,
 } from '../../realtime/realtimeClient';
 import { api } from '../../lib/api';
-import { useWorkspace } from '../../state/workspace';
+import { useWorkspace, type WorkspaceMode } from '../../state/workspace';
 import { getTourSeverity } from '../../lib/severity';
 import { DOCK_RESET_EVENT } from '../../workspace/dock/DockRuntime';
+import { useWorkspaceLayouts } from '../../hooks/useWorkspaceLayouts';
 
 /**
  * W-3 Top-Bar: Mode-Toggle + Realtime-Status + Saved-Views.
@@ -86,21 +89,30 @@ function useGlobalCriticals(
   return { l1Count, isLoading: q.isLoading };
 }
 
+/**
+ * S-3b-2 Props:
+ *   getCurrentLayout / applyLayout — kommen aus WorkspacePage, die die
+ *   DockviewApi via DockRuntime.onApiReady haelt. So bleibt der Round-
+ *   Trip "Save liest toJSON, Load ruft fromJSON" zwischen TopBar und
+ *   Dock OHNE Window-Event-Hacks.
+ */
 export default function WorkspaceTopBar({
   mode,
   onModeChange,
-  onLoadView,
+  getCurrentLayout,
+  applyLayout,
 }: {
   mode: WorkspaceMode;
   onModeChange: (m: WorkspaceMode) => void;
-  onLoadView?: (view: SavedView) => void;
+  getCurrentLayout?: () => SerializedDockview | null;
+  applyLayout?: (layout: SerializedDockview) => void;
 }) {
   const { datum } = useWorkspace();
   const { l1Count } = useGlobalCriticals(mode, datum);
-  const [views, setViews] = useState<SavedView[]>(listSavedViews);
+  const { layouts, isLoading, create, update, remove } =
+    useWorkspaceLayouts(mode);
   const [dropOpen, setDropOpen] = useState(false);
   const [rtStatus, setRtStatus] = useState<RealtimeStatus>(getRealtimeStatus());
-  const activeId = getActiveViewId();
   const dropRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -116,28 +128,58 @@ export default function WorkspaceTopBar({
     return () => document.removeEventListener('mousedown', onDoc);
   }, [dropOpen]);
 
-  const refresh = () => setViews(listSavedViews());
-
   const handleSaveCurrent = () => {
-    const name = window.prompt('Name für gespeicherte Ansicht:');
-    if (!name?.trim()) return;
-    const v = saveView({ name: name.trim(), mode, layout: {} });
-    setActiveViewId(v.id);
-    refresh();
+    const current = getCurrentLayout?.();
+    if (!current) {
+      window.alert('Layout konnte nicht gelesen werden (Dock noch nicht bereit).');
+      return;
+    }
+    const name = window.prompt('Name für gespeicherte Ansicht:')?.trim();
+    if (!name) return;
+    create.mutate(
+      { layout_name: name, layout_json: current, is_default: false },
+      {
+        onError: (e: any) => {
+          const msg =
+            e?.response?.status === 409
+              ? 'Eine Ansicht mit diesem Namen existiert bereits.'
+              : 'Speichern fehlgeschlagen.';
+          window.alert(msg);
+        },
+      },
+    );
     setDropOpen(false);
   };
 
-  const handleLoad = (v: SavedView) => {
-    setActiveViewId(v.id);
-    onModeChange(v.mode);
-    onLoadView?.(v);
+  const handleLoad = (layout: SerializedDockview) => {
+    applyLayout?.(layout);
     setDropOpen(false);
   };
 
-  const handleDelete = (v: SavedView) => {
-    if (!confirm(`Ansicht "${v.name}" löschen?`)) return;
-    deleteView(v.id);
-    refresh();
+  const handleToggleDefault = (id: string, currentlyDefault: boolean) => {
+    update.mutate({ id, payload: { is_default: !currentlyDefault } });
+  };
+
+  const handleRename = (id: string, currentName: string) => {
+    const name = window.prompt('Neuer Name:', currentName)?.trim();
+    if (!name || name === currentName) return;
+    update.mutate(
+      { id, payload: { layout_name: name } },
+      {
+        onError: (e: any) => {
+          const msg =
+            e?.response?.status === 409
+              ? 'Eine Ansicht mit diesem Namen existiert bereits.'
+              : 'Umbenennen fehlgeschlagen.';
+          window.alert(msg);
+        },
+      },
+    );
+  };
+
+  const handleDelete = (id: string, name: string) => {
+    if (!confirm(`Ansicht "${name}" löschen?`)) return;
+    remove.mutate(id);
   };
 
   // S-3a: Reset-Trigger für DockRuntime (window-event statt Prop-Drill —
@@ -201,7 +243,8 @@ export default function WorkspaceTopBar({
           <div className="absolute top-full mt-1 left-0 z-40 bg-white border border-gray-300 rounded shadow-md min-w-[220px] py-1 text-xs">
             <button
               onClick={handleSaveCurrent}
-              className="w-full text-left px-3 py-1.5 hover:bg-blue-50 flex items-center gap-1.5 text-blue-700"
+              disabled={create.isPending}
+              className="w-full text-left px-3 py-1.5 hover:bg-blue-50 disabled:opacity-50 flex items-center gap-1.5 text-blue-700"
             >
               <Plus size={12} />
               Aktuelle Ansicht speichern…
@@ -214,38 +257,67 @@ export default function WorkspaceTopBar({
               <RotateCcw size={12} />
               Layout zurücksetzen
             </button>
-            {views.length > 0 && <div className="border-t my-1" />}
-            {views.map((v) => (
-              <div
-                key={v.id}
-                className={`flex items-center px-2 py-1 hover:bg-gray-50 ${
-                  v.id === activeId ? 'bg-blue-50' : ''
-                }`}
-              >
-                <button
-                  onClick={() => handleLoad(v)}
-                  className="flex-1 text-left truncate"
-                  title={`${v.mode.toUpperCase()} · gespeichert ${v.created_at.slice(0, 10)}`}
-                >
-                  {v.name}
-                  <span className="ml-1 text-[10px] text-gray-500">
-                    ({v.mode})
-                  </span>
-                </button>
-                <button
-                  onClick={() => handleDelete(v)}
-                  className="text-gray-400 hover:text-red-600 ml-2"
-                  title="Löschen"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            ))}
-            {views.length === 0 && (
+            <div className="border-t my-1" />
+            {isLoading && (
+              <div className="px-3 py-1.5 text-gray-400 italic">Lädt…</div>
+            )}
+            {!isLoading && layouts.length === 0 && (
               <div className="px-3 py-1.5 text-gray-400 italic">
                 Noch keine Ansichten gespeichert.
               </div>
             )}
+            {!isLoading &&
+              layouts.map((v) => (
+                <div
+                  key={v.id}
+                  className={`flex items-center gap-1 px-2 py-1 hover:bg-gray-50 ${
+                    v.is_default ? 'bg-amber-50/40' : ''
+                  }`}
+                >
+                  <button
+                    onClick={() => handleToggleDefault(v.id, v.is_default)}
+                    disabled={update.isPending}
+                    className={`shrink-0 ${
+                      v.is_default
+                        ? 'text-amber-500 hover:text-amber-700'
+                        : 'text-gray-300 hover:text-amber-500'
+                    } disabled:opacity-50`}
+                    title={
+                      v.is_default
+                        ? 'Standard für diesen Modus — klick zum Aufheben'
+                        : 'Als Standard für diesen Modus setzen'
+                    }
+                  >
+                    <Star
+                      size={12}
+                      fill={v.is_default ? 'currentColor' : 'none'}
+                    />
+                  </button>
+                  <button
+                    onClick={() => handleLoad(v.layout_json)}
+                    className="flex-1 text-left truncate"
+                    title={`Laden · gespeichert ${v.created_at.slice(0, 10)}`}
+                  >
+                    {v.layout_name}
+                  </button>
+                  <button
+                    onClick={() => handleRename(v.id, v.layout_name)}
+                    disabled={update.isPending}
+                    className="text-gray-400 hover:text-blue-600 disabled:opacity-50"
+                    title="Umbenennen"
+                  >
+                    <Pencil size={12} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(v.id, v.layout_name)}
+                    disabled={remove.isPending}
+                    className="text-gray-400 hover:text-red-600 disabled:opacity-50"
+                    title="Löschen"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
           </div>
         )}
       </div>

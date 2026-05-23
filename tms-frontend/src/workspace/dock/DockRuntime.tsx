@@ -1,27 +1,26 @@
 /**
- * S-2a + S-3a DockRuntime — DockviewReact-Wrapper.
+ * S-2a + S-3a + S-3b-2 DockRuntime — DockviewReact-Wrapper.
  *
- * S-3a: Layout-Persistence via localStorage (EIN Layout,
- *   workspace-weit). serializeLayout-Helper aus S-2a aktiv.
+ * Layout-Schichtung (Restore):
+ *   Pass 1 (onReady, sync):
+ *     loadStoredLayout()
+ *       → fromJSON(stored)         (S-3a localStorage)
+ *       → sonst fromJSON(default)  (sofortiges Bild, S-2a)
+ *   Pass 2 (useEffect, async, S-3b-2):
+ *     Wenn KEIN localStorage beim Mount UND userTouched=false UND
+ *     backendDefaultLayout vorhanden:
+ *       → fromJSON(backendDefault), one-shot.
+ *     "userTouched" wird beim ersten pointerdown im Dock-Container
+ *     auf true gesetzt — verhindert Race-Overwrite, falls User
+ *     waehrend des Backend-Fetches schon dragged.
  *
- * Lifecycle:
- *   onReady:
- *     1) loadStoredLayout() → vorhanden+Version-OK
- *        → api.fromJSON(saved)
- *     2) sonst (null/Mismatch/Parse-Fehler)
- *        → api.fromJSON(buildDefaultLayout())
- *   onDidLayoutChange (DEBOUNCED ~400ms):
- *     → storeLayout(api): toJSON + localStorage.setItem
- *     onDidLayoutChange feuert bei jedem Resize-Pixel — Debounce
- *     verhindert localStorage-Spam.
+ * Persist:
+ *   onDidLayoutChange (DEBOUNCED ~400ms) → storeLayout (localStorage).
  *
- * Reset (window-event 'tms-workspace-dock:reset', emit aus
- *   WorkspaceTopBar): clearStoredLayout() + fromJSON(default).
- *   Window-Event statt Prop, weil DockRuntime tief im Tree liegt
- *   und kein Imperatives-Handle nach oben hat.
+ * Reset (DOCK_RESET_EVENT): clearStoredLayout + fromJSON(default).
  *
  * defaultRenderer='always': alle Panels bleiben gemountet bei
- *   Tab-Wechsel/Move (s. S-2a Spike-Befund).
+ *   Tab-Wechsel/Move.
  */
 import { useCallback, useEffect, useRef } from 'react';
 import {
@@ -30,6 +29,7 @@ import {
   type DockviewIDisposable,
   type DockviewReadyEvent,
   type IDockviewPanelProps,
+  type SerializedDockview,
 } from 'dockview';
 import 'dockview/dist/styles/dockview.css';
 import DockPanelWrapper from './DockPanelWrapper';
@@ -50,10 +50,35 @@ const PERSIST_DEBOUNCE_MS = 400;
 /** Window-Event-Name für externen Reset-Trigger (TopBar). */
 export const DOCK_RESET_EVENT = 'tms-workspace-dock:reset';
 
-export default function DockRuntime() {
+interface DockRuntimeProps {
+  /**
+   * S-3b-2: Wird einmalig nach onReady mit der Dockview-Api
+   * aufgerufen. WorkspacePage haelt die Ref und reicht
+   * getCurrentLayout()/applyLayout() an die TopBar weiter
+   * (Save/Load der benannten Backend-Layouts).
+   */
+  onApiReady?: (api: DockviewApi) => void;
+  /**
+   * S-3b-2: is_default-Layout des Users fuer den aktiven Workspace
+   * (aus useWorkspaceLayouts). Wird in Pass-2 angewandt, falls
+   * KEIN localStorage beim Mount UND User noch nichts angefasst hat.
+   * Null = noch keine Backend-Daten / kein Default.
+   */
+  backendDefaultLayout?: SerializedDockview | null;
+}
+
+export default function DockRuntime({
+  onApiReady,
+  backendDefaultLayout = null,
+}: DockRuntimeProps = {}) {
   const apiRef = useRef<DockviewApi | null>(null);
   const debounceRef = useRef<number | null>(null);
   const layoutSubRef = useRef<DockviewIDisposable | null>(null);
+
+  // S-3b-2: Schutz-Refs fuer Pass-2 Backend-Default-Restore.
+  const hadStorageAtMountRef = useRef<boolean>(false);
+  const userTouchedRef = useRef<boolean>(false);
+  const backendDefaultAppliedRef = useRef<boolean>(false);
 
   const schedulePersist = useCallback(() => {
     const api = apiRef.current;
@@ -71,6 +96,7 @@ export default function DockRuntime() {
     (event: DockviewReadyEvent) => {
       apiRef.current = event.api;
       const stored = loadStoredLayout();
+      hadStorageAtMountRef.current = !!stored;
       if (stored) {
         try {
           event.api.fromJSON(stored);
@@ -86,9 +112,31 @@ export default function DockRuntime() {
       // damit die Restore selbst nicht sofort einen storeLayout
       // triggert (no-op-Speicherung ist harmlos, aber unnötig).
       layoutSubRef.current = event.api.onDidLayoutChange(schedulePersist);
+      // S-3b-2: Api an Parent reichen (WorkspacePage → TopBar fuer
+      // Save/Load der benannten Backend-Layouts).
+      onApiReady?.(event.api);
     },
-    [schedulePersist],
+    [schedulePersist, onApiReady],
   );
+
+  // S-3b-2 Pass 2: Backend-Default einmalig anwenden, wenn der User
+  // auf diesem Geraet noch nichts hat (kein localStorage + keine
+  // Interaktion). Re-runs sobald backendDefaultLayout sich aendert
+  // (=Query loest auf); guarded gegen Doppel-Apply.
+  useEffect(() => {
+    if (hadStorageAtMountRef.current) return;
+    if (userTouchedRef.current) return;
+    if (backendDefaultAppliedRef.current) return;
+    if (!backendDefaultLayout) return;
+    const api = apiRef.current;
+    if (!api) return;
+    try {
+      api.fromJSON(backendDefaultLayout);
+      backendDefaultAppliedRef.current = true;
+    } catch {
+      /* Inkompatibel (Panel-Names umbenannt etc.) — kein crash. */
+    }
+  }, [backendDefaultLayout]);
 
   // Reset-Trigger (window-event aus TopBar).
   useEffect(() => {
@@ -118,12 +166,25 @@ export default function DockRuntime() {
     };
   }, []);
 
+  // S-3b-2: pointerdown im Dock-Container = userTouched. Decken auch
+  // Tab-Wechsel/Drag-Start ab. onDidLayoutChange wuerde auch
+  // programmatic fromJSON-Calls catchen (kein sauberer Indikator
+  // fuer "User"), daher dieser separate Pfad.
+  const markUserTouched = useCallback(() => {
+    userTouchedRef.current = true;
+  }, []);
+
   return (
-    <DockviewReact
-      components={components}
-      defaultRenderer="always"
-      onReady={onReady}
-      className="dockview-theme-light h-full w-full"
-    />
+    <div
+      className="h-full w-full"
+      onPointerDownCapture={markUserTouched}
+    >
+      <DockviewReact
+        components={components}
+        defaultRenderer="always"
+        onReady={onReady}
+        className="dockview-theme-light h-full w-full"
+      />
+    </div>
   );
 }

@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  push:
+    branches: [tms-deploy-ready]
+  pull_request:
+    branches: ['**']
+
+# Cancel-on-new-push (spart Runner-Zeit bei Schnell-pushes).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fe-build-test:
+    name: FE — build + vitest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tms-frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: tms-frontend/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build (tsc -b && vite build)
+        run: npm run build
+
+      - name: Vitest
+        run: npm run test
+
+  be-build-test:
+    name: BE — build + jest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tms-backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: tms-backend/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build (prisma generate + nest build)
+        run: npm run build
+
+      - name: Jest (mocked Prisma — keine DB nötig)
+        run: npm test
+
+  e2e:
+    name: E2E — Playwright (Mock-API)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: fe-build-test
+    defaults:
+      run:
+        working-directory: tms-frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: tms-frontend/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      # needs:fe-build-test teilt KEINE Artefakte — eigener
+      # Build-Step nötig damit npm run preview ein dist/ findet.
+      - name: Build (für preview-Server)
+        run: npm run build
+
+      # Cache Playwright-Browser (~150MB) zwischen Runs.
+      # Key bindet sich an die installierte Playwright-Version
+      # (ändert sich bei Upgrade).
+      - name: Read Playwright version
+        id: playwright-version
+        run: |
+          VERSION=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
+      - name: Install Playwright Chromium (+ system deps)
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright Test
+        run: npm run e2e
+
+      - name: Upload Playwright report (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tms-frontend/playwright-report/
+          retention-days: 7

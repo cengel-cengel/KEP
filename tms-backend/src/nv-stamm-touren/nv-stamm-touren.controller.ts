@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -28,7 +29,7 @@ export class NvStammTourenController {
   }
 
   @Get('nv-stamm-touren/:id')
-  getOne(@Param('id') id: string) {
+  getOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.svc.getOne(id);
   }
 
@@ -38,17 +39,20 @@ export class NvStammTourenController {
   }
 
   @Patch('nv-stamm-touren/:id')
-  update(@Param('id') id: string, @Body() dto: UpdateNvStammTourDto) {
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateNvStammTourDto,
+  ) {
     return this.svc.update(id, dto);
   }
 
   @Delete('nv-stamm-touren/:id')
-  remove(@Param('id') id: string) {
+  remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.svc.remove(id);
   }
 
   @Get('nv-tour-gebiete/:id/stamm-touren')
-  byTourGebiet(@Param('id') tourGebietId: string) {
+  byTourGebiet(@Param('id', ParseUUIDPipe) tourGebietId: string) {
     return this.svc.list(tourGebietId);
   }
 }

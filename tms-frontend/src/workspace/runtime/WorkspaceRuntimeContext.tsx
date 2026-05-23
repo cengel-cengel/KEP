@@ -169,7 +169,7 @@ export function WorkspaceRuntimeProvider({
   const tourGebieteQ = useQuery<TourGebiet[]>({
     queryKey: ['tour-gebiete'],
     queryFn: async () =>
-      (await api.get<TourGebiet[]>('/nv-stamm-touren/gebiete')).data,
+      (await api.get<TourGebiet[]>('/nv-tour-gebiete')).data,
     enabled: mode === 'nv',
     staleTime: 5 * 60_000,
   });

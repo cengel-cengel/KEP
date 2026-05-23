@@ -20,5 +20,9 @@ export default defineConfig({
     // globals:true aktiviert auto-cleanup von @testing-library/react
     // (afterEach Hook wird global registriert, kein leakage zw. Tests).
     globals: true,
+    // e2e/ ist Playwright-Test-Dir (eigener Runner via `npm run e2e`),
+    // NICHT Vitest. Sonst versucht Vitest die Specs zu laufen und
+    // crasht mit "Playwright Test did not expect test.describe()".
+    exclude: ['node_modules', 'dist', 'e2e'],
   },
 })

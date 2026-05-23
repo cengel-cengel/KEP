@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepare": "( cd .. && husky tms-frontend/.husky ) || true"
+    "prepare": "( cd .. && husky tms-frontend/.husky ) || true",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
@@ -43,6 +44,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.60.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

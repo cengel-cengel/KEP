@@ -30,6 +30,7 @@ import { MasterDataModule } from './masterdata/masterdata.module';
 import { RelationsModule } from './relations/relations.module';
 import { CostsModule } from './costs/costs.module';
 import { UserPreferencesModule } from './user-preferences/user-preferences.module';
+import { WorkspaceLayoutsModule } from './workspace-layouts/workspace-layouts.module';
 import { RoutingModule } from './routing/routing.module';
 import { LoadingModule } from './loading/loading.module';
 import { StatusModule } from './status/status.module';
@@ -107,6 +108,7 @@ import { WarehousesModule } from './warehouses/warehouses.module';
     RelationsModule,
     CostsModule,
     UserPreferencesModule,
+    WorkspaceLayoutsModule,
     RoutingModule,
     LoadingModule,
     StatusModule,

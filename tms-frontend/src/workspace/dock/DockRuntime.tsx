@@ -1,41 +1,121 @@
 /**
- * S-2a DockRuntime — DockviewReact-Wrapper.
+ * S-2a + S-3a DockRuntime — DockviewReact-Wrapper.
  *
- * Lädt buildDefaultLayout() bei Mount via api.fromJSON.
- * defaultRenderer='always' GLOBAL: alle Panels (Queue/Board/Map)
- * bleiben gemountet auch wenn nicht im aktiven Tab/Move. Damit
- * überlebt die Leaflet-Map-Instanz Tab-Wechsel + Layout-Moves
- * (s. Spike-Befund: dockview-OverlayRenderContainer hält Panels
- * in einem parallelen absolut-positionierten Container, Move =
- * CSS-Position-Update, kein DOM-Reparenting).
+ * S-3a: Layout-Persistence via localStorage (EIN Layout,
+ *   workspace-weit). serializeLayout-Helper aus S-2a aktiv.
  *
- * S-2a-Scope:
- *   - 3 Spalten Queue | Board | Map (Größen aus DEFAULT_LAYOUT)
- *   - KEIN Persist (S-3)
- *   - KEINE Tabs (entstehen in S-4 via Move/Add)
- *   - KEIN Map-Collapse (Parität später)
+ * Lifecycle:
+ *   onReady:
+ *     1) loadStoredLayout() → vorhanden+Version-OK
+ *        → api.fromJSON(saved)
+ *     2) sonst (null/Mismatch/Parse-Fehler)
+ *        → api.fromJSON(buildDefaultLayout())
+ *   onDidLayoutChange (DEBOUNCED ~400ms):
+ *     → storeLayout(api): toJSON + localStorage.setItem
+ *     onDidLayoutChange feuert bei jedem Resize-Pixel — Debounce
+ *     verhindert localStorage-Spam.
  *
- * Style: 'dockview-theme-light' import. Container ist h-full,
- * verbraucht den verbleibenden Platz unter Banner/QuickAddBar/
- * TopBar in WorkspacePage.
+ * Reset (window-event 'tms-workspace-dock:reset', emit aus
+ *   WorkspaceTopBar): clearStoredLayout() + fromJSON(default).
+ *   Window-Event statt Prop, weil DockRuntime tief im Tree liegt
+ *   und kein Imperatives-Handle nach oben hat.
+ *
+ * defaultRenderer='always': alle Panels bleiben gemountet bei
+ *   Tab-Wechsel/Move (s. S-2a Spike-Befund).
  */
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   DockviewReact,
+  type DockviewApi,
+  type DockviewIDisposable,
   type DockviewReadyEvent,
   type IDockviewPanelProps,
 } from 'dockview';
 import 'dockview/dist/styles/dockview.css';
 import DockPanelWrapper from './DockPanelWrapper';
 import { buildDefaultLayout } from './layoutDefaults';
+import {
+  clearStoredLayout,
+  loadStoredLayout,
+  storeLayout,
+} from './serializeLayout';
 
 const components: Record<string, React.FC<IDockviewPanelProps>> = {
   panel: DockPanelWrapper,
 };
 
+/** Persist-Debounce in ms — schützt vor onDidLayoutChange-Spam. */
+const PERSIST_DEBOUNCE_MS = 400;
+
+/** Window-Event-Name für externen Reset-Trigger (TopBar). */
+export const DOCK_RESET_EVENT = 'tms-workspace-dock:reset';
+
 export default function DockRuntime() {
-  const onReady = useCallback((event: DockviewReadyEvent) => {
-    event.api.fromJSON(buildDefaultLayout());
+  const apiRef = useRef<DockviewApi | null>(null);
+  const debounceRef = useRef<number | null>(null);
+  const layoutSubRef = useRef<DockviewIDisposable | null>(null);
+
+  const schedulePersist = useCallback(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    if (debounceRef.current != null) {
+      window.clearTimeout(debounceRef.current);
+    }
+    debounceRef.current = window.setTimeout(() => {
+      storeLayout(api);
+      debounceRef.current = null;
+    }, PERSIST_DEBOUNCE_MS);
+  }, []);
+
+  const onReady = useCallback(
+    (event: DockviewReadyEvent) => {
+      apiRef.current = event.api;
+      const stored = loadStoredLayout();
+      if (stored) {
+        try {
+          event.api.fromJSON(stored);
+        } catch {
+          // Stored Layout passt nicht (Panel-Names umbenannt etc.)
+          // → Default.
+          event.api.fromJSON(buildDefaultLayout());
+        }
+      } else {
+        event.api.fromJSON(buildDefaultLayout());
+      }
+      // Persist-Subscription erst NACH initial-fromJSON registrieren,
+      // damit die Restore selbst nicht sofort einen storeLayout
+      // triggert (no-op-Speicherung ist harmlos, aber unnötig).
+      layoutSubRef.current = event.api.onDidLayoutChange(schedulePersist);
+    },
+    [schedulePersist],
+  );
+
+  // Reset-Trigger (window-event aus TopBar).
+  useEffect(() => {
+    const handler = () => {
+      const api = apiRef.current;
+      if (!api) return;
+      clearStoredLayout();
+      try {
+        api.fromJSON(buildDefaultLayout());
+      } catch {
+        /* silent */
+      }
+    };
+    window.addEventListener(DOCK_RESET_EVENT, handler);
+    return () => window.removeEventListener(DOCK_RESET_EVENT, handler);
+  }, []);
+
+  // Cleanup pending Debounce-Timer + layout-Subscription on unmount.
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current != null) {
+        window.clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+      layoutSubRef.current?.dispose();
+      layoutSubRef.current = null;
+    };
   }, []);
 
   return (

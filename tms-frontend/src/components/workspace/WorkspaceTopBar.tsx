@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, ChevronDown, Plus, Trash2, Wifi, WifiOff } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Plus, RotateCcw, Trash2, Wifi, WifiOff } from 'lucide-react';
 import {
   listSavedViews,
   saveView,
@@ -18,6 +18,7 @@ import {
 import { api } from '../../lib/api';
 import { useWorkspace } from '../../state/workspace';
 import { getTourSeverity } from '../../lib/severity';
+import { DOCK_RESET_EVENT } from '../../workspace/dock/DockRuntime';
 
 /**
  * W-3 Top-Bar: Mode-Toggle + Realtime-Status + Saved-Views.
@@ -139,6 +140,14 @@ export default function WorkspaceTopBar({
     refresh();
   };
 
+  // S-3a: Reset-Trigger für DockRuntime (window-event statt Prop-Drill —
+  // DockRuntime liegt tief im Tree und hat kein imperatives Handle hoch).
+  const handleResetLayout = () => {
+    if (!confirm('Dock-Layout auf Standard zurücksetzen?')) return;
+    window.dispatchEvent(new Event(DOCK_RESET_EVENT));
+    setDropOpen(false);
+  };
+
   const rtColor =
     rtStatus === 'connected'
       ? 'bg-green-500'
@@ -196,6 +205,14 @@ export default function WorkspaceTopBar({
             >
               <Plus size={12} />
               Aktuelle Ansicht speichern…
+            </button>
+            <button
+              onClick={handleResetLayout}
+              className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-1.5 text-gray-700"
+              title="Dock-Layout (Spalten/Größen) auf Standard zurücksetzen"
+            >
+              <RotateCcw size={12} />
+              Layout zurücksetzen
             </button>
             {views.length > 0 && <div className="border-t my-1" />}
             {views.map((v) => (

@@ -78,7 +78,19 @@ vi.mock('../../lib/api', () => {
           has_active_lock: false,
           is_hazmat: false,
           customers: { priority_tier: null },
-          shipment_package_items: [],
+          // O-1-Fix: package_items × qty deliver weightKg + volumeM3.
+          shipment_package_items: [
+            {
+              id: 'pi-2',
+              line_index: 0,
+              quantity: 1,
+              length_cm: 360,
+              width_cm: 240,
+              height_cm: 100,
+              weight_kg: 800,
+              stackable: true,
+            },
+          ],
         },
       },
       {
@@ -99,7 +111,18 @@ vi.mock('../../lib/api', () => {
           has_active_lock: false,
           is_hazmat: false,
           customers: { priority_tier: null },
-          shipment_package_items: [],
+          shipment_package_items: [
+            {
+              id: 'pi-3',
+              line_index: 0,
+              quantity: 1,
+              length_cm: 480,
+              width_cm: 240,
+              height_cm: 100,
+              weight_kg: 900,
+              stackable: true,
+            },
+          ],
         },
       },
     ],

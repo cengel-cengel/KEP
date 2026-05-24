@@ -33,8 +33,19 @@ interface Props {
 
 /**
  * Adapter: ein NV-Tour-Stop wird zu einer Optimizer-SwapShipment.
- * O-1: volumeM3 (Σ pkg-items l×w×h×qty / 1e6) + weightKg sind die
- * Optimizer-Metriken. ldm/isStackable als Pass-Through fuer UI.
+ * O-1: volumeM3 + weightKg sind die Optimizer-Metriken. Beide
+ * werden aus den package_items aggregiert (Σ ueber l×w×h×qty
+ * bzw. weight_kg×qty), damit der Optimizer mit derselben Quelle
+ * arbeitet wie die NvLoadingPlanPage-Anzeige (flattenPackages →
+ * Plan3DPackage[] → Σ packages.weightKg / packages.lengthCm×…).
+ *
+ * O-1-Fix: vorher las weightKg den shipment.weight_kg-Aggregat —
+ * der kann von Σ(package_items.weight_kg×quantity) divergieren
+ * (uneinheitliche Stammdaten-Pflege) und fuehrte zu Optimizer-
+ * Plaenen, die im Beladeplan-Display anders aussahen als der
+ * Tausch erwarten liess.
+ *
+ * ldm/isStackable als Pass-Through fuer UI-Eject-Liste.
  */
 function stopToSwapShipment(
   stop: NvLoadingDetail['stops'][number],
@@ -42,8 +53,10 @@ function stopToSwapShipment(
   const items = stop.shipment.shipment_package_items ?? [];
   const allStackable =
     items.length > 0 && items.every((it) => it.stackable !== false);
-  // Volumen pro Sendung: alle Pakete (× quantity) summiert.
+  // Volumen + Gewicht pro Sendung: package_items × quantity. EINE
+  // Quelle der Wahrheit, identisch zur Anzeige.
   let volCm3 = 0;
+  let weightKg = 0;
   for (const it of items) {
     const qty = Math.max(1, Number(it.quantity ?? 1));
     volCm3 +=
@@ -51,12 +64,12 @@ function stopToSwapShipment(
       Number(it.width_cm || 0) *
       Number(it.height_cm || 0) *
       qty;
+    weightKg += Number(it.weight_kg || 0) * qty;
   }
   return {
     id: stop.shipment.id,
     volumeM3: volCm3 / 1e6,
-    weightKg:
-      stop.shipment.weight_kg != null ? Number(stop.shipment.weight_kg) : null,
+    weightKg,
     ldm: stop.shipment.ldm != null ? Number(stop.shipment.ldm) : null,
     isStackable: allStackable,
     is_stamm_kunde: stop.is_stamm_kunde === true,

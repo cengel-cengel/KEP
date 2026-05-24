@@ -306,14 +306,11 @@ export default function NvLoadingPlanPage() {
     return (totalWeightKg / capacity.maxWeightKg) * 100;
   }, [totalWeightKg, capacity.maxWeightKg]);
 
-  // F1.a-Fix-2: Carlos-Klärung — NV stapelt alles Mögliche, daher ist
-  // EFFEKTIVE ldm die maßgebliche Auslastung. Boden-ldm bleibt als
-  // Diagnose-Info erhalten (rote Boden-Anzeige bei >100% war frueher
-  // false-positive bei stapelbarer Ladung).
+  // O-2: Carlos-Klaerung — Ueberladen = Vol > 100% ODER Gewicht > 100%.
+  // ldm (Boden + Effektiv) ist Info, kein Trigger mehr (NV stapelt
+  // ohnehin alles Moegliche, Vol+Gewicht sind die echten Constraints).
   const isOverloaded =
-    ldmMetrics.effectivePct > 100 ||
-    volUtil > 100 ||
-    (weightUtil != null && weightUtil > 100);
+    volUtil > 100 || (weightUtil != null && weightUtil > 100);
 
   // F1.a/S Toast-Helper (Pattern aus FV-Page) — 2.5s auto-dismiss.
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(
@@ -504,30 +501,17 @@ export default function NvLoadingPlanPage() {
         )}
         {tourQ.data && (
           <div className="space-y-3">
-            {/* F1.a/K Kennzahlen-Bar — F1.a-Fix-2: Effektiv ist Haupt-
-                Auslastung (NV stapelt). Boden bleibt als sekundaere
-                Info, nicht mehr rot. */}
+            {/* F1.a/K Kennzahlen-Bar — O-2: Vol+Gewicht ist die
+                massgebliche Auslastung (rot-Trigger). Effektiv-ldm
+                + Boden bleiben als Info, KEIN rot mehr. */}
             <div className="flex items-center gap-4 bg-gray-100 p-2 rounded border border-gray-200 text-sm flex-wrap">
               <span
                 className={
-                  ldmMetrics.effectivePct > 100
+                  volUtil > 100
                     ? 'text-red-600 font-bold'
-                    : 'text-emerald-800 font-semibold'
+                    : 'text-gray-800 font-semibold'
                 }
-                title="Effektive Lademeter nach Carlos-Stack-Rule (stapelbar zaehlt mit Faktor ½). Maßgebliche Auslastung."
-              >
-                Effektiv-ldm: {ldmMetrics.effectivePct.toFixed(0)}%
-              </span>
-              <span
-                className="text-gray-600 text-xs"
-                title="Ohne Stapelvorteil — nur Diagnose; ueberladen wird ueber Effektiv gemessen."
-              >
-                (davon Boden: {ldmMetrics.floorPct.toFixed(0)}%)
-              </span>
-              <span
-                className={
-                  volUtil > 100 ? 'text-red-600 font-bold' : 'text-gray-700'
-                }
+                title="Volumen-Auslastung — massgeblicher Constraint."
               >
                 Vol: {volUtil.toFixed(0)}%
               </span>
@@ -535,17 +519,32 @@ export default function NvLoadingPlanPage() {
                 className={
                   weightUtil != null && weightUtil > 100
                     ? 'text-red-600 font-bold'
-                    : 'text-gray-700'
+                    : 'text-gray-800 font-semibold'
                 }
+                title="Gewichts-Auslastung — massgeblicher Constraint."
               >
                 Gew: {weightUtil?.toFixed(0) ?? '—'}%
               </span>
+              <span className="text-gray-400">·</span>
+              <span
+                className="text-gray-500 text-xs"
+                title="Effektive Lademeter (stapelbar zählt mit ½) — Info."
+              >
+                Effektiv-ldm: {ldmMetrics.effectivePct.toFixed(0)}%
+              </span>
+              <span
+                className="text-gray-500 text-xs"
+                title="Boden-Lademeter (ohne Stapelvorteil) — Info."
+              >
+                Boden: {ldmMetrics.floorPct.toFixed(0)}%
+              </span>
             </div>
 
-            {/* F1.a/L Lademeter-Detail — F1.a-Fix-2: Effektiv links
-                als maßgebliche Spalte, Boden rechts als Diagnose. */}
+            {/* F1.a/L Lademeter-Detail — O-2: Info-Anzeige, KEIN
+                rot-Trigger mehr (Bars bleiben emerald/blau, auch wenn
+                pct > 100). Massgeblich ist Vol+Gewicht. */}
             <div className="text-gray-800 leading-relaxed bg-blue-50 p-3 rounded border border-blue-200 space-y-2 text-sm">
-              <div className="font-medium text-gray-900">Lademeter</div>
+              <div className="font-medium text-gray-900">Lademeter (Info)</div>
               <div className="grid sm:grid-cols-2 gap-2 text-xs sm:text-sm">
                 <div>
                   <span className="text-gray-600">Effektiv (mit Stapelung):</span>{' '}
@@ -554,15 +553,12 @@ export default function NvLoadingPlanPage() {
                   </strong>
                   <div className="mt-1 h-2 w-full rounded-full bg-gray-200 overflow-hidden">
                     <div
-                      className={`h-full rounded-full ${
-                        ldmMetrics.effectivePct > 100 ? 'bg-red-500' : 'bg-emerald-600'
-                      }`}
+                      className="h-full rounded-full bg-emerald-600"
                       style={{ width: `${Math.min(100, ldmMetrics.effectivePct)}%` }}
                     />
                   </div>
                   <span className="text-[11px] text-gray-500">
-                    Maßgebliche Auslastung — stapelbar zählt mit Faktor ½.
-                    Zusätzlich frei:{' '}
+                    Stapelbar zählt mit Faktor ½. Zusätzlich frei:{' '}
                     <strong>{ldmMetrics.freeEffectiveLdm.toFixed(2)} ldm</strong>
                   </span>
                 </div>
@@ -578,7 +574,7 @@ export default function NvLoadingPlanPage() {
                     />
                   </div>
                   <span className="text-[11px] text-gray-500">
-                    Diagnose-Info. Stapelfreiheit:{' '}
+                    Stapelfreiheit:{' '}
                     <strong>{ldmMetrics.freeFloorLdm.toFixed(2)} ldm</strong>
                   </span>
                 </div>
@@ -614,12 +610,6 @@ export default function NvLoadingPlanPage() {
             {isOverloaded && (
               <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2 space-y-1">
                 <div className="font-medium">⚠ Überladung für gewähltes Fahrzeug</div>
-                {ldmMetrics.effectivePct > 100 && (
-                  <div>
-                    Effektiv-ldm: {ldmMetrics.effectiveUsed.toFixed(1)} /{' '}
-                    {ldmMetrics.maxLdm.toFixed(1)} ldm
-                  </div>
-                )}
                 {volUtil > 100 && (
                   <div>
                     Volumen: {cargoVolM3.toFixed(1)} / {trailerVolM3.toFixed(1)} m³

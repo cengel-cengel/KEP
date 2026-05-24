@@ -382,11 +382,10 @@ export default function LoadingPlanPage() {
     () => activeOrder.reduce((sum, s) => sum + (Number(s.weightKg) || 0), 0),
     [activeOrder],
   );
+  // O-2: Carlos-Klaerung — Ueberladen = Vol > 100% ODER Gewicht > 100%.
+  // ldm (Boden + Effektiv) ist Info, kein Trigger mehr.
   const isOverloaded =
-    ldmMetrics.floorPct > 100 ||
-    ldmMetrics.effectivePct > 100 ||
-    volUtil > 100 ||
-    (weightUtil != null && weightUtil > 100);
+    volUtil > 100 || (weightUtil != null && weightUtil > 100);
 
 
   const applyOrderMutation = useMutation({
@@ -850,30 +849,45 @@ export default function LoadingPlanPage() {
                     </span>
                   ) : null}
                 </div>
+                {/* O-2: Vol+Gewicht prominent (rot bei >100%), ldm Info. */}
                 <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm items-center">
                   <span
-                    className={ldmMetrics.floorPct > 100 ? 'text-red-600 font-bold' : 'text-gray-800'}
-                    title="Ohne Stapelvorteil: Summe Lademeter / Kapazität (Anzeige max. 100 %)"
+                    className={
+                      volUtil > 100 ? 'text-red-600 font-bold' : 'text-gray-800 font-semibold'
+                    }
+                    title="Volumen-Auslastung — massgeblicher Constraint."
+                  >
+                    Vol: {volUtil.toFixed(0)}%
+                  </span>
+                  <span
+                    className={
+                      weightUtil != null && weightUtil > 100
+                        ? 'text-red-600 font-bold'
+                        : 'text-gray-800 font-semibold'
+                    }
+                    title="Gewichts-Auslastung — massgeblicher Constraint."
+                  >
+                    Gew: {weightUtil?.toFixed(0) ?? '—'}%
+                  </span>
+                  <span className="text-gray-400">·</span>
+                  <span
+                    className="text-gray-500 text-xs"
+                    title="Boden-Lademeter — Info."
                   >
                     Boden-ldm: {Math.min(100, ldmMetrics.floorPct).toFixed(0)}%
                   </span>
                   <span
-                    className={ldmMetrics.effectivePct > 100 ? 'text-red-600 font-semibold' : 'text-emerald-800'}
-                    title="Stapelbar zählt mit Faktor ½ — so viel „Platz“ bleibt rechnerisch frei"
+                    className="text-gray-500 text-xs"
+                    title="Effektive Lademeter (stapelbar zählt mit ½) — Info."
                   >
                     Effektiv: {ldmMetrics.effectivePct.toFixed(0)}%
-                  </span>
-                  <span className={volUtil > 100 ? 'text-red-600 font-bold' : 'text-gray-700'}>
-                    Vol: {volUtil.toFixed(0)}%
-                  </span>
-                  <span className={weightUtil != null && weightUtil > 100 ? 'text-red-600 font-bold' : 'text-gray-700'}>
-                    Gew: {weightUtil?.toFixed(0) ?? '—'}%
                   </span>
                 </div>
               </div>
               <div className="space-y-2 text-sm">
+                {/* O-2: Lademeter-Info — Bars verlieren rot-Trigger. */}
                 <div className="text-gray-800 leading-relaxed bg-blue-50 p-3 rounded border border-blue-200 space-y-2">
-                  <div className="font-medium text-gray-900">Lademeter</div>
+                  <div className="font-medium text-gray-900">Lademeter (Info)</div>
                   <div className="grid sm:grid-cols-2 gap-2 text-xs sm:text-sm">
                     <div>
                       <span className="text-gray-600">Boden (ohne Stapelvorteil):</span>{' '}
@@ -882,7 +896,7 @@ export default function LoadingPlanPage() {
                       </strong>
                       <div className="mt-1 h-2 w-full rounded-full bg-gray-200 overflow-hidden">
                         <div
-                          className={`h-full rounded-full ${ldmMetrics.floorPct > 100 ? 'bg-red-500' : 'bg-[#1e40af]'}`}
+                          className="h-full rounded-full bg-[#1e40af]"
                           style={{ width: `${Math.min(100, ldmMetrics.floorPct)}%` }}
                         />
                       </div>
@@ -895,7 +909,7 @@ export default function LoadingPlanPage() {
                       </strong>
                       <div className="mt-1 h-2 w-full rounded-full bg-gray-200 overflow-hidden">
                         <div
-                          className={`h-full rounded-full ${ldmMetrics.effectivePct > 100 ? 'bg-red-500' : 'bg-emerald-600'}`}
+                          className="h-full rounded-full bg-emerald-600"
                           style={{ width: `${Math.min(100, ldmMetrics.effectivePct)}%` }}
                         />
                       </div>
@@ -921,16 +935,6 @@ export default function LoadingPlanPage() {
               {isOverloaded ? (
                 <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2 space-y-1">
                   <div className="font-medium">⚠ Überladung für gewähltes Fahrzeug</div>
-                  {ldmMetrics.floorPct > 100 ? (
-                    <div>
-                      Boden-ldm: {ldmMetrics.floorUsed.toFixed(1)} / {ldmMetrics.maxLdm.toFixed(1)} ldm
-                    </div>
-                  ) : null}
-                  {ldmMetrics.effectivePct > 100 ? (
-                    <div>
-                      Effektiv-ldm: {ldmMetrics.effectiveUsed.toFixed(1)} / {ldmMetrics.maxLdm.toFixed(1)} ldm
-                    </div>
-                  ) : null}
                   {volUtil > 100 ? (
                     <div>
                       Volumen: {cargoVolM3.toFixed(1)} / {trailerVolM3.toFixed(1)} m³

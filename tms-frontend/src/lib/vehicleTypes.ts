@@ -122,6 +122,31 @@ export interface ResolvedVehicleCapacity {
   source: 'sub' | 'tonnen' | 'vehicle-dims' | 'fallback-unknown';
   maxLdm: number;
   maxWeightKg: number;
+  /**
+   * F1.a-Fix-2: Trailer-Geometrie GEHOERT zur Kapazitaet (nicht zu
+   * getVehicleDims, das matched nur canonical-Keys + faellt sonst
+   * still auf "Koffer 7t" zurueck → 779% Vol-%). Aus maxLdm
+   * abgeleitet wenn keine kanonische Quelle:
+   *   length_cm = maxLdm × 100 (1 ldm = 1 m bei 2.4 m Breite)
+   *   width_cm  = 240 (NV-Standard)
+   *   height_cm = 240 / 270 / 300 je Tonnen-Klasse
+   */
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
+}
+
+/** F1.a-Fix-2: Box-Ableitung wenn keine canonical VehicleDims-Quelle. */
+function deriveBoxFromLdm(maxLdm: number): {
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
+} {
+  const lengthCm = Math.max(100, Math.round(maxLdm * 100));
+  const widthCm = 240;
+  // Schwellen: Koffer-Klasse <= 8 ldm, Sattel ~13.6, Mega/Jumbo > 13.6.
+  const heightCm = maxLdm > 13.6 ? 300 : maxLdm > 8 ? 270 : 240;
+  return { lengthCm, widthCm, heightCm };
 }
 
 /**
@@ -142,6 +167,24 @@ export function resolveVehicleCapacity(
     | null
     | undefined,
 ): ResolvedVehicleCapacity {
+  const tourTyp = (tour?.fahrzeug_typ ?? '').trim();
+  const subTyp = (sub?.fahrzeug_typ ?? '').trim();
+
+  // Optional: canonical VEHICLE_DIMS-Match aus fahrzeug_typ — gibt
+  // uns die echte Trailer-Box (Sattel 1360×240×270 etc.), auch wenn
+  // die Kapazitaet primaer aus sub-Stammdaten kommt.
+  let canonicalDims: VehicleDims | null = null;
+  for (const raw of [tourTyp, subTyp]) {
+    if (!raw) continue;
+    const hit = VEHICLE_DIMS.find(
+      (v) => v.type.toLowerCase() === raw.toLowerCase(),
+    );
+    if (hit) {
+      canonicalDims = hit;
+      break;
+    }
+  }
+
   // PRIMAER: Sub-Stammdaten-Override (Decimal kommt aus Prisma evtl.
   // als string).
   const subMaxLdm =
@@ -149,42 +192,46 @@ export function resolveVehicleCapacity(
   if (Number.isFinite(subMaxLdm) && subMaxLdm > 0) {
     const subMaxKg =
       sub?.max_gewicht_kg != null ? Number(sub.max_gewicht_kg) : 0;
+    const box = canonicalDims ?? deriveBoxFromLdm(subMaxLdm);
     return {
       source: 'sub',
       maxLdm: subMaxLdm,
       maxWeightKg: Number.isFinite(subMaxKg) && subMaxKg > 0 ? subMaxKg : 0,
+      lengthCm: box.lengthCm,
+      widthCm: box.widthCm,
+      heightCm: box.heightCm,
     };
   }
 
   // FALLBACK: Tonnen-Parsing aus fahrzeug_typ (tour-first).
-  const tourTyp = (tour?.fahrzeug_typ ?? '').trim();
-  const subTyp = (sub?.fahrzeug_typ ?? '').trim();
   for (const raw of [tourTyp, subTyp]) {
     const tons = parseTonnen(raw);
     if (tons != null) {
       const cap = tonnenCapacity(tons);
       if (cap) {
+        const box = canonicalDims ?? deriveBoxFromLdm(cap.maxLdm);
         return {
           source: 'tonnen',
           maxLdm: cap.maxLdm,
           maxWeightKg: cap.maxWeightKg,
+          lengthCm: box.lengthCm,
+          widthCm: box.widthCm,
+          heightCm: box.heightCm,
         };
       }
     }
   }
 
   // DANN: canonical VEHICLE_DIMS-Match (Sattel/Jumbo/Koffer 7t etc.).
-  for (const raw of [tourTyp, subTyp]) {
-    if (!raw) continue;
-    const norm = raw.toLowerCase();
-    const hit = VEHICLE_DIMS.find((v) => v.type.toLowerCase() === norm);
-    if (hit) {
-      return {
-        source: 'vehicle-dims',
-        maxLdm: hit.maxLdm,
-        maxWeightKg: hit.maxWeightKg,
-      };
-    }
+  if (canonicalDims) {
+    return {
+      source: 'vehicle-dims',
+      maxLdm: canonicalDims.maxLdm,
+      maxWeightKg: canonicalDims.maxWeightKg,
+      lengthCm: canonicalDims.lengthCm,
+      widthCm: canonicalDims.widthCm,
+      heightCm: canonicalDims.heightCm,
+    };
   }
 
   // LETZTER: Default-Fallback, source-markiert damit UI badge zeigen
@@ -206,5 +253,8 @@ export function resolveVehicleCapacity(
     source: 'fallback-unknown',
     maxLdm: fallback.maxLdm,
     maxWeightKg: fallback.maxWeightKg,
+    lengthCm: fallback.lengthCm,
+    widthCm: fallback.widthCm,
+    heightCm: fallback.heightCm,
   };
 }

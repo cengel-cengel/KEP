@@ -241,10 +241,10 @@ export default function NvLoadingPlanPage() {
     () =>
       flattenPackages(
         tourQ.data ?? null,
-        vehicle.widthCm,
-        vehicle.lengthCm,
+        capacity.widthCm,
+        capacity.lengthCm,
       ),
-    [tourQ.data, vehicle.widthCm, vehicle.lengthCm],
+    [tourQ.data, capacity.widthCm, capacity.lengthCm],
   );
 
   // F1.a/K-L-M-N Kennzahlen: per-Sendung ldm/isStackable aus tour.stops
@@ -274,8 +274,8 @@ export default function NvLoadingPlanPage() {
   }, [packages]);
 
   const trailerVolM3 = useMemo(() => {
-    return (vehicle.lengthCm * vehicle.widthCm * vehicle.heightCm) / 1e6;
-  }, [vehicle.lengthCm, vehicle.widthCm, vehicle.heightCm]);
+    return (capacity.lengthCm * capacity.widthCm * capacity.heightCm) / 1e6;
+  }, [capacity.lengthCm, capacity.widthCm, capacity.heightCm]);
 
   const volUtil = useMemo(() => {
     if (trailerVolM3 <= 0) return 0;
@@ -295,8 +295,11 @@ export default function NvLoadingPlanPage() {
     return (totalWeightKg / capacity.maxWeightKg) * 100;
   }, [totalWeightKg, capacity.maxWeightKg]);
 
+  // F1.a-Fix-2: Carlos-Klärung — NV stapelt alles Mögliche, daher ist
+  // EFFEKTIVE ldm die maßgebliche Auslastung. Boden-ldm bleibt als
+  // Diagnose-Info erhalten (rote Boden-Anzeige bei >100% war frueher
+  // false-positive bei stapelbarer Ladung).
   const isOverloaded =
-    ldmMetrics.floorPct > 100 ||
     ldmMetrics.effectivePct > 100 ||
     volUtil > 100 ||
     (weightUtil != null && weightUtil > 100);
@@ -456,9 +459,13 @@ export default function NvLoadingPlanPage() {
           )}
         </div>
         <span className="text-xs text-gray-500">
-          · {vehicle.type} ({(vehicle.lengthCm / 100).toFixed(1)}×
-          {(vehicle.widthCm / 100).toFixed(2)}×
-          {(vehicle.heightCm / 100).toFixed(2)} m)
+          ·{' '}
+          {(tourQ.data?.fahrzeug_typ ?? '').trim() ||
+            (tourQ.data?.subunternehmer?.fahrzeug_typ ?? '').trim() ||
+            vehicle.type}
+          {' '}({(capacity.lengthCm / 100).toFixed(1)}×
+          {(capacity.widthCm / 100).toFixed(2)}×
+          {(capacity.heightCm / 100).toFixed(2)} m)
         </span>
         <span className="ml-auto text-xs text-gray-400">
           {packages.length} Packstücke
@@ -486,27 +493,25 @@ export default function NvLoadingPlanPage() {
         )}
         {tourQ.data && (
           <div className="space-y-3">
-            {/* F1.a/K Kennzahlen-Bar */}
+            {/* F1.a/K Kennzahlen-Bar — F1.a-Fix-2: Effektiv ist Haupt-
+                Auslastung (NV stapelt). Boden bleibt als sekundaere
+                Info, nicht mehr rot. */}
             <div className="flex items-center gap-4 bg-gray-100 p-2 rounded border border-gray-200 text-sm flex-wrap">
               <span
                 className={
-                  ldmMetrics.floorPct > 100
+                  ldmMetrics.effectivePct > 100
                     ? 'text-red-600 font-bold'
-                    : 'text-gray-800'
+                    : 'text-emerald-800 font-semibold'
                 }
-                title="Ohne Stapelvorteil: Summe Lademeter / Kapazität (Anzeige max. 100 %)"
+                title="Effektive Lademeter nach Carlos-Stack-Rule (stapelbar zaehlt mit Faktor ½). Maßgebliche Auslastung."
               >
-                Boden-ldm: {Math.min(100, ldmMetrics.floorPct).toFixed(0)}%
+                Effektiv-ldm: {ldmMetrics.effectivePct.toFixed(0)}%
               </span>
               <span
-                className={
-                  ldmMetrics.effectivePct > 100
-                    ? 'text-red-600 font-semibold'
-                    : 'text-emerald-800'
-                }
-                title="Stapelbar zählt mit Faktor ½ — so viel „Platz“ bleibt rechnerisch frei"
+                className="text-gray-600 text-xs"
+                title="Ohne Stapelvorteil — nur Diagnose; ueberladen wird ueber Effektiv gemessen."
               >
-                Effektiv: {ldmMetrics.effectivePct.toFixed(0)}%
+                (davon Boden: {ldmMetrics.floorPct.toFixed(0)}%)
               </span>
               <span
                 className={
@@ -526,27 +531,13 @@ export default function NvLoadingPlanPage() {
               </span>
             </div>
 
-            {/* F1.a/L Lademeter-Detail */}
+            {/* F1.a/L Lademeter-Detail — F1.a-Fix-2: Effektiv links
+                als maßgebliche Spalte, Boden rechts als Diagnose. */}
             <div className="text-gray-800 leading-relaxed bg-blue-50 p-3 rounded border border-blue-200 space-y-2 text-sm">
               <div className="font-medium text-gray-900">Lademeter</div>
               <div className="grid sm:grid-cols-2 gap-2 text-xs sm:text-sm">
                 <div>
-                  <span className="text-gray-600">Boden (ohne Stapelvorteil):</span>{' '}
-                  <strong>
-                    {ldmMetrics.floorUsed.toFixed(2)} / {ldmMetrics.maxLdm.toFixed(1)} ldm
-                  </strong>
-                  <div className="mt-1 h-2 w-full rounded-full bg-gray-200 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${
-                        ldmMetrics.floorPct > 100 ? 'bg-red-500' : 'bg-[#1e40af]'
-                      }`}
-                      style={{ width: `${Math.min(100, ldmMetrics.floorPct)}%` }}
-                    />
-                  </div>
-                  <span className="text-[11px] text-gray-500">Balken max. 100 % (reiner Bodenbedarf)</span>
-                </div>
-                <div>
-                  <span className="text-gray-600">Effektiv (stapelbar ÷2):</span>{' '}
+                  <span className="text-gray-600">Effektiv (mit Stapelung):</span>{' '}
                   <strong>
                     {ldmMetrics.effectiveUsed.toFixed(2)} / {ldmMetrics.maxLdm.toFixed(1)} ldm
                   </strong>
@@ -559,9 +550,25 @@ export default function NvLoadingPlanPage() {
                     />
                   </div>
                   <span className="text-[11px] text-gray-500">
-                    Zusätzlich frei durch Stapeln:{' '}
-                    <strong>{ldmMetrics.freeEffectiveLdm.toFixed(2)} ldm</strong>{' '}
-                    (vs. Boden {ldmMetrics.freeFloorLdm.toFixed(2)} ldm)
+                    Maßgebliche Auslastung — stapelbar zählt mit Faktor ½.
+                    Zusätzlich frei:{' '}
+                    <strong>{ldmMetrics.freeEffectiveLdm.toFixed(2)} ldm</strong>
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-600">Boden (ohne Stapelvorteil):</span>{' '}
+                  <strong>
+                    {ldmMetrics.floorUsed.toFixed(2)} / {ldmMetrics.maxLdm.toFixed(1)} ldm
+                  </strong>
+                  <div className="mt-1 h-2 w-full rounded-full bg-gray-200 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-[#1e40af]"
+                      style={{ width: `${Math.min(100, ldmMetrics.floorPct)}%` }}
+                    />
+                  </div>
+                  <span className="text-[11px] text-gray-500">
+                    Diagnose-Info. Stapelfreiheit:{' '}
+                    <strong>{ldmMetrics.freeFloorLdm.toFixed(2)} ldm</strong>
                   </span>
                 </div>
               </div>
@@ -590,16 +597,12 @@ export default function NvLoadingPlanPage() {
               )}
             </div>
 
-            {/* F1.a/M Overload-Warning */}
+            {/* F1.a/M Overload-Warning — F1.a-Fix-2: nur Effektiv/Vol/
+                Gew triggern. Boden ist Diagnose, nicht Ueberlaufs-
+                Anzeichen (NV stapelt). */}
             {isOverloaded && (
               <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2 space-y-1">
                 <div className="font-medium">⚠ Überladung für gewähltes Fahrzeug</div>
-                {ldmMetrics.floorPct > 100 && (
-                  <div>
-                    Boden-ldm: {ldmMetrics.floorUsed.toFixed(1)} /{' '}
-                    {ldmMetrics.maxLdm.toFixed(1)} ldm
-                  </div>
-                )}
                 {ldmMetrics.effectivePct > 100 && (
                   <div>
                     Effektiv-ldm: {ldmMetrics.effectiveUsed.toFixed(1)} /{' '}
@@ -620,12 +623,13 @@ export default function NvLoadingPlanPage() {
               </div>
             )}
 
-            {/* 3D-Canvas */}
+            {/* 3D-Canvas — F1.a-Fix-2: Trailer-Box aus capacity (echte
+                Geometrie), nicht aus getVehicleDims-Koffer-7t-Fallback. */}
             <LoadingPlan3D
               vehicle={{
-                lengthCm: vehicle.lengthCm,
-                widthCm: vehicle.widthCm,
-                heightCm: vehicle.heightCm,
+                lengthCm: capacity.lengthCm,
+                widthCm: capacity.widthCm,
+                heightCm: capacity.heightCm,
               }}
               packages={packages}
               onPositionChange={handlePosition}
@@ -644,14 +648,15 @@ export default function NvLoadingPlanPage() {
               }}
             />
 
-            {/* F1.a/O Achslast */}
+            {/* F1.a/O Achslast — trailerLength_m aus capacity (echte
+                Box-Laenge, sonst falsche Schwerpunkt-Berechnung). */}
             <AxleLoadPanel
               packages={packages.map((p) => ({
                 posY: p.posY,
                 weightKg: Number(p.weightKg) || 0,
               }))}
               vehicleType={vehicle.type}
-              trailerLength_m={vehicle.lengthCm / 100}
+              trailerLength_m={capacity.lengthCm / 100}
               groundedCount={packages.filter((p) => p.posZ < 1e-6).length}
               totalCount={packages.length}
             />

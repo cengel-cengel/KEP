@@ -1237,8 +1237,14 @@ export class ToursService {
    * Sucht Top-3 Touren (FV + NV) für eine Sendung via
    * Haversine-Geo + Capacity + Time + Cluster.
    */
-  async findBestMatchForShipment(shipmentId: string) {
+  async findBestMatchForShipment(
+    shipmentId: string,
+    opts: { excludeTourId?: string } = {},
+  ) {
     if (!shipmentId) return [];
+    // F2.2.b-0: Swap-Modus — Source-Tour aus Kandidaten ausschliessen.
+    // Default (kein opts) bleibt exakt pre-F2-Verhalten.
+    const excludeTourId = opts.excludeTourId;
     const ship = await this.prisma.shipments.findUnique({
       where: { id: shipmentId },
       select: {
@@ -1267,7 +1273,10 @@ export class ToursService {
     // Anzahl), + city aus last-stop loading-address — fuer Empfehlungs-
     // Cards im ContextPanel.
     const fvTours = await this.prisma.tours.findMany({
-      where: { status: { in: ['planned', 'dispatched'] } },
+      where: {
+        status: { in: ['planned', 'dispatched'] },
+        ...(excludeTourId ? { id: { not: excludeTourId } } : {}),
+      },
       select: {
         id: true,
         tour_number: true,
@@ -1297,7 +1306,10 @@ export class ToursService {
     // NV-Touren-Pool (PLANNING/IN_PROGRESS).
     // B1: + subunternehmer.name, + _count.stops, + city analog FV.
     const nvTours = await this.prisma.nv_touren.findMany({
-      where: { status: { in: ['PLANNING', 'IN_PROGRESS'] } },
+      where: {
+        status: { in: ['PLANNING', 'IN_PROGRESS'] },
+        ...(excludeTourId ? { id: { not: excludeTourId } } : {}),
+      },
       select: {
         id: true,
         datum: true,

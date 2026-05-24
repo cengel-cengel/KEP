@@ -55,9 +55,17 @@ export class ToursController {
   }
 
   // T-3.3 Best-Tour-Match (FV + NV pool)
+  // F2.2.b-0: + optional exclude_tour_id=… Swap-Modus, schliesst die
+  // Source-Tour aus der Kandidaten-Liste aus. Default-Flow ohne den
+  // Param ist exakt das Pre-F2-Verhalten (additiv).
   @Get('best-match')
-  async bestMatch(@Query('shipment_id') shipmentId: string) {
-    return this.toursService.findBestMatchForShipment(shipmentId);
+  async bestMatch(
+    @Query('shipment_id') shipmentId: string,
+    @Query('exclude_tour_id') excludeTourId?: string,
+  ) {
+    return this.toursService.findBestMatchForShipment(shipmentId, {
+      excludeTourId: excludeTourId || undefined,
+    });
   }
 
   @Get(':id')

@@ -1047,7 +1047,16 @@ export class NvTourenService {
           select: { code: true, name: true },
         },
         subunternehmer: {
-          select: { id: true, name: true, fahrzeug_typ: true },
+          select: {
+            id: true,
+            name: true,
+            fahrzeug_typ: true,
+            // F1.a-Fix: Kapazitaets-Quelle fuer NV-Beladeplan. FE
+            // resolveVehicleCapacity() bevorzugt sub.max_* vor
+            // Tonnen-Parsing aus fahrzeug_typ (siehe vehicleTypes.ts).
+            max_ldm: true,
+            max_gewicht_kg: true,
+          },
         },
         stops: {
           orderBy: [{ position: 'asc' }, { created_at: 'asc' }],

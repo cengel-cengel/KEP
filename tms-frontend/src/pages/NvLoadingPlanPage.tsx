@@ -16,6 +16,7 @@ import AxleLoadPanel from '../components/AxleLoadPanel';
 import {
   getVehicleDims,
   resolveFahrzeugTyp,
+  resolveVehicleCapacity,
 } from '../lib/vehicleTypes';
 import { computeStackingLdmMetrics } from '../lib/loadingLdm';
 
@@ -52,7 +53,15 @@ export interface NvLoadingDetail {
   status: string;
   fahrzeug_typ?: string | null;
   nv_stamm_tour?: { code: string; name: string } | null;
-  subunternehmer?: { id: string; name: string; fahrzeug_typ?: string | null } | null;
+  subunternehmer?: {
+    id: string;
+    name: string;
+    fahrzeug_typ?: string | null;
+    // F1.a-Fix: Kapazitaet primaer aus Sub-Stammdaten — siehe
+    // resolveVehicleCapacity() in lib/vehicleTypes.
+    max_ldm?: number | string | null;
+    max_gewicht_kg?: number | null;
+  } | null;
   stops: Array<{
     id: string;
     position: number;
@@ -208,6 +217,26 @@ export default function NvLoadingPlanPage() {
     return getVehicleDims(fz);
   }, [tourQ.data?.fahrzeug_typ, tourQ.data?.subunternehmer?.fahrzeug_typ]);
 
+  // F1.a-Fix: Kapazitaet (maxLdm/maxWeightKg) separat aufloesen —
+  // Sub-Stammdaten gewinnen vor Tonnen-Parsing aus fahrzeug_typ
+  // ("7_5T"/"12T"/"18T" sind in VEHICLE_DIMS NICHT canonical, stiller
+  // Fallback "Koffer 7t" hatte ~300% Auslastung verursacht).
+  // Trailer-Dimensionen (lengthCm/widthCm/heightCm) bleiben aus
+  // getVehicleDims — separater Bug, nicht in dieser Card.
+  const capacity = useMemo(
+    () =>
+      resolveVehicleCapacity(
+        tourQ.data ? { fahrzeug_typ: tourQ.data.fahrzeug_typ ?? null } : null,
+        tourQ.data?.subunternehmer ?? null,
+      ),
+    [
+      tourQ.data?.fahrzeug_typ,
+      tourQ.data?.subunternehmer?.fahrzeug_typ,
+      tourQ.data?.subunternehmer?.max_ldm,
+      tourQ.data?.subunternehmer?.max_gewicht_kg,
+    ],
+  );
+
   const packages = useMemo(
     () =>
       flattenPackages(
@@ -232,8 +261,8 @@ export default function NvLoadingPlanPage() {
   }, [tourQ.data?.stops]);
 
   const ldmMetrics = useMemo(
-    () => computeStackingLdmMetrics(vehicle.maxLdm, ldmShipments),
-    [vehicle.maxLdm, ldmShipments],
+    () => computeStackingLdmMetrics(capacity.maxLdm, ldmShipments),
+    [capacity.maxLdm, ldmShipments],
   );
 
   const cargoVolM3 = useMemo(() => {
@@ -262,9 +291,9 @@ export default function NvLoadingPlanPage() {
   }, [packages]);
 
   const weightUtil = useMemo(() => {
-    if (vehicle.maxWeightKg <= 0) return null;
-    return (totalWeightKg / vehicle.maxWeightKg) * 100;
-  }, [totalWeightKg, vehicle.maxWeightKg]);
+    if (capacity.maxWeightKg <= 0) return null;
+    return (totalWeightKg / capacity.maxWeightKg) * 100;
+  }, [totalWeightKg, capacity.maxWeightKg]);
 
   const isOverloaded =
     ldmMetrics.floorPct > 100 ||
@@ -549,8 +578,16 @@ export default function NvLoadingPlanPage() {
               📐 {cargoVolM3.toFixed(1)} m³ / {trailerVolM3.toFixed(1)} m³ (
               {volUtil.toFixed(0)}% Volumen) · ⚖{' '}
               {totalWeightKg.toLocaleString('de-DE')} kg /{' '}
-              {vehicle.maxWeightKg.toLocaleString('de-DE')} kg (
+              {capacity.maxWeightKg.toLocaleString('de-DE')} kg (
               {weightUtil?.toFixed(0) ?? '—'}% Gewicht)
+              {capacity.source === 'fallback-unknown' && (
+                <span
+                  className="ml-2 inline-block text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-300"
+                  title="Fahrzeug-Typ in Stammdaten nicht erkannt — Default-Kapazitaet verwendet."
+                >
+                  ⚠ Kapazitaet geschaetzt
+                </span>
+              )}
             </div>
 
             {/* F1.a/M Overload-Warning */}
@@ -577,7 +614,7 @@ export default function NvLoadingPlanPage() {
                 {weightUtil != null && weightUtil > 100 && (
                   <div>
                     Gewicht: {totalWeightKg.toLocaleString('de-DE')} /{' '}
-                    {vehicle.maxWeightKg.toLocaleString('de-DE')} kg
+                    {capacity.maxWeightKg.toLocaleString('de-DE')} kg
                   </div>
                 )}
               </div>

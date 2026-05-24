@@ -12,9 +12,22 @@
  * Modal ist rein read-only Vorschau; Disponent kann Plan abnicken
  * oder schliessen.
  */
-import { useMemo } from 'react';
-import { useQueries, useQuery } from '@tanstack/react-query';
-import { ArrowRight, Sparkles, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import {
+  AlertTriangle,
+  ArrowRight,
+  Check,
+  Loader2,
+  RotateCcw,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import { api } from '../../lib/api';
 import { resolveVehicleCapacity } from '../../lib/vehicleTypes';
 import {
@@ -204,14 +217,20 @@ export default function NvSwapOptimizerModal({
   // queryKey teilt Cache mit ShipmentDetailsTab/MoveStopDialog —
   // gleicher staleTime 30s. Cache-Hit wenn Sendung bereits anderswo
   // im Workspace inspiziert wurde.
+  // F2.2.b-1.5: exclude_tour_id=sourceTourId verhindert dass die
+  // Source-Tour als Kandidat zurueckkommt — eigener Cache-Key
+  // (tour-id im queryKey) damit Default-Flow getrennt bleibt.
   const ejectIds = plan?.ejectIds ?? [];
   const bestMatchQueries = useQueries({
     queries: ejectIds.map((shipmentId) => ({
-      queryKey: ['shipment-best-match', shipmentId],
+      queryKey: ['shipment-best-match', shipmentId, sourceTourId],
       queryFn: async () =>
         (
           await api.get<BestTourMatch[]>('/tours/best-match', {
-            params: { shipment_id: shipmentId },
+            params: {
+              shipment_id: shipmentId,
+              exclude_tour_id: sourceTourId,
+            },
           })
         ).data,
       staleTime: 30_000,
@@ -235,6 +254,130 @@ export default function NvSwapOptimizerModal({
     });
     return map;
   }, [ejectIds, bestMatchQueries, sourceTourId]);
+
+  // F2.2.b-2: shipmentId → stopId Map fuer Source-Remove. Atomarer
+  // Swap-Endpoint existiert NICHT, deshalb 2 sequenzielle batch-stops
+  // (Source-removes via stopId, Target-adds via shipmentId).
+  const stopIdByShipment = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const stop of tourQ.data?.stops ?? []) {
+      m.set(stop.shipment.id, stop.id);
+    }
+    return m;
+  }, [tourQ.data?.stops]);
+
+  // F2.2.b-2: Per-Eject-Status-Map fuer UI-Feedback. Idle bis User
+  // klickt; danach pro Schritt fortschreibend.
+  type EjectExecutionStatus =
+    | 'idle'
+    | 'no-target'
+    | 'not-in-source'
+    | 'running'
+    | 'ok'
+    | 'source-fail'
+    | 'rollback'
+    | 'limbo';
+  const [execStatus, setExecStatus] = useState<
+    Map<string, EjectExecutionStatus>
+  >(new Map());
+  const [confirmStep, setConfirmStep] = useState<
+    'idle' | 'confirm' | 'running' | 'done'
+  >('idle');
+
+  // Wie viele Ejects haben tatsaechlich eine ausfuehrbare Target-Tour?
+  // (Disabled-Button-Hint + Summary-Text.)
+  const executableCount = useMemo(() => {
+    let n = 0;
+    for (const id of ejectIds) {
+      if (targetByShipment.get(id)?.target) n += 1;
+    }
+    return n;
+  }, [ejectIds, targetByShipment]);
+
+  const qc = useQueryClient();
+  const executeMut = useMutation({
+    mutationFn: async () => {
+      const next = new Map<string, EjectExecutionStatus>();
+      for (const ejectId of ejectIds) {
+        const t = targetByShipment.get(ejectId);
+        if (!t?.target) {
+          next.set(ejectId, 'no-target');
+          setExecStatus(new Map(next));
+          continue;
+        }
+        const stopId = stopIdByShipment.get(ejectId);
+        if (!stopId) {
+          // Pre-Source-Sanity: Stop existiert nicht (mehr?) in
+          // Source — anderer Disponent war evtl. schneller.
+          next.set(ejectId, 'not-in-source');
+          setExecStatus(new Map(next));
+          continue;
+        }
+
+        next.set(ejectId, 'running');
+        setExecStatus(new Map(next));
+
+        // Step 1: Source-Remove (stopId, NICHT shipmentId).
+        try {
+          await api.post(`/nv-touren/${sourceTourId}/batch-stops`, {
+            adds: [],
+            removes: [stopId],
+          });
+        } catch {
+          next.set(ejectId, 'source-fail');
+          setExecStatus(new Map(next));
+          continue;
+        }
+
+        // Step 2: Target-Add. Fail → Rollback-Versuch.
+        try {
+          await api.post(
+            `/nv-touren/${t.target.tour_id}/batch-stops`,
+            { adds: [ejectId], removes: [] },
+          );
+          next.set(ejectId, 'ok');
+        } catch {
+          try {
+            await api.post(`/nv-touren/${sourceTourId}/batch-stops`, {
+              adds: [ejectId],
+              removes: [],
+            });
+            next.set(ejectId, 'rollback');
+          } catch {
+            next.set(ejectId, 'limbo');
+          }
+        }
+        setExecStatus(new Map(next));
+      }
+      return next;
+    },
+    onSuccess: () => {
+      // B2-Realtime + invalidate (Belt+Suspenders). Wir invalidieren
+      // alle NV-Loading-Caches weil Multi-Tour-Effekt.
+      qc.invalidateQueries({ queryKey: ['nv-touren'] });
+      qc.invalidateQueries({ queryKey: ['nv-elig'] });
+      qc.invalidateQueries({ queryKey: ['nv-loading'] });
+      // best-match-Cache fuer alle ejected Sendungen invalidieren
+      // (sie haben jetzt neue tour_id).
+      for (const ejectId of ejectIds) {
+        qc.invalidateQueries({
+          queryKey: ['shipment-best-match', ejectId],
+        });
+      }
+      setConfirmStep('done');
+    },
+  });
+
+  const handleAusfuehren = () => {
+    if (confirmStep === 'idle') {
+      setConfirmStep('confirm');
+      return;
+    }
+    if (confirmStep === 'confirm') {
+      setConfirmStep('running');
+      executeMut.mutate();
+    }
+  };
 
   const code = tourQ.data?.nv_stamm_tour?.code ?? '—';
   const datum = tourQ.data?.datum
@@ -402,6 +545,10 @@ export default function NvSwapOptimizerModal({
                                     keine Alt-Tour gefunden
                                   </span>
                                 )}
+                                {/* F2.2.b-2: Per-Zeile-Execution-Status. */}
+                                <ExecStatusIcon
+                                  status={execStatus.get(id) ?? 'idle'}
+                                />
                               </span>
                             </div>
                           );
@@ -429,7 +576,64 @@ export default function NvSwapOptimizerModal({
           )}
         </div>
 
-        <div className="flex justify-end gap-2 px-4 py-3 border-t bg-gray-50">
+        <div className="flex items-center gap-2 px-4 py-3 border-t bg-gray-50">
+          {/* F2.2.b-2: Done-Banner-Hinweis, wenn Execute durch ist. */}
+          {confirmStep === 'done' && (
+            <span className="text-xs text-gray-600 flex-1">
+              {execSummary(execStatus)}
+            </span>
+          )}
+          {/* Inline-Confirm-Hinweis vor dem zweiten Klick. */}
+          {confirmStep === 'confirm' && (
+            <span className="text-xs text-red-700 flex-1">
+              {executableCount} Sendung
+              {executableCount === 1 ? '' : 'en'} wirklich verschieben?
+            </span>
+          )}
+          {/* Spacer wenn KEIN Banner gezeigt wird (Button rechts). */}
+          {confirmStep === 'idle' && <span className="flex-1" />}
+          {confirmStep === 'running' && (
+            <span className="text-xs text-gray-600 flex-1">
+              Läuft… ({countRunning(execStatus, ejectIds.length)})
+            </span>
+          )}
+
+          {plan &&
+            !plan.fixOverloaded &&
+            executableCount > 0 &&
+            confirmStep !== 'done' && (
+              <>
+                {confirmStep === 'confirm' && (
+                  <button
+                    onClick={() => setConfirmStep('idle')}
+                    className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900"
+                  >
+                    Abbrechen
+                  </button>
+                )}
+                <button
+                  onClick={handleAusfuehren}
+                  disabled={
+                    confirmStep === 'running' || executeMut.isPending
+                  }
+                  className={`px-3 py-1.5 text-sm rounded text-white disabled:opacity-50 inline-flex items-center gap-1 ${
+                    confirmStep === 'confirm'
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
+                >
+                  {confirmStep === 'running' && (
+                    <Loader2 size={12} className="animate-spin" />
+                  )}
+                  {confirmStep === 'confirm'
+                    ? 'Ja, ausführen'
+                    : confirmStep === 'running'
+                      ? 'Läuft…'
+                      : `Ausführen (${executableCount})`}
+                </button>
+              </>
+            )}
+
           <button
             onClick={onClose}
             className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-100"
@@ -440,6 +644,91 @@ export default function NvSwapOptimizerModal({
       </div>
     </div>
   );
+}
+
+/**
+ * F2.2.b-2: Per-Eject-Status-Icon. Klein + farbig — sitzt rechts vom
+ * Alt-Tour-Label in der Eject-Liste.
+ */
+function ExecStatusIcon({ status }: { status: string }) {
+  if (status === 'idle') return null;
+  if (status === 'running') {
+    return <Loader2 size={11} className="text-blue-600 animate-spin" />;
+  }
+  if (status === 'ok') {
+    return <Check size={11} className="text-emerald-700" />;
+  }
+  if (status === 'rollback') {
+    return (
+      <span title="Target-Add fehlgeschlagen, Source-Re-Add ok">
+        <RotateCcw size={11} className="text-amber-700" />
+      </span>
+    );
+  }
+  if (status === 'limbo') {
+    return (
+      <span title="Target-Add UND Rollback fehlgeschlagen — Sendung manuell zuordnen!">
+        <AlertTriangle size={11} className="text-red-700" />
+      </span>
+    );
+  }
+  if (status === 'source-fail') {
+    return (
+      <span title="Source-Remove fehlgeschlagen — Sendung blieb in Quelle">
+        <AlertTriangle size={11} className="text-amber-700" />
+      </span>
+    );
+  }
+  if (status === 'not-in-source') {
+    return (
+      <span title="Stop ist nicht (mehr) in der Source-Tour — uebersprungen">
+        <X size={11} className="text-gray-500" />
+      </span>
+    );
+  }
+  if (status === 'no-target') {
+    return (
+      <span title="Keine Alt-Tour vorhanden — uebersprungen">
+        <X size={11} className="text-gray-400" />
+      </span>
+    );
+  }
+  return null;
+}
+
+function countRunning(
+  status: Map<string, string>,
+  total: number,
+): string {
+  let done = 0;
+  for (const v of status.values()) {
+    if (v !== 'running' && v !== 'idle') done += 1;
+  }
+  return `${done}/${total}`;
+}
+
+function execSummary(status: Map<string, string>): string {
+  let ok = 0;
+  let rollback = 0;
+  let limbo = 0;
+  let skip = 0;
+  for (const v of status.values()) {
+    if (v === 'ok') ok += 1;
+    else if (v === 'rollback') rollback += 1;
+    else if (v === 'limbo') limbo += 1;
+    else if (
+      v === 'no-target' ||
+      v === 'not-in-source' ||
+      v === 'source-fail'
+    )
+      skip += 1;
+  }
+  const parts: string[] = [];
+  if (ok > 0) parts.push(`✓ ${ok} verschoben`);
+  if (rollback > 0) parts.push(`↻ ${rollback} rollback`);
+  if (limbo > 0) parts.push(`⚠ ${limbo} im Limbo`);
+  if (skip > 0) parts.push(`✗ ${skip} übersprungen`);
+  return parts.length > 0 ? parts.join(' · ') : 'Keine Aktion.';
 }
 
 /* ─── kleine Render-Helfer ──────────────────────────────────── */

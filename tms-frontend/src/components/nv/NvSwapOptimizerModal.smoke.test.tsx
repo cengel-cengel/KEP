@@ -137,6 +137,11 @@ vi.mock('../../lib/api', () => {
         }
         return Promise.resolve({ data: mockLoadingDetail });
       }),
+      // F2.2.b-2: batch-stops-Calls beim Execute. Smoke triggert
+      // den Pfad NICHT (kein "Ausfuehren"-Klick), aber api.post muss
+      // im Mock-Surface existieren damit Modal-Component-Import nicht
+      // crash.
+      post: vi.fn().mockResolvedValue({ data: { ok: true } }),
     },
     AUTH_TOKEN_KEY: 'tms_token',
   };

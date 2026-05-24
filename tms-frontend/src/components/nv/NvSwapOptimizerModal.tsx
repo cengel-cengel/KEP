@@ -13,8 +13,8 @@
  * oder schliessen.
  */
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Sparkles, X } from 'lucide-react';
+import { useQueries, useQuery } from '@tanstack/react-query';
+import { ArrowRight, Sparkles, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { resolveVehicleCapacity } from '../../lib/vehicleTypes';
 import {
@@ -29,6 +29,38 @@ import type { NvLoadingDetail } from '../../pages/NvLoadingPlanPage';
 interface Props {
   sourceTourId: string;
   onClose: () => void;
+}
+
+/**
+ * F2.2.b-1: BestTour-Match aus dem /tours/best-match-Endpoint
+ * (analog ShipmentDetailsTab.BestTourMatch — lokal kopiert um
+ * Modal nicht an Page-internals zu koppeln).
+ */
+interface BestTourMatch {
+  tour_id: string;
+  mode: 'nv' | 'fv';
+  tour_number?: string | null;
+  score: number;
+  reason?: string;
+  datum?: string | null;
+  subunternehmer_name?: string | null;
+  stops_count?: number | null;
+  last_stop_city?: string | null;
+}
+
+/** Anzeige-Label der Ziel-Tour. */
+function targetLabel(m: BestTourMatch): string {
+  if (m.tour_number) return m.tour_number;
+  if (m.subunternehmer_name) return m.subunternehmer_name;
+  return m.tour_id.slice(0, 8);
+}
+
+function formatDatumShort(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = iso.length >= 10 ? iso.slice(0, 10) : iso;
+  const parts = d.split('-');
+  if (parts.length !== 3) return null;
+  return `${parts[2]}.${parts[1]}.`;
 }
 
 /**
@@ -168,6 +200,42 @@ export default function NvSwapOptimizerModal({
     };
   }, [tourQ.data?.stops, maxVolM3, maxWeightKg]);
 
+  // F2.2.b-1: Pro ejectId Best-Match parallel laden (B1-Endpoint).
+  // queryKey teilt Cache mit ShipmentDetailsTab/MoveStopDialog —
+  // gleicher staleTime 30s. Cache-Hit wenn Sendung bereits anderswo
+  // im Workspace inspiziert wurde.
+  const ejectIds = plan?.ejectIds ?? [];
+  const bestMatchQueries = useQueries({
+    queries: ejectIds.map((shipmentId) => ({
+      queryKey: ['shipment-best-match', shipmentId],
+      queryFn: async () =>
+        (
+          await api.get<BestTourMatch[]>('/tours/best-match', {
+            params: { shipment_id: shipmentId },
+          })
+        ).data,
+      staleTime: 30_000,
+    })),
+  });
+
+  // Map ejectId → { target?: BestTourMatch, isLoading: boolean }.
+  // Erste passende NV-Tour die NICHT die Source-Tour ist.
+  const targetByShipment = useMemo(() => {
+    const map = new Map<
+      string,
+      { target: BestTourMatch | null; isLoading: boolean }
+    >();
+    ejectIds.forEach((id, idx) => {
+      const q = bestMatchQueries[idx];
+      const matches = q?.data ?? [];
+      const target =
+        matches.find((m) => m.mode === 'nv' && m.tour_id !== sourceTourId) ??
+        null;
+      map.set(id, { target, isLoading: q?.isLoading ?? false });
+    });
+    return map;
+  }, [ejectIds, bestMatchQueries, sourceTourId]);
+
   const code = tourQ.data?.nv_stamm_tour?.code ?? '—';
   const datum = tourQ.data?.datum
     ? new Date(tourQ.data.datum).toISOString().slice(0, 10)
@@ -293,6 +361,7 @@ export default function NvSwapOptimizerModal({
                       <div className="border rounded divide-y">
                         {plan.ejectIds.map((id) => {
                           const s = swappableShipments.find((x) => x.id === id);
+                          const t = targetByShipment.get(id);
                           return (
                             <div
                               key={id}
@@ -310,6 +379,29 @@ export default function NvSwapOptimizerModal({
                                 {s?.weightKg != null
                                   ? `${Math.round(Number(s.weightKg)).toLocaleString('de-DE')} kg`
                                   : '— kg'}
+                              </span>
+                              <span className="ml-auto inline-flex items-center gap-1">
+                                <ArrowRight size={11} className="text-gray-400" />
+                                {t?.isLoading ? (
+                                  <span className="text-[10px] text-gray-400 italic animate-pulse">
+                                    lade Alt-Tour…
+                                  </span>
+                                ) : t?.target ? (
+                                  <span
+                                    className="text-[10px] text-green-700"
+                                    title={`Score ${t.target.score}${
+                                      t.target.reason ? ` · ${t.target.reason}` : ''
+                                    }`}
+                                  >
+                                    {targetLabel(t.target)}
+                                    {formatDatumShort(t.target.datum) &&
+                                      ` (${formatDatumShort(t.target.datum)})`}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-amber-700">
+                                    keine Alt-Tour gefunden
+                                  </span>
+                                )}
                               </span>
                             </div>
                           );

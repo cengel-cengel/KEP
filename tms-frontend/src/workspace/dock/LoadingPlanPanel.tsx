@@ -213,7 +213,7 @@ function FvBody({
     });
   }, [tourQ.data?.layout?.items, tourQ.data?.loadingOrder]);
 
-  const vehicleType = tourQ.data?.recommendedVehicle?.type ?? 'Jumbo';
+  const vehicleType = tourQ.data?.recommendedVehicle?.type ?? 'Sattel';
 
   return (
     <PanelShell

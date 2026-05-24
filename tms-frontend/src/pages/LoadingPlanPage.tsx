@@ -56,15 +56,13 @@ const VEHICLES: Vehicle[] = [
   { type: 'Koffer 7t', lengthCm: 620, widthCm: 240, heightCm: 240, maxWeightKg: 3500, maxLdm: 6 },
   { type: 'Koffer 12t', lengthCm: 740, widthCm: 240, heightCm: 240, maxWeightKg: 6000, maxLdm: 8 },
   { type: 'Sattel', lengthCm: 1360, widthCm: 240, heightCm: 270, maxWeightKg: 24000, maxLdm: 13.6 },
-  { type: 'Mega', lengthCm: 1360, widthCm: 240, heightCm: 300, maxWeightKg: 24000, maxLdm: 13.6 },
-  { type: 'Jumbo', lengthCm: 1560, widthCm: 240, heightCm: 300, maxWeightKg: 24000, maxLdm: 15.6 },
 ];
 
 function matchVehicleType(apiType: string | undefined): string {
-  if (!apiType) return 'Jumbo';
+  if (!apiType) return 'Sattel';
   const t = apiType.trim().toLowerCase();
   const hit = VEHICLES.find((v) => v.type.toLowerCase() === t);
-  return hit?.type ?? VEHICLES.find((v) => t.includes(v.type.toLowerCase()))?.type ?? 'Jumbo';
+  return hit?.type ?? VEHICLES.find((v) => t.includes(v.type.toLowerCase()))?.type ?? 'Sattel';
 }
 
 type ShipmentPackageItemLoad = {
@@ -475,7 +473,7 @@ export default function LoadingPlanPage() {
     Record<string, { xPosCm: number; yPosCm: number; rotationAngle: number; stackLevel: number }>
   >({});
   // Phase G: viewMode entfernt — nur LoadingPlan3D bleibt.
-  const [selectedVehicleType, setSelectedVehicleType] = useState<string>('Jumbo');
+  const [selectedVehicleType, setSelectedVehicleType] = useState<string>('Sattel');
   const [removedShipmentIds, setRemovedShipmentIds] = useState<string[]>([]);
   // B-1 SCHRITT 3: Right-Click Context-Menu State (Pkg-Mesh-Right-Click).
   const [ctxMenu, setCtxMenu] = useState<

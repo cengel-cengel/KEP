@@ -14,7 +14,7 @@ describe('getVehicleDims', () => {
   it('case-insensitive', () => {
     expect(getVehicleDims('SPRINTER').type).toBe('Sprinter');
     expect(getVehicleDims('sattel').type).toBe('Sattel');
-    expect(getVehicleDims('  Jumbo  ').type).toBe('Jumbo');
+    expect(getVehicleDims('  Sattel  ').type).toBe('Sattel');
   });
   it('unbekannter Typ → Default Koffer 7t', () => {
     expect(getVehicleDims('Bullshit-Vehicle').type).toBe('Koffer 7t');

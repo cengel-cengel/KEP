@@ -25,8 +25,6 @@ export const VEHICLE_DIMS: VehicleDims[] = [
   { type: 'Koffer 7t',  lengthCm: 620,  widthCm: 240, heightCm: 240, maxWeightKg: 3500,  maxLdm: 6 },
   { type: 'Koffer 12t', lengthCm: 740,  widthCm: 240, heightCm: 240, maxWeightKg: 6000,  maxLdm: 8 },
   { type: 'Sattel',     lengthCm: 1360, widthCm: 240, heightCm: 270, maxWeightKg: 24000, maxLdm: 13.6 },
-  { type: 'Mega',       lengthCm: 1360, widthCm: 240, heightCm: 300, maxWeightKg: 24000, maxLdm: 13.6 },
-  { type: 'Jumbo',      lengthCm: 1560, widthCm: 240, heightCm: 300, maxWeightKg: 24000, maxLdm: 15.6 },
 ];
 
 export const VEHICLE_DEFAULT_TYPE = 'Koffer 7t';
@@ -66,9 +64,9 @@ export function resolveFahrzeugTyp(
 /**
  * F1.a-Fix: Tonnen-Notation in NV-Stammdaten (z.B. "7_5T", "12T",
  * "18T") canonical-Match fuer VEHICLE_DIMS funktioniert NICHT — die
- * Liste kennt nur "Sprinter|Koffer 3.5t|Koffer 7t|Koffer 12t|
- * Sattel|Mega|Jumbo". Stiller Fallback "Koffer 7t" (6 ldm) hatte
- * Auslastungs-% von ~300% zur Folge.
+ * Liste kennt nur "Sprinter|Koffer 3.5t|Koffer 7t|Koffer 12t|Sattel".
+ * Stiller Fallback "Koffer 7t" (6 ldm) hatte Auslastungs-% von
+ * ~300% zur Folge.
  *
  * Tabelle aus gepflegten Subs (Carlos-Vorgabe):
  *    7,5 t →  8.0 ldm / 3000 kg
@@ -144,8 +142,8 @@ function deriveBoxFromLdm(maxLdm: number): {
 } {
   const lengthCm = Math.max(100, Math.round(maxLdm * 100));
   const widthCm = 240;
-  // Schwellen: Koffer-Klasse <= 8 ldm, Sattel ~13.6, Mega/Jumbo > 13.6.
-  const heightCm = maxLdm > 13.6 ? 300 : maxLdm > 8 ? 270 : 240;
+  // Schwellen: Koffer-Klasse <= 8 ldm, Sattel ~13.6 (oberste Klasse).
+  const heightCm = maxLdm > 8 ? 270 : 240;
   return { lengthCm, widthCm, heightCm };
 }
 
@@ -222,7 +220,7 @@ export function resolveVehicleCapacity(
     }
   }
 
-  // DANN: canonical VEHICLE_DIMS-Match (Sattel/Jumbo/Koffer 7t etc.).
+  // DANN: canonical VEHICLE_DIMS-Match (Sprinter/Koffer/Sattel).
   if (canonicalDims) {
     return {
       source: 'vehicle-dims',

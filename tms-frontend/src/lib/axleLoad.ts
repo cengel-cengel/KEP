@@ -72,25 +72,6 @@ export const VEHICLE_AXLES: Record<string, VehicleAxleConfig> = {
       { label: 'Tridem-Auflieger',distanceFromFront_m: 12.0, maxLoad_kg: 24000 },
     ],
   },
-  Mega: {
-    type: 'Mega',
-    emptyWeightKg: 14500,
-    axles: [
-      { label: 'Vorderachse',     distanceFromFront_m: 0.7,  maxLoad_kg: 7500 },
-      { label: 'Antriebsachse',   distanceFromFront_m: 4.5,  maxLoad_kg: 11500 },
-      { label: 'Tridem-Auflieger',distanceFromFront_m: 12.0, maxLoad_kg: 24000 },
-    ],
-  },
-  Jumbo: {
-    type: 'Jumbo',
-    emptyWeightKg: 18000,
-    axles: [
-      { label: 'Vorderachse Zugm.',  distanceFromFront_m: 0.7,  maxLoad_kg: 7500 },
-      { label: 'Antriebsachse Zugm.',distanceFromFront_m: 4.0,  maxLoad_kg: 11500 },
-      { label: 'Vorderachse Hänger', distanceFromFront_m: 9.0,  maxLoad_kg: 10000 },
-      { label: 'Hinterachse Hänger', distanceFromFront_m: 14.0, maxLoad_kg: 10000 },
-    ],
-  },
 };
 
 export type AxleStatus = 'ok' | 'warning' | 'critical';

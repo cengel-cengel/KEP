@@ -35,7 +35,7 @@ export interface ShipmentLoad {
 }
 
 export interface Vehicle {
-  type: string; // SPRINTER, KOFFER, SATTEL, MEGA
+  type: string; // SPRINTER, KOFFER_7t, KOFFER_12t, SATTEL
   lengthCm: number;
   widthCm: number;
   heightCm: number;
@@ -75,22 +75,6 @@ export const VEHICLES: Vehicle[] = [
     heightCm: 270,
     maxWeightKg: 24000,
     maxLdm: 13.6,
-  },
-  {
-    type: 'MEGA',
-    lengthCm: 1360,
-    widthCm: 240,
-    heightCm: 300,
-    maxWeightKg: 24000,
-    maxLdm: 13.6,
-  },
-  {
-    type: 'JUMBO',
-    lengthCm: 1560,
-    widthCm: 240,
-    heightCm: 300,
-    maxWeightKg: 24000,
-    maxLdm: 15.6,
   },
 ];
 

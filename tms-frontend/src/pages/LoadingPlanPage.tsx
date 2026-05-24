@@ -4,12 +4,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Trash2 } from 'lucide-react';
 import LoadingPlan3D from '../components/LoadingPlan3D';
 import AxleLoadPanel from '../components/AxleLoadPanel';
-import SecurementPanel from '../components/SecurementPanel';
 import ContextMenu, {
   type ContextMenuItem,
 } from '../components/loadingplan/ContextMenu';
 import { api } from '../lib/api';
-import { computeSecurement } from '../lib/loadSecurement';
 import { computeStackingLdmMetrics } from '../lib/loadingLdm';
 import { canStackOn } from '../lib/stackingRules';
 import { useInsertMode } from '../hooks/useInsertMode';
@@ -478,7 +476,6 @@ export default function LoadingPlanPage() {
   >({});
   // Phase G: viewMode entfernt — nur LoadingPlan3D bleibt.
   const [selectedVehicleType, setSelectedVehicleType] = useState<string>('Jumbo');
-  const [securementMu, setSecurementMu] = useState<number>(0.4);
   const [removedShipmentIds, setRemovedShipmentIds] = useState<string[]>([]);
   // B-1 SCHRITT 3: Right-Click Context-Menu State (Pkg-Mesh-Right-Click).
   const [ctxMenu, setCtxMenu] = useState<
@@ -1166,22 +1163,6 @@ export default function LoadingPlanPage() {
                 </div>
 
                 {(() => {
-                  // P3: Spanngurte nur fuer Items mit positionierter Lage.
-                  const positionedPackages = placedPackages.filter(
-                    (p) =>
-                      Number.isFinite(p.posX) &&
-                      Number.isFinite(p.posY) &&
-                      Number.isFinite(p.posZ),
-                  );
-                  const securementResult = computeSecurement(
-                    positionedPackages.map((p) => ({
-                      id: p.id,
-                      shipmentId: p.shipmentId,
-                      weightKg: p.weightKg,
-                    })),
-                    { mu: securementMu },
-                  );
-                  const totalStraps = securementResult.totalStraps;
                   // Per-shipment Farb-Mapping (3D-spezifisch, SVG bleibt Stop-Farbe)
                   const SHIPMENT_COLORS = [
                     '#2563eb', '#16a34a', '#ca8a04', '#dc2626', '#9333ea',
@@ -1235,7 +1216,6 @@ export default function LoadingPlanPage() {
                           heightCm: vehicleDims.heightCm,
                         }}
                         vehicleType={selectedVehicle?.type ?? selectedVehicleType}
-                        securementStraps={totalStraps}
                         onPositionChange={handlePackagePosition}
                         insertMode={insertMode.active}
                         onInsertAt={handleInsertAt}
@@ -1274,15 +1254,6 @@ export default function LoadingPlanPage() {
                         trailerLength_m={vehicleDims.lengthCm / 100}
                         groundedCount={placedPackages.filter((p) => p.posZ < 1e-6).length}
                         totalCount={placedPackages.length}
-                      />
-                      <SecurementPanel
-                        packages={positionedPackages.map((p) => ({
-                          id: p.id,
-                          shipmentId: p.shipmentId,
-                          weightKg: p.weightKg,
-                        }))}
-                        mu={securementMu}
-                        onMuChange={setSecurementMu}
                       />
                     </>
                   );

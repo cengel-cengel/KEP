@@ -262,7 +262,7 @@ function PanelShell({
         <Link
           to={fullViewHref}
           className="inline-flex items-center gap-1 px-2 py-0.5 border border-gray-300 rounded hover:bg-gray-50 text-gray-700"
-          title="Vollansicht öffnen (mit Drag, Stapelung, Achslast, Securement)"
+          title="Vollansicht öffnen (mit Drag, Stapelung, Achslast)"
         >
           <Maximize2 size={11} />
           Vollansicht

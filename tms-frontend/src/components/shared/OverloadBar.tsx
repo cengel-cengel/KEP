@@ -3,23 +3,29 @@ import { AlertTriangle } from 'lucide-react';
 export interface OverloadInfo {
   ldm: number;
   weight: number;
+  /** O-3: Volumen-Auslastung (Trigger-Achse). */
+  vol?: number;
   isOverloaded: boolean;
 }
 
-/** Liefert die anzuzeigenden Texte (z.B. ["LDM 115%", "Gewicht 102%"]).
- *  Leeres Array → Component soll NICHT rendern. */
+/**
+ * Liefert die anzuzeigenden Texte fuer das rote Banner.
+ * O-3: Trigger sind Vol + Gewicht; ldm ist INFO und erscheint
+ * NICHT im Banner (sondern als separate Auslastungs-Info in den
+ * Cards/Loading-Pages).
+ */
 export function overloadParts(o?: OverloadInfo | null): string[] {
   if (!o || !o.isOverloaded) return [];
   const parts: string[] = [];
-  if (o.ldm > 1) parts.push(`LDM ${(o.ldm * 100).toFixed(0)}%`);
+  if ((o.vol ?? 0) > 1) parts.push(`Volumen ${((o.vol as number) * 100).toFixed(0)}%`);
   if (o.weight > 1) parts.push(`Gewicht ${(o.weight * 100).toFixed(0)}%`);
   return parts;
 }
 
 /**
  * Rendert NUR wenn isOverloaded=true.
- * Zeigt nur die Achsen mit ratio > 1.0 (z.B. nur LDM, nur Gewicht,
- * oder beide). Format: "⚠ Überladen: LDM 115% · Gewicht 102%".
+ * Zeigt nur die Achsen mit ratio > 1.0 (Vol und/oder Gewicht).
+ * Format: "⚠ Überladen: Volumen 115% · Gewicht 102%".
  */
 export default function OverloadBar({
   overload,

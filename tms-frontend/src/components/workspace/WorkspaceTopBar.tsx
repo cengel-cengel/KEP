@@ -34,6 +34,8 @@ interface TourLite {
     isOverloaded?: boolean;
     ldm?: number;
     weight?: number;
+    /** O-3: Volumen-Achse. */
+    vol?: number;
   } | null;
   // 'risk' bei NV-Touren in der Liste verfügbar (counts).
   risk?: {

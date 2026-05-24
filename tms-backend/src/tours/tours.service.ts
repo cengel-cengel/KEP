@@ -23,7 +23,11 @@ import {
   routeWithDurations,
 } from '../lib/osrm.lib';
 import { getNvPlzSet } from '../lib/nv-plz.lib';
-import { computeOverload, formatOverloadMessage } from '../lib/capacity.lib';
+import {
+  computeOverload,
+  deriveMaxVolM3,
+  formatOverloadMessage,
+} from '../lib/capacity.lib';
 import {
   computeEffectiveLdm,
   isShipmentFullyStackable,
@@ -241,7 +245,7 @@ export class ToursService {
     }
 
     // B-4 + B-4.5: Overload on-the-fly. LDM via effective-pairing
-    // aus shipments-include. Weight = naive Σ.
+    // aus shipments-include. Weight = naive Σ. O-3: + Vol-Achse.
     const stackShips = tour.shipments.map((s) => ({
       ldm: Number(s.ldm ?? 0),
       height_cm: Number(s.height_cm ?? 0),
@@ -250,12 +254,19 @@ export class ToursService {
     }));
     const totalLdm = computeEffectiveLdm(stackShips);
     let totalKg = 0;
-    for (const s of tour.shipments) totalKg += Number(s.weight_kg ?? 0);
+    let totalVolM3 = 0;
+    for (const s of tour.shipments) {
+      totalKg += Number(s.weight_kg ?? 0);
+      totalVolM3 += Number(s.volume_m3 ?? 0);
+    }
+    const maxLdm = tour.max_ldm != null ? Number(tour.max_ldm) : null;
     const overload = computeOverload(
       totalLdm,
       totalKg,
-      tour.max_ldm != null ? Number(tour.max_ldm) : null,
+      maxLdm,
       tour.max_weight_kg != null ? Number(tour.max_weight_kg) : null,
+      totalVolM3,
+      deriveMaxVolM3(maxLdm),
     );
     return { ...tour, overload };
   }
@@ -348,6 +359,7 @@ export class ToursService {
           select: {
             ldm: true,
             weight_kg: true,
+            volume_m3: true,
             height_cm: true,
             shipment_package_items: { select: { stackable: true } },
           },
@@ -363,12 +375,19 @@ export class ToursService {
     }));
     const totalLdm = computeEffectiveLdm(stackShips);
     let totalKg = 0;
-    for (const s of tour.shipments) totalKg += Number(s.weight_kg ?? 0);
+    let totalVolM3 = 0;
+    for (const s of tour.shipments) {
+      totalKg += Number(s.weight_kg ?? 0);
+      totalVolM3 += Number(s.volume_m3 ?? 0);
+    }
+    const maxLdm = tour.max_ldm != null ? Number(tour.max_ldm) : null;
     return computeOverload(
       totalLdm,
       totalKg,
-      tour.max_ldm != null ? Number(tour.max_ldm) : null,
+      maxLdm,
       tour.max_weight_kg != null ? Number(tour.max_weight_kg) : null,
+      totalVolM3,
+      deriveMaxVolM3(maxLdm),
     );
   }
 
@@ -1649,6 +1668,7 @@ export class ToursService {
             id: true,
             ldm: true,
             weight_kg: true,
+            volume_m3: true,
             tour_position: true,
             is_hazmat: true,
           },
@@ -1674,6 +1694,7 @@ export class ToursService {
               tour_id: true,
               ldm: true,
               weight_kg: true,
+              volume_m3: true,
               is_hazmat: true,
               has_active_lock: true,
               lock_types: true,
@@ -1719,23 +1740,30 @@ export class ToursService {
     const removedSet = new Set(removes);
     let curLdm = 0;
     let curKg = 0;
+    let curVolM3 = 0;
     for (const s of tour.shipments) {
       if (removedSet.has(s.id)) continue;
       curLdm += Number(s.ldm ?? 0);
       curKg += Number(s.weight_kg ?? 0);
+      curVolM3 += Number(s.volume_m3 ?? 0);
     }
     for (const s of addsShipments) {
       curLdm += Number(s.ldm ?? 0);
       curKg += Number(s.weight_kg ?? 0);
+      curVolM3 += Number(s.volume_m3 ?? 0);
     }
     // B-4: Overload NICHT blockend. Capacity-Ratio wird in
     // findOne-Response zurückgegeben. dispatchTour/releaseTour
     // prüft Overload und throwt bei isOverloaded.
+    // O-3: vol+weight triggert, ldm bleibt INFO.
+    const maxLdm = tour.max_ldm != null ? Number(tour.max_ldm) : null;
     const overload = computeOverload(
       curLdm,
       curKg,
-      tour.max_ldm != null ? Number(tour.max_ldm) : null,
+      maxLdm,
       tour.max_weight_kg != null ? Number(tour.max_weight_kg) : null,
+      curVolM3,
+      deriveMaxVolM3(maxLdm),
     );
     if (overload.isOverloaded) {
       this.logger.warn(

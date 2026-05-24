@@ -43,10 +43,12 @@ export interface Tour {
   calculated_sub_cost?: number | string | null;
   sub_condition?: { id: string; condition_type?: string | null } | null;
 
-  /** B-4: Soft-Capacity Overload (ratio + flag). */
+  /** B-4: Soft-Capacity Overload (ratio + flag).
+   *  O-3: + vol (Trigger-Achse zusammen mit weight; ldm = INFO). */
   overload?: {
     ldm: number;
     weight: number;
+    vol?: number;
     isOverloaded: boolean;
   } | null;
 }

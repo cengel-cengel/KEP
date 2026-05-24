@@ -145,13 +145,16 @@ export default function FvTourCard({
   // S-1: Conditional Capacity-Display.
   // < 70% → schmaler Text "X% (worst-axis)"
   // >= 70% → OverloadBar (red wenn >100%, amber-Hint wenn 70-100%).
+  // O-3: Trigger-Achsen sind Vol + Gewicht; ldm ist INFO und faellt
+  // hier aus dem worst-axis-Vergleich raus (sonst zeigt das Card
+  // "LDM 110%" rot, obwohl ldm gar nicht mehr triggert).
   const overload = tour?.overload ?? null;
   const maxAxisRatio = Math.max(
-    overload?.ldm ?? 0,
+    overload?.vol ?? 0,
     overload?.weight ?? 0,
   );
-  const worstAxisLabel = (overload?.ldm ?? 0) >= (overload?.weight ?? 0)
-    ? 'LDM'
+  const worstAxisLabel = (overload?.vol ?? 0) >= (overload?.weight ?? 0)
+    ? 'Vol'
     : 'kg';
 
   // W-3.4: FV-Beladeplan in neuem Fenster (mirror P0-8 NV-Pattern).

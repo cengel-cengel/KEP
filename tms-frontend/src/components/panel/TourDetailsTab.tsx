@@ -54,6 +54,8 @@ interface TourDetail {
     isOverloaded?: boolean;
     ldm?: number;
     weight?: number;
+    /** O-3: Volumen-Auslastung. */
+    vol?: number;
   } | null;
   hub_start_address?: {
     name?: string | null;
@@ -126,6 +128,8 @@ interface NvTourDetail {
     isOverloaded?: boolean;
     ldm?: number;
     weight?: number;
+    /** O-3: Volumen-Auslastung. */
+    vol?: number;
   } | null;
   risk?: {
     max_score: number;
@@ -308,7 +312,7 @@ function FvTourBody({ tourId }: { tourId: string }) {
         severity: 'L1',
         icon: 'shield',
         label: 'Tour überladen',
-        hint: `LDM ${((t.overload.ldm ?? 0) * 100).toFixed(0)}% / Gewicht ${((t.overload.weight ?? 0) * 100).toFixed(0)}%`,
+        hint: `Vol ${((t.overload.vol ?? 0) * 100).toFixed(0)}% / Gewicht ${((t.overload.weight ?? 0) * 100).toFixed(0)}%`,
       });
     }
     for (const s of t.shipments ?? []) {

@@ -42,7 +42,11 @@ import {
   plzMatchesNv,
   type NvPlzSet,
 } from '../lib/nv-plz.lib';
-import { computeOverload, formatOverloadMessage } from '../lib/capacity.lib';
+import {
+  computeOverload,
+  deriveMaxVolM3,
+  formatOverloadMessage,
+} from '../lib/capacity.lib';
 import {
   detectConflictsForTour,
   type DetectInputTour,
@@ -405,6 +409,7 @@ export class NvTourenService {
               select: {
                 ldm: true,
                 weight_kg: true,
+                volume_m3: true,
                 height_cm: true,
                 shipment_package_items: { select: { stackable: true } },
               },
@@ -422,13 +427,23 @@ export class NvTourenService {
     }));
     const totalLdm = computeEffectiveLdm(stackShips);
     let totalKg = 0;
-    for (const s of tour.stops) totalKg += Number(s.shipment.weight_kg ?? 0);
+    let totalVolM3 = 0;
+    for (const s of tour.stops) {
+      totalKg += Number(s.shipment.weight_kg ?? 0);
+      totalVolM3 += Number(s.shipment.volume_m3 ?? 0);
+    }
     const sub = tour.subunternehmer;
+    const maxLdm = sub?.max_ldm != null ? Number(sub.max_ldm) : null;
     return computeOverload(
       totalLdm,
       totalKg,
-      sub?.max_ldm != null ? Number(sub.max_ldm) : null,
+      maxLdm,
       sub?.max_gewicht_kg != null ? Number(sub.max_gewicht_kg) : null,
+      totalVolM3,
+      // O-3: maxVol immer aus max_ldm ableiten (FE-Konsistenz). NV
+      // sub.max_volumen_m3 wird hier bewusst NICHT genutzt — sonst
+      // divergiert BE-Overload vom FE-Optimizer (deriveBoxFromLdm).
+      deriveMaxVolM3(maxLdm),
     );
   }
 
@@ -917,15 +932,20 @@ export class NvTourenService {
       }));
       const totalLdm = computeEffectiveLdm(stackShips);
       let totalKg = 0;
+      let totalVolM3 = 0;
       for (const s of t.stops as any[]) {
         totalKg += Number(s.shipment?.weight_kg ?? 0);
+        totalVolM3 += Number(s.shipment?.volume_m3 ?? 0);
       }
       const sub: any = (t as any).subunternehmer;
+      const maxLdm = sub?.max_ldm != null ? Number(sub.max_ldm) : null;
       const overload = computeOverload(
         totalLdm,
         totalKg,
-        sub?.max_ldm != null ? Number(sub.max_ldm) : null,
+        maxLdm,
         sub?.max_gewicht_kg != null ? Number(sub.max_gewicht_kg) : null,
+        totalVolM3,
+        deriveMaxVolM3(maxLdm),
       );
       // T-3.1: tour.risk on-the-fly aus stops.risk_severity.
       let max_score = 0;
@@ -1701,11 +1721,14 @@ export class NvTourenService {
     // B-4: Overload NICHT blockend in batch-stops. Soft-Warnung
     // im Log; assertReadyForDispatchNv (in update()) throwt
     // bei Status-Wechsel auf DISPATCHED.
+    const maxLdm = sub?.max_ldm != null ? Number(sub.max_ldm) : null;
     const overload = computeOverload(
       curLdm,
       curKg,
-      sub?.max_ldm != null ? Number(sub.max_ldm) : null,
+      maxLdm,
       sub?.max_gewicht_kg != null ? Number(sub.max_gewicht_kg) : null,
+      curM3,
+      deriveMaxVolM3(maxLdm),
     );
     if (overload.isOverloaded) {
       this.logger.warn(

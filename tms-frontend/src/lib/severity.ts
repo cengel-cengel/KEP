@@ -87,6 +87,8 @@ export interface TourSeverityInput {
     /** Achsen-Ratios 0..1+; >1 = overloaded. */
     ldm?: number;
     weight?: number;
+    /** O-3: Volumen-Achse (Trigger zusammen mit weight). */
+    vol?: number;
   } | null;
   risk?: {
     max_score?: number | null;

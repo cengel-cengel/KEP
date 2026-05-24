@@ -24,15 +24,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import {
-  AlertTriangle,
-  ArrowRight,
-  Check,
-  Loader2,
-  RotateCcw,
-  Sparkles,
-  X,
-} from 'lucide-react';
+import { ArrowRight, Loader2, Sparkles, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import {
   findSwapPlan,
@@ -41,42 +33,22 @@ import {
   subsetWeightKg,
   type SwapShipment,
 } from '../../lib/nvSwapOptimizer';
+import {
+  countRunning,
+  execSummary,
+  formatDatumShort,
+  targetLabel,
+  type BestTourMatch,
+  type EjectExecutionStatus,
+} from '../../lib/swapShared';
+import {
+  CapacityBar,
+  ExecStatusIcon,
+} from '../shared/SwapModalBits';
 
 interface Props {
   sourceTourId: string;
   onClose: () => void;
-}
-
-/**
- * F2.3.b-1: BestTour-Match Subset (analog NvSwapOptimizerModal).
- * Lokal kopiert um Modal nicht an ShipmentDetailsTab/Page-internals
- * zu koppeln.
- */
-interface BestTourMatch {
-  tour_id: string;
-  mode: 'nv' | 'fv';
-  tour_number?: string | null;
-  score: number;
-  reason?: string;
-  datum?: string | null;
-  subunternehmer_name?: string | null;
-  stops_count?: number | null;
-  last_stop_city?: string | null;
-}
-
-/** F2.3.b-1: Anzeige-Label der Ziel-Tour. */
-function targetLabel(m: BestTourMatch): string {
-  if (m.tour_number) return m.tour_number;
-  if (m.subunternehmer_name) return m.subunternehmer_name;
-  return m.tour_id.slice(0, 8);
-}
-
-function formatDatumShort(iso?: string | null): string | null {
-  if (!iso) return null;
-  const d = iso.length >= 10 ? iso.slice(0, 10) : iso;
-  const parts = d.split('-');
-  if (parts.length !== 3) return null;
-  return `${parts[2]}.${parts[1]}.`;
 }
 
 /* ─── lokale Wire-Types (Subset des FV-Optimize-Response) ─── */
@@ -315,15 +287,6 @@ export default function FvSwapOptimizerModal({
   // F2.3.b-2: Per-Eject-Status-Map. Mirror NvSwapOptimizerModal —
   // dieselben States, dieselbe Sequenz; nur removes-Payload-Form
   // unterscheidet sich (shipmentId statt stopId).
-  type EjectExecutionStatus =
-    | 'idle'
-    | 'no-target'
-    | 'not-in-source'
-    | 'running'
-    | 'ok'
-    | 'source-fail'
-    | 'rollback'
-    | 'limbo';
   const [execStatus, setExecStatus] = useState<
     Map<string, EjectExecutionStatus>
   >(new Map());
@@ -681,137 +644,9 @@ export default function FvSwapOptimizerModal({
 }
 
 /**
- * F2.3.b-2: Per-Eject-Status-Icon. Klein + farbig — sitzt rechts vom
- * Alt-Tour-Label in der Eject-Liste. Identisch zur NV-Variante.
+ * FV-spezifischer FIX-Reason-Summary. Bleibt lokal, weil fixReason
+ * zwischen NV (stamm-first) und FV (tier-first) divergiert.
  */
-function ExecStatusIcon({ status }: { status: string }) {
-  if (status === 'idle') return null;
-  if (status === 'running') {
-    return <Loader2 size={11} className="text-blue-600 animate-spin" />;
-  }
-  if (status === 'ok') {
-    return <Check size={11} className="text-emerald-700" />;
-  }
-  if (status === 'rollback') {
-    return (
-      <span title="Target-Add fehlgeschlagen, Source-Re-Add ok">
-        <RotateCcw size={11} className="text-amber-700" />
-      </span>
-    );
-  }
-  if (status === 'limbo') {
-    return (
-      <span title="Target-Add UND Rollback fehlgeschlagen — Sendung manuell zuordnen!">
-        <AlertTriangle size={11} className="text-red-700" />
-      </span>
-    );
-  }
-  if (status === 'source-fail') {
-    return (
-      <span title="Source-Remove fehlgeschlagen — Sendung blieb in Quelle">
-        <AlertTriangle size={11} className="text-amber-700" />
-      </span>
-    );
-  }
-  if (status === 'not-in-source') {
-    return (
-      <span title="Sendung ist nicht (mehr) in der Source-Tour — uebersprungen">
-        <X size={11} className="text-gray-500" />
-      </span>
-    );
-  }
-  if (status === 'no-target') {
-    return (
-      <span title="Keine Alt-Tour vorhanden — uebersprungen">
-        <X size={11} className="text-gray-400" />
-      </span>
-    );
-  }
-  return null;
-}
-
-function countRunning(
-  status: Map<string, string>,
-  total: number,
-): string {
-  let done = 0;
-  for (const v of status.values()) {
-    if (v !== 'running' && v !== 'idle') done += 1;
-  }
-  return `${done}/${total}`;
-}
-
-function execSummary(status: Map<string, string>): string {
-  let ok = 0;
-  let rollback = 0;
-  let limbo = 0;
-  let skip = 0;
-  for (const v of status.values()) {
-    if (v === 'ok') ok += 1;
-    else if (v === 'rollback') rollback += 1;
-    else if (v === 'limbo') limbo += 1;
-    else if (
-      v === 'no-target' ||
-      v === 'not-in-source' ||
-      v === 'source-fail'
-    )
-      skip += 1;
-  }
-  const parts: string[] = [];
-  if (ok > 0) parts.push(`✓ ${ok} verschoben`);
-  if (rollback > 0) parts.push(`↻ ${rollback} rollback`);
-  if (limbo > 0) parts.push(`⚠ ${limbo} im Limbo`);
-  if (skip > 0) parts.push(`✗ ${skip} übersprungen`);
-  return parts.length > 0 ? parts.join(' · ') : 'Keine Aktion.';
-}
-
-/* ─── kleine Render-Helfer ──────────────────────────────────── */
-
-function CapacityBar({
-  value,
-  max,
-  label,
-  unit,
-  precision = 2,
-}: {
-  value: number;
-  max: number;
-  label: string;
-  unit: string;
-  precision?: number;
-}) {
-  const pct = max > 0 ? (value / max) * 100 : 0;
-  const clamped = Math.min(100, Math.max(0, pct));
-  const over = pct > 100;
-  return (
-    <div>
-      <div className="flex items-baseline justify-between text-xs text-gray-600 mb-1">
-        <span>{label}</span>
-        <span
-          className={
-            over ? 'font-mono font-semibold text-red-700' : 'font-mono'
-          }
-        >
-          {precision === 0
-            ? Math.round(value).toLocaleString('de-DE')
-            : value.toFixed(precision)}{' '}
-          /{' '}
-          {precision === 0
-            ? Math.round(max).toLocaleString('de-DE')
-            : max.toFixed(precision)}{' '}
-          {unit} ({pct.toFixed(0)}%)
-        </span>
-      </div>
-      <div className="h-2 bg-gray-200 rounded overflow-hidden">
-        <div
-          className={`h-full ${over ? 'bg-red-500' : 'bg-emerald-500'}`}
-          style={{ width: `${clamped}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
 function fixListSummary(fix: SwapShipment[]): string {
   const counts = new Map<string, number>();
   for (const s of fix) {

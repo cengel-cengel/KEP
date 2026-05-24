@@ -1,34 +1,44 @@
 /**
- * F2.1 NV-Swap-Optimizer.
+ * F2.1 + O-1 NV-Swap-Optimizer (Vol + Gewicht).
  *
- * Pure-Algorithmus. KEIN UI, KEIN BE-Call, KEIN placePackages — die
- * Effektiv-ldm-Quelle der Wahrheit ist computeStackingLdmMetrics
- * (genau wie die Anzeige im Beladeplan).
+ * Pure-Algorithmus. KEIN UI, KEIN BE-Call, KEIN placePackages.
+ *
+ * O-1-Umstellung (Carlos): Overload = Vol|Gewicht. Score = MAX
+ *   Volumen-Auslastung (Laderaum fuellen). ldm ist als Metrik
+ *   und Constraint RAUS — Volumen ist die natuerliche 3D-
+ *   "alles-gestapelt"-Metrik und damit simpel summierbar.
  *
  * Schritte fuer Caller:
  *   1. Sendungen pro Tour holen + isFixSendung() → split in fix /
- *      swappable.
- *   2. findSwapPlan({ fixShipments, swappableShipments, maxLdm }) →
+ *      swappable. Pro Sendung volumeM3 berechnen (Σ pkg-items
+ *      length×width×height × quantity / 1e6).
+ *   2. findSwapPlan({ fixShipments, swappableShipments,
+ *                     maxVolM3, maxWeightKg }) →
  *      SwapPlan | null (mit Sonderfall-Signal fixOverloaded).
  *   3. SwapPlan im UI bestaetigen lassen + via batch-stops umsetzen
- *      (atomarer Swap-Endpoint existiert NICHT, siehe F2-Phase-0
- *      Befund — 2 sequenzielle Calls mit Best-Effort-Rollback).
+ *      (F2.2.b — atomarer Swap-Endpoint existiert NICHT).
  *
  * Komplexitaet: brute-force 2^n Subsets ueber swappableShipments.
  * Bei n=8 → 256, n=12 → 4096, n=15 → 32768. Caller sollte n
- * begrenzen (z.B. nur eine Tour vs. eine andere Tour, nicht alle
- * Sendungen einer Region).
+ * begrenzen.
  */
-import { computeStackingLdmMetrics } from './loadingLdm';
 import { isOverdue } from './severity';
 
 /**
  * Input-Shape fuer eine Sendung. Felder kommen aus dem
  * /nv-touren/:id/loading-Endpoint (nach F2.0-Erweiterung) +
  * customer.priority_tier (FV-Reuse).
+ *
+ * volumeM3 + weightKg sind die Optimizer-Metriken (O-1). ldm/
+ * isStackable bleiben optional — Caller koennte sie fuer UI-
+ * Anzeige (Eject-Liste) durchreichen, der Algorithmus liest sie
+ * NICHT.
  */
 export interface SwapShipment {
   id: string;
+  volumeM3?: number | null;
+  weightKg?: number | null;
+  /** UI-only Pass-Through (Eject-Liste-Label etc.). */
   ldm?: number | null;
   isStackable?: boolean | null;
   /** Stamm-Kunden-Flag, BE-berechnet (siehe F2-Phase-0). */
@@ -56,17 +66,21 @@ export interface SwapPlan {
   ejectIds: string[];
   /** IDs der unkuendbaren Fixe (Subset von keepIds). */
   fixIds: string[];
-  /** Effektiv-ldm (fix + alle swappable) — Status vor dem Plan. */
-  effLdmBefore: number;
-  /** Effektiv-ldm (fix + bestes feasibles Subset) — Status nach Plan. */
-  effLdmAfter: number;
-  /** Trailer-Kapazitaet als Reference fuer UI-Banner. */
-  maxLdm: number;
+  /** Vol/Gewicht (fix + alle swappable) — Status vor dem Plan. */
+  volBefore: number;
+  weightBefore: number;
+  /** Vol/Gewicht (fix + bestes feasibles Subset) — Status nach Plan. */
+  volAfter: number;
+  weightAfter: number;
+  /** Trailer-Kapazitaeten als Reference fuer UI-Banner. */
+  maxVolM3: number;
+  maxWeightKg: number;
   /**
-   * Sonderfall: schon die Fixe ueberlasten die Tour. Plan setzt
-   * ejectIds=swappableIds (alle nicht-fix raus), effLdmAfter bleibt
-   * > maxLdm — der Caller muss das Banner "Tour ist mit Fixen ueber-
-   * laden — Stammkunden-Liste pruefen" anzeigen.
+   * Sonderfall: schon die Fixe ueberlasten die Tour (Vol oder
+   * Gewicht). Plan setzt ejectIds=swappableIds (alle nicht-fix
+   * raus), volAfter/weightAfter bleiben > Max — der Caller muss
+   * das Banner "Tour ist mit Fixen ueberladen — Stammkunden-Liste
+   * pruefen" anzeigen.
    */
   fixOverloaded?: boolean;
 }
@@ -74,12 +88,14 @@ export interface SwapPlan {
 export interface FindSwapPlanInput {
   fixShipments: SwapShipment[];
   swappableShipments: SwapShipment[];
-  maxLdm: number;
+  maxVolM3: number;
+  maxWeightKg: number;
 }
 
 /**
  * FIX-Erkennung. NV: is_stamm_kunde / overdue / locked / hazmat.
  * FV: + Customer-Tier-Liste ueber opts.fixTiers.
+ * Metrik-unabhaengig — bei O-1 unveraendert.
  */
 export function isFixSendung(
   s: SwapShipment,
@@ -101,61 +117,80 @@ export function isFixSendung(
 }
 
 /**
- * Effektive ldm eines Sendungs-Subsets. Eine Quelle der Wahrheit =
- * computeStackingLdmMetrics (= Beladeplan-Anzeige). maxLdm hier
- * nur fuer normalisierte Rueckgabe — die Funktion liefert nur
- * effectiveUsed, der Caller setzt die Kapazitaet getrennt.
+ * Summe Volumen (m³) eines Sendungs-Subsets. Quelle ist
+ * shipment.volumeM3 das im Caller-Adapter aus den package-items
+ * (Σ l×w×h×qty / 1e6) berechnet wurde.
  */
-export function subsetEffectiveLdm(
-  shipments: SwapShipment[],
-  maxLdm: number,
-): number {
-  const m = computeStackingLdmMetrics(
-    maxLdm > 0 ? maxLdm : 1,
-    shipments.map((s) => ({
-      ldm: s.ldm ?? null,
-      isStackable: s.isStackable ?? null,
-    })),
-  );
-  return m.effectiveUsed;
+export function subsetVolumeM3(shipments: SwapShipment[]): number {
+  let v = 0;
+  for (const s of shipments) {
+    const x = Number(s.volumeM3 ?? 0);
+    if (Number.isFinite(x) && x > 0) v += x;
+  }
+  return v;
 }
 
 /**
- * Brute-force 2^n Subsets. Score: MAX effLdmAfter (Tour voll
- * ausnutzen). Tie-Break: MIN Ejects (so wenig wie moeglich raus).
+ * Summe Gewicht (kg) eines Sendungs-Subsets.
+ */
+export function subsetWeightKg(shipments: SwapShipment[]): number {
+  let w = 0;
+  for (const s of shipments) {
+    const x = Number(s.weightKg ?? 0);
+    if (Number.isFinite(x) && x > 0) w += x;
+  }
+  return w;
+}
+
+/**
+ * Brute-force 2^n Subsets. Score: MAX subsetVolume (Laderaum
+ * fuellen). Tie-Break: MIN Ejects (so wenig wie moeglich raus).
  */
 export function findSwapPlan(input: FindSwapPlanInput): SwapPlan | null {
-  const { fixShipments, swappableShipments, maxLdm } = input;
+  const { fixShipments, swappableShipments, maxVolM3, maxWeightKg } = input;
   const fixIds = fixShipments.map((s) => s.id);
   const swappableIds = swappableShipments.map((s) => s.id);
 
-  const effFix = subsetEffectiveLdm(fixShipments, maxLdm);
-  const effBefore = subsetEffectiveLdm(
-    [...fixShipments, ...swappableShipments],
-    maxLdm,
-  );
+  const volFix = subsetVolumeM3(fixShipments);
+  const weightFix = subsetWeightKg(fixShipments);
+  const volBefore = subsetVolumeM3([...fixShipments, ...swappableShipments]);
+  const weightBefore = subsetWeightKg([
+    ...fixShipments,
+    ...swappableShipments,
+  ]);
 
-  // Kein Swap noetig — Tour ist bereits ≤ Kapazitaet.
-  if (effBefore <= maxLdm + 1e-9) return null;
+  // Kein Swap noetig — Tour ist bereits in beiden Achsen ≤ Kapazitaet.
+  if (
+    volBefore <= maxVolM3 + 1e-9 &&
+    weightBefore <= maxWeightKg + 1e-9
+  ) {
+    return null;
+  }
 
-  // Sonderfall: Fixe allein ueberladen. Plan kommuniziert das
-  // an den Caller (UI zeigt Banner), keine Crash.
-  if (effFix > maxLdm + 1e-9) {
+  // Sonderfall: Fixe allein ueberladen (Vol oder Gewicht).
+  if (
+    volFix > maxVolM3 + 1e-9 ||
+    weightFix > maxWeightKg + 1e-9
+  ) {
     return {
       keepIds: [...fixIds],
       ejectIds: [...swappableIds],
       fixIds,
-      effLdmBefore: effBefore,
-      effLdmAfter: effFix,
-      maxLdm,
+      volBefore,
+      weightBefore,
+      volAfter: volFix,
+      weightAfter: weightFix,
+      maxVolM3,
+      maxWeightKg,
       fixOverloaded: true,
     };
   }
 
   // Brute-force ueber alle 2^n Subsets.
   const n = swappableShipments.length;
-  let bestMask = 0; // {} ist garantiert feasible (effFix ≤ maxLdm).
-  let bestEff = effFix;
+  let bestMask = 0; // {} ist garantiert feasible (fix allein passt).
+  let bestVol = volFix;
+  let bestWeight = weightFix;
   let bestEjectCount = n;
   for (let mask = 0; mask < 1 << n; mask++) {
     const subset: SwapShipment[] = [];
@@ -166,15 +201,19 @@ export function findSwapPlan(input: FindSwapPlanInput): SwapPlan | null {
         keptCount++;
       }
     }
-    const eff = subsetEffectiveLdm([...fixShipments, ...subset], maxLdm);
-    if (eff > maxLdm + 1e-9) continue;
+    const combined = [...fixShipments, ...subset];
+    const v = subsetVolumeM3(combined);
+    const w = subsetWeightKg(combined);
+    if (v > maxVolM3 + 1e-9) continue;
+    if (w > maxWeightKg + 1e-9) continue;
     const ejectCount = n - keptCount;
-    // Score: MAX eff, Tie-Break MIN ejects.
+    // Score: MAX Volumen, Tie-Break MIN ejects.
     if (
-      eff > bestEff + 1e-9 ||
-      (Math.abs(eff - bestEff) < 1e-9 && ejectCount < bestEjectCount)
+      v > bestVol + 1e-9 ||
+      (Math.abs(v - bestVol) < 1e-9 && ejectCount < bestEjectCount)
     ) {
-      bestEff = eff;
+      bestVol = v;
+      bestWeight = w;
       bestEjectCount = ejectCount;
       bestMask = mask;
     }
@@ -194,8 +233,11 @@ export function findSwapPlan(input: FindSwapPlanInput): SwapPlan | null {
     keepIds: [...fixIds, ...keepSwappable],
     ejectIds: ejectSwappable,
     fixIds,
-    effLdmBefore: effBefore,
-    effLdmAfter: bestEff,
-    maxLdm,
+    volBefore,
+    weightBefore,
+    volAfter: bestVol,
+    weightAfter: bestWeight,
+    maxVolM3,
+    maxWeightKg,
   };
 }

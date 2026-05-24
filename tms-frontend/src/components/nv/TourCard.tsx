@@ -13,13 +13,14 @@
  */
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Box, Pencil, Trash2 } from 'lucide-react';
+import { Box, Pencil, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { prefetchNvLoadingTour } from '../../lib/prefetchHelpers';
 import type { NvTourMutableStatus } from '../../lib/nvTourStatus';
 import type { NvTour } from '../../lib/nvTypes';
 import { usePanel } from '../../state/panel';
 import CapacityBars, { type CapacityData } from './CapacityBars';
+import NvSwapOptimizerModal from './NvSwapOptimizerModal';
 
 export default function TourCard({
   tour,
@@ -114,6 +115,8 @@ export default function TourCard({
   }, [tour.stops, tour.total_kosten_eur]);
 
   const [hovered, setHovered] = useState(false);
+  // F2.2.a: Read-Only Swap-Optimizer-Vorschau.
+  const [showSwapModal, setShowSwapModal] = useState(false);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -311,6 +314,16 @@ export default function TourCard({
           >
             <Box size={16} />
           </button>
+          {/* F2.2.a: Tausch-Vorschau (read-only). */}
+          <button
+            onClick={() => setShowSwapModal(true)}
+            onMouseEnter={() => prefetchNvLoadingTour(qc, tour.id)}
+            onFocus={() => prefetchNvLoadingTour(qc, tour.id)}
+            className="text-gray-500 hover:text-blue-600 inline-flex items-center gap-0.5"
+            title="Tausch-Vorschlag generieren"
+          >
+            <Sparkles size={16} />
+          </button>
           <button
             onClick={onOpenKosten}
             className="text-blue-600 hover:text-blue-800"
@@ -334,6 +347,12 @@ export default function TourCard({
       >
         {hovered ? 'Loslassen zum Hinzufügen' : '+ Sendung hierher droppen'}
       </div>
+      {showSwapModal && (
+        <NvSwapOptimizerModal
+          sourceTourId={tour.id}
+          onClose={() => setShowSwapModal(false)}
+        />
+      )}
     </div>
   );
 }

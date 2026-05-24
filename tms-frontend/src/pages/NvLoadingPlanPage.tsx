@@ -45,6 +45,13 @@ export interface NvShipment {
   width_cm?: number | null;
   height_cm?: number | null;
   shipment_package_items: NvPackageItem[];
+  // F2.0: FIX-Kriterien-Felder fuer Swap-Optimizer.
+  customer_id?: string | null;
+  loading_date?: string | null;
+  status?: string | null;
+  has_active_lock?: boolean | null;
+  is_hazmat?: boolean | null;
+  customers?: { priority_tier?: string | null } | null;
 }
 
 export interface NvLoadingDetail {
@@ -52,6 +59,8 @@ export interface NvLoadingDetail {
   datum: string;
   status: string;
   fahrzeug_typ?: string | null;
+  // F2.0: fuer Stamm-Kunden-Set-Lookup im Swap-Optimizer.
+  nv_stamm_tour_id?: string | null;
   nv_stamm_tour?: { code: string; name: string } | null;
   subunternehmer?: {
     id: string;
@@ -65,6 +74,8 @@ export interface NvLoadingDetail {
   stops: Array<{
     id: string;
     position: number;
+    // F2.0: Computed-Flag aus BE (nv_stamm_kunden-Set).
+    is_stamm_kunde?: boolean;
     shipment: NvShipment;
   }>;
 }

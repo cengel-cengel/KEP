@@ -96,8 +96,9 @@ const SHIPMENT_COLORS = [
  *   - Pack-Cursor in Reihen entlang Trailer-Länge (posY)
  *   - Items side-by-side entlang Trailer-Breite (posX)
  *   - Row wechselt wenn nächstes Item posX+widthCm > trailerWidth
- *   - posY-Overflow: package landet bei posY=0 (UI zeigt's
- *     dann am Vorne, user kann via Drag aussortieren)
+ *   - BUG-F-PACK: posY-Overflow → unplaced:true; Caller filtert vor
+ *     3D-Render + zeigt Banner. (Vorher: cursorY wuchs unbounded,
+ *     Pakete durchstiessen Trailer-Heck.)
  */
 /**
  * S-2b: Export für LoadingPlanPanel (workspace-Panel) Wiederverwendung.
@@ -125,18 +126,24 @@ export function flattenPackages(
   const placeAuto = (
     w: number,
     l: number,
-  ): { posX: number; posY: number } => {
+  ): { posX: number; posY: number; unplaced: boolean } => {
     // Neue Reihe wenn aktueller Cursor nicht mehr passt
     if (cursorX + w > trailerWidthCm + 1e-6) {
       cursorY += rowMaxLength + 5;
       cursorX = 0;
       rowMaxLength = 0;
     }
+    // BUG-F-PACK: Wenn aktuelle Reihe Trailer-Heck ueberschreitet,
+    // markieren wir das Paket als unplaced — Caller filtert es vor
+    // dem 3D-Render + zaehlt es im Banner.
+    if (cursorY + l > trailerLengthCm + 1e-6) {
+      return { posX: 0, posY: 0, unplaced: true };
+    }
     const posX = cursorX;
     const posY = cursorY;
     cursorX += w + 5;
     if (l > rowMaxLength) rowMaxLength = l;
-    return { posX, posY };
+    return { posX, posY, unplaced: false };
   };
   for (const stop of tour.stops ?? []) {
     const ship = stop.shipment;
@@ -160,6 +167,7 @@ export function flattenPackages(
         let posX: number;
         let posY: number;
         let posZ: number;
+        let unplaced = false;
         if (useDb) {
           posX = dbPosX as number;
           posY = dbPosY as number;
@@ -169,6 +177,7 @@ export function flattenPackages(
           posX = auto.posX;
           posY = auto.posY;
           posZ = 0;
+          unplaced = auto.unplaced;
         }
         const synthSuffix = qty === 1 ? '' : `:pkg:${q}`;
         out.push({
@@ -183,14 +192,11 @@ export function flattenPackages(
           color,
           isStackable: shipFullyStackable && it.stackable !== false,
           rotationDeg: Number(it.rotation_deg ?? 0) || 0,
+          unplaced,
         });
       }
     }
   }
-  // PosY-Overflow-Warning: falls cursorY weit über trailer hinausragt
-  // bekommt User es trotzdem zu sehen (UI zeigt outside-Items im
-  // Render-Bounds, kann via Drag aussortiert werden).
-  void trailerLengthCm;
   return out;
 }
 
@@ -256,6 +262,17 @@ export default function NvLoadingPlanPage() {
         capacity.lengthCm,
       ),
     [tourQ.data, capacity.widthCm, capacity.lengthCm],
+  );
+
+  // BUG-F-PACK: Render/Drag-Target = nur platzierte Pakete; unplaced
+  // werden im Banner gezaehlt, aber nicht ins 3D-Mesh gereicht.
+  const renderedPackages = useMemo(
+    () => packages.filter((p) => !p.unplaced),
+    [packages],
+  );
+  const unplacedCount = useMemo(
+    () => packages.filter((p) => p.unplaced).length,
+    [packages],
   );
 
   // F1.a/K-L-M-N Kennzahlen: per-Sendung ldm/isStackable aus tour.stops
@@ -379,17 +396,20 @@ export default function NvLoadingPlanPage() {
       insertMode.cancel();
       return;
     }
-    const dragged = packages.find((p) => p.id === draggedId);
+    // BUG-F-PACK: Drag-Targeting nur ueber renderedPackages —
+    // unplaced sitzen alle bei 0/0/0 und wuerden best-target-Suche
+    // verfaelschen.
+    const dragged = renderedPackages.find((p) => p.id === draggedId);
     if (!dragged) {
       insertMode.cancel();
       return;
     }
     const t =
       (targetId &&
-        packages.find((p) => p.id === targetId && p.id !== draggedId)) ||
-      packages
+        renderedPackages.find((p) => p.id === targetId && p.id !== draggedId)) ||
+      renderedPackages
         .filter((p) => p.id !== draggedId)
-        .reduce<typeof packages[number] | null>((best, p) => {
+        .reduce<typeof renderedPackages[number] | null>((best, p) => {
           const center = p.posY + p.lengthCm / 2;
           const dist = Math.abs(center - dropPosY);
           if (!best) return p;
@@ -402,8 +422,10 @@ export default function NvLoadingPlanPage() {
       return;
     }
     // B-2.2: shared Helper für Cascade-Shift mit row-wrap.
+    // BUG-F-PACK: unplaced ausschliessen — Phantom-Pos (0/0/0) wuerde
+    // Cascade-Shift verfaelschen.
     const actions = planNvInsertShift({
-      packages: packages
+      packages: renderedPackages
         .filter((p) => !p.id.includes(':pkg:'))
         .map((p) => ({
           id: p.id,
@@ -624,6 +646,19 @@ export default function NvLoadingPlanPage() {
               </div>
             )}
 
+            {/* BUG-F-PACK Banner — N Pakete physisch nicht plazierbar. */}
+            {unplacedCount > 0 && (
+              <div className="text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded p-2">
+                <div className="font-medium">
+                  ⚠ {unplacedCount} {unplacedCount === 1 ? 'Palette passt' : 'Paletten passen'} physisch nicht in den Trailer
+                </div>
+                <div className="text-xs">
+                  Größeres Fahrzeug wählen oder Tour verkleinern. Die nicht
+                  plazierbaren Pakete werden im 3D-Layout nicht angezeigt.
+                </div>
+              </div>
+            )}
+
             {/* 3D-Canvas — F1.a-Fix-2: Trailer-Box aus capacity (echte
                 Geometrie), nicht aus getVehicleDims-Koffer-7t-Fallback. */}
             <LoadingPlan3D
@@ -632,12 +667,12 @@ export default function NvLoadingPlanPage() {
                 widthCm: capacity.widthCm,
                 heightCm: capacity.heightCm,
               }}
-              packages={packages}
+              packages={renderedPackages}
               onPositionChange={handlePosition}
               insertMode={insertMode.active}
               onInsertAt={handleNvInsertAt}
               onPackageContextMenu={(pkgId, x, y) => {
-                const pkg = packages.find((p) => p.id === pkgId);
+                const pkg = renderedPackages.find((p) => p.id === pkgId);
                 if (!pkg) return;
                 setCtxMenu({
                   pkgId,
@@ -650,16 +685,18 @@ export default function NvLoadingPlanPage() {
             />
 
             {/* F1.a/O Achslast — trailerLength_m aus capacity (echte
-                Box-Laenge, sonst falsche Schwerpunkt-Berechnung). */}
+                Box-Laenge, sonst falsche Schwerpunkt-Berechnung).
+                BUG-F-PACK: nur renderedPackages (unplaced sitzen bei
+                0/0/0 und wuerden Schwerpunkt verfaelschen). */}
             <AxleLoadPanel
-              packages={packages.map((p) => ({
+              packages={renderedPackages.map((p) => ({
                 posY: p.posY,
                 weightKg: Number(p.weightKg) || 0,
               }))}
               vehicleType={vehicle.type}
               trailerLength_m={capacity.lengthCm / 100}
-              groundedCount={packages.filter((p) => p.posZ < 1e-6).length}
-              totalCount={packages.length}
+              groundedCount={renderedPackages.filter((p) => p.posZ < 1e-6).length}
+              totalCount={renderedPackages.length}
             />
           </div>
         )}

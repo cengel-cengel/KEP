@@ -377,6 +377,20 @@ export default function LoadingPlanPage() {
     return v / 1e6;
   }, [vehicleDims]);
 
+  // BUG-F-PACK: Paket-Set fuer 3D-Render + Achslast = nur platzierte.
+  // Unplaced-Pakete passen physisch nicht in Trailer; werden im
+  // Banner gezaehlt + nicht gerendert (sonst Durchdringung). Vol/
+  // Gewicht-Auslastung bleibt auf ALLEN Paketen — sonst verschleiert
+  // die Anzeige genau die Ueberlast, die das Unplaced ausgeloest hat.
+  const renderedPackages = useMemo(
+    () => placedPackages.filter((p) => !p.unplaced),
+    [placedPackages],
+  );
+  const unplacedCount = useMemo(
+    () => placedPackages.filter((p) => p.unplaced).length,
+    [placedPackages],
+  );
+
   const cargoVolM3 = useMemo(() => packagesVolumeCm3(placedPackages) / 1e6, [placedPackages]);
   const totalWeightActive = useMemo(
     () => activeOrder.reduce((sum, s) => sum + (Number(s.weightKg) || 0), 0),
@@ -499,16 +513,21 @@ export default function LoadingPlanPage() {
       //    (Bugfix Teil A: pkg.rotationDeg statt hardcode 0 —
       //     sonst nukes Re-Pack alle Rotationen, die User per
       //     R-Hotkey gesetzt hat.)
+      //    BUG-F-PACK: unplaced NICHT persistieren — sonst landen
+      //    Phantom-Positionen (0/0/0) in der DB.
+      let written = 0;
       for (const pkg of repacked) {
         if (!pkg.dbItemId) continue; // synth-pkgs nicht persistierbar
+        if (pkg.unplaced) continue;
         await api.patch(`/loading/package-item/${pkg.dbItemId}/position`, {
           posXCm: Math.round(pkg.posX),
           posYCm: Math.round(pkg.posY),
           posZCm: Math.round(pkg.posZ),
           rotationDeg: pkg.rotationDeg ?? 0,
         });
+        written += 1;
       }
-      return { count: repacked.length };
+      return { count: written };
     },
     onSuccess: (res) => {
       queryClient.invalidateQueries({
@@ -596,8 +615,10 @@ export default function LoadingPlanPage() {
       return;
     }
     // Falls LP3D keinen target erkannt hat, selbst suchen.
+    // BUG-F-PACK: nur renderedPackages — unplaced sitzen alle bei
+    // (0,0,0) und wuerden findInsertTarget verfaelschen.
     const t =
-      targetId ?? findInsertTarget(placedPackages, dropPosY, draggedId);
+      targetId ?? findInsertTarget(renderedPackages, dropPosY, draggedId);
     if (!t || t === draggedId) {
       // Kein sinnvolles Ziel → Cascade-No-op, normaler Drop-Pfad.
       handlePackagePosition(draggedId, 0, dropPosY, 0);
@@ -606,10 +627,10 @@ export default function LoadingPlanPage() {
     }
     // packages-Reihenfolge in Plan3DPackage[] reordern und re-placen.
     const reordered = computeInsertedOrder(
-      placedPackages.map((p) => ({ id: p.id })),
+      renderedPackages.map((p) => ({ id: p.id })),
       draggedId,
       t,
-    ).map((x) => placedPackages.find((p) => p.id === x.id)!).filter(Boolean);
+    ).map((x) => renderedPackages.find((p) => p.id === x.id)!).filter(Boolean);
     const repacked = placePackages(
       reordered.map((p) => ({
         id: p.id,
@@ -637,21 +658,25 @@ export default function LoadingPlanPage() {
       vehicleDims.heightCm,
     );
     // PATCH alle DB-persisted Items.
+    // BUG-F-PACK: unplaced NICHT persistieren (Phantom-Pos vermeiden).
     void (async () => {
       try {
+        let written = 0;
         for (const pkg of repacked) {
           if (!pkg.dbItemId) continue;
+          if (pkg.unplaced) continue;
           await api.patch(`/loading/package-item/${pkg.dbItemId}/position`, {
             posXCm: Math.round(pkg.posX),
             posYCm: Math.round(pkg.posY),
             posZCm: Math.round(pkg.posZ),
             rotationDeg: pkg.rotationDeg ?? 0,
           });
+          written += 1;
         }
         await queryClient.invalidateQueries({
           queryKey: ['loading', 'optimize', tourId],
         });
-        showToast(`Insert ✓ — ${repacked.length} Items neu positioniert.`);
+        showToast(`Insert ✓ — ${written} Items neu positioniert.`);
       } catch (e) {
         showToast('Insert-Cascade fehlgeschlagen', 'err');
       }
@@ -948,6 +973,18 @@ export default function LoadingPlanPage() {
                   ) : null}
                 </div>
               ) : null}
+              {/* BUG-F-PACK Banner — N Pakete physisch nicht plazierbar. */}
+              {unplacedCount > 0 ? (
+                <div className="text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded p-2">
+                  <div className="font-medium">
+                    ⚠ {unplacedCount} {unplacedCount === 1 ? 'Palette passt' : 'Paletten passen'} physisch nicht in den Trailer
+                  </div>
+                  <div className="text-xs">
+                    Größeres Fahrzeug wählen oder Tour verkleinern. Die nicht
+                    plazierbaren Pakete werden im 3D-Layout nicht angezeigt.
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-4">
@@ -963,7 +1000,7 @@ export default function LoadingPlanPage() {
                     '#0891b2', '#ea580c', '#db2777', '#0f766e', '#7c3aed',
                   ];
                   const shipIdx = new Map<string, number>();
-                  for (const p of placedPackages) {
+                  for (const p of renderedPackages) {
                     if (!shipIdx.has(p.shipmentId)) shipIdx.set(p.shipmentId, shipIdx.size);
                   }
                   return (
@@ -982,7 +1019,7 @@ export default function LoadingPlanPage() {
                           }}
                           disabled={
                             repackOptimalMutation.isPending ||
-                            placedPackages.length === 0
+                            renderedPackages.length === 0
                           }
                           className="text-xs rounded border border-blue-300 bg-blue-50 px-3 py-1 hover:bg-blue-100 disabled:opacity-50 text-blue-700 font-medium"
                           title="Optimaler Stapel-Algorithmus (FFDH mit Carlos-Stack-Rule)"
@@ -1014,7 +1051,7 @@ export default function LoadingPlanPage() {
                         insertMode={insertMode.active}
                         onInsertAt={handleInsertAt}
                         onPackageContextMenu={(pkgId, x, y) => {
-                          const pkg = placedPackages.find((p) => p.id === pkgId);
+                          const pkg = renderedPackages.find((p) => p.id === pkgId);
                           if (!pkg) return;
                           setCtxMenu({
                             shipmentId: pkg.shipmentId,
@@ -1022,7 +1059,7 @@ export default function LoadingPlanPage() {
                             y,
                           });
                         }}
-                        packages={placedPackages.map((p) => ({
+                        packages={renderedPackages.map((p) => ({
                           id: p.id,
                           lengthCm: p.lengthCm,
                           widthCm: p.widthCm,
@@ -1040,14 +1077,14 @@ export default function LoadingPlanPage() {
                         }))}
                       />
                       <AxleLoadPanel
-                        packages={placedPackages.map((p) => ({
+                        packages={renderedPackages.map((p) => ({
                           posY: p.posY,
                           weightKg: p.weightKg,
                         }))}
                         vehicleType={selectedVehicle?.type ?? selectedVehicleType}
                         trailerLength_m={vehicleDims.lengthCm / 100}
-                        groundedCount={placedPackages.filter((p) => p.posZ < 1e-6).length}
-                        totalCount={placedPackages.length}
+                        groundedCount={renderedPackages.filter((p) => p.posZ < 1e-6).length}
+                        totalCount={renderedPackages.length}
                       />
                     </>
                   );

@@ -47,6 +47,12 @@ export interface SharedPlacedPackage {
   /** LP-1: 0/90 Y-Rotation. Nicht vom Pack-Algorithmus gesetzt, aber
    *  als Slot reserviert damit Caller (FV-Page) durchschleifen kann. */
   rotationDeg?: number;
+  /** BUG-F-PACK: Wenn true, passt das Paket physisch nicht in den
+   *  Trailer (Boden + alle Stack-Slots erschoepft). Pos-Werte sind
+   *  in dem Fall undefiniert (0/0/0); Caller filtert vor dem 3D-
+   *  Render + zeigt Banner "N Paletten passen physisch nicht". Bleibt
+   *  optional damit bestehende Stack-Slots-Pfade kein Field setzen. */
+  unplaced?: boolean;
 }
 
 /* ─── interne Bin-Pack-Helfer (file-scope) ─────────────────────── */
@@ -95,7 +101,14 @@ function findPreferredStackSlot(
   const seen = new Set<string>();
   const candidates: { x: number; y: number; posZ: number }[] = [];
   for (const p of placed) {
-    if (p.widthCm !== pw || p.lengthCm !== pl) continue;
+    // BUG-F-PACK FIX 2 — Mischpaletten-Stack:
+    // Oberes Footprint muss <= unteres Footprint sein (kein Ueberhang),
+    // oberes Gewicht <= unteres Gewicht (schwer-unten-leicht-oben).
+    // (Vorher: exakte Footprint-Gleichheit — Mischpaletten landeten
+    // unnoetig auf Boden, Trailer ueberlief.)
+    if (pw > p.widthCm + 1e-6) continue;
+    if (pl > p.lengthCm + 1e-6) continue;
+    if ((pkg.weightKg ?? 0) > (p.weightKg ?? 0) + 1e-6) continue;
     // Basis muss stapelbar sein (Carlos-Regel via canStackOn)
     if (!canStackOn(p, pkg).allowed) continue;
     const key = `${p.posX},${p.posY}`;
@@ -228,14 +241,20 @@ export function placePackages<P extends SharedPackage>(
         localRowMax = 0;
       }
       if (cy + pl > trailerL + 1e-6) {
+        // BUG-F-PACK FIX 1 — Overflow → unplaced statt Eck-Push.
+        // Vorher: alle Excess-Pakete landeten am selben (trailerW-pw,
+        // trailerL-pl, 0)-Punkt + durchdrangen sich. Jetzt markieren
+        // wir sie als unplaced, Caller filtert vor 3D-Render + zeigt
+        // Banner.
         placed.push({
           ...pkg,
           widthCm: pw,
           lengthCm: pl,
           heightCm: ph,
-          posX: Math.max(0, trailerW - pw),
-          posY: Math.max(0, trailerL - pl),
+          posX: 0,
+          posY: 0,
           posZ: 0,
+          unplaced: true,
         });
         currentX = 0;
         currentY = Math.min(trailerL, cy);
@@ -269,14 +288,18 @@ export function placePackages<P extends SharedPackage>(
     }
 
     if (!placedOne) {
+      // BUG-F-PACK FIX 1 — guard-exhausted (200000 Iterations ohne
+      // Slot) → unplaced. Trifft fast nie, aber konsistent mit dem
+      // cy-Overflow-Zweig oben.
       placed.push({
         ...pkg,
         widthCm: pw,
         lengthCm: pl,
         heightCm: ph,
-        posX: Math.max(0, trailerW - pw),
-        posY: Math.max(0, trailerL - pl),
+        posX: 0,
+        posY: 0,
         posZ: 0,
+        unplaced: true,
       });
     }
   }

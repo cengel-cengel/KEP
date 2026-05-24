@@ -58,6 +58,11 @@ export type Plan3DPackage = {
   isStackable?: boolean;
   /** LP-1: 0 oder 90 (Y-axis rotation, swap length↔width). */
   rotationDeg?: number;
+  /** BUG-F-PACK: Wenn true, passt das Paket nicht in den Trailer.
+   *  Caller filtert pre-Render — kommt nie hier an, aber Type-Slot
+   *  bleibt damit Caller die Quelle (placePackages-Output) 1:1
+   *  durchschleifen kann ohne Type-Cast. */
+  unplaced?: boolean;
 };
 
 interface Props {

@@ -12,7 +12,7 @@
  * Modal ist rein read-only Vorschau; Disponent kann Plan abnicken
  * oder schliessen.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   useMutation,
   useQueries,
@@ -40,6 +40,7 @@ import {
   EjectTargetSelector,
   ExecStatusIcon,
   type EjectTargetSelectorValue,
+  type NewTourForm,
   type TourOption,
 } from '../shared/SwapModalBits';
 import type { NvLoadingDetail } from '../../pages/NvLoadingPlanPage';
@@ -300,8 +301,48 @@ export default function NvSwapOptimizerModal({
       });
   }, [toursQ.data, sourceTourId]);
 
-  // Ausfuehrbar: best mit Target, pool immer, manual mit gesetzter
-  // manualTourId.
+  // Phase 3: Stamm-Touren-Liste fuer "Neue Tour"-Form (NV braucht
+  // nv_stamm_tour_id als Pflicht-Feld, FV nicht).
+  type NvStammLite = { id: string; code?: string | null; name?: string | null };
+  const stammQ = useQuery<NvStammLite[]>({
+    queryKey: ['nv-stamm-touren'],
+    queryFn: async () =>
+      (await api.get<NvStammLite[]>('/nv-stamm-touren')).data,
+    staleTime: 5 * 60_000,
+  });
+
+  // Phase 3: Gemeinsame "Neue Tour"-Form. Defaults aus Source-Tour
+  // (Q1 Stamm=Source, Q2 Datum=Source). Wird einmalig beim ersten
+  // Render mit Source-Daten initialisiert.
+  const [groupNewForm, setGroupNewForm] = useState<NewTourForm>({
+    stammTourId: null,
+    datum: null,
+  });
+  useEffect(() => {
+    if (!tourQ.data) return;
+    setGroupNewForm((prev) => ({
+      stammTourId: prev.stammTourId ?? tourQ.data?.nv_stamm_tour_id ?? null,
+      datum:
+        prev.datum ??
+        (tourQ.data?.datum
+          ? tourQ.data.datum.slice(0, 10)
+          : new Date().toISOString().slice(0, 10)),
+    }));
+  }, [tourQ.data]);
+
+  /**
+   * Form-Validierung fuer NV: stamm + datum Pflicht.
+   * Liefert die effektive Form (group oder per-eject), falls valide.
+   */
+  function effectiveNewForm(id: string): NewTourForm | null {
+    const v = targetFor(id);
+    if (v.kind !== 'new') return null;
+    const f = v.newIndividual ? (v.newForm ?? {}) : groupNewForm;
+    if (!f.stammTourId || !f.datum) return null;
+    return f;
+  }
+
+  // Ausfuehrbar: best+target / pool / manual+id / new+valider Form.
   const executableCount = useMemo(() => {
     let n = 0;
     for (const id of ejectIds) {
@@ -309,26 +350,94 @@ export default function NvSwapOptimizerModal({
       if (v.kind === 'pool') n += 1;
       else if (v.kind === 'manual' && v.manualTourId) n += 1;
       else if (v.kind === 'best' && targetByShipment.get(id)?.target) n += 1;
+      else if (v.kind === 'new' && effectiveNewForm(id)) n += 1;
     }
     return n;
-  // targetFor liest aus targetMap — Dependency reicht.
+  // targetFor + effectiveNewForm lesen aus targetMap/groupNewForm.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ejectIds, targetByShipment, targetMap]);
+  }, [ejectIds, targetByShipment, targetMap, groupNewForm]);
+
+  /** Phase 3 Banner-Counter: erfolgreich erstellte Touren. */
+  const [createdTourCount, setCreatedTourCount] = useState(0);
+
+  /** True wenn mind. 1 Eject auf "neue Gruppen-Tour" eingestellt ist
+   *  (= kind='new' + !newIndividual). Steuert Sichtbarkeit der
+   *  Gruppen-Form. */
+  const hasGroupNew = useMemo(
+    () =>
+      ejectIds.some((id) => {
+        const v = targetFor(id);
+        return v.kind === 'new' && !v.newIndividual;
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ejectIds, targetMap],
+  );
 
   const qc = useQueryClient();
   const executeMut = useMutation({
     mutationFn: async () => {
       const next = new Map<string, EjectExecutionStatus>();
+
+      // Phase 3 PRE-STEP: Neue Touren anlegen (1× Gruppen-Tour wenn
+      // ≥1 Gruppen-Eject + 1× pro 'eigen'-Eject). newTourIdMap mappt
+      // ejectId → newly created tourId.
+      const newTourIdMap = new Map<string, string>();
+      const failedCreateEjects = new Set<string>();
+      let createdCount = 0;
+      // Pre-Step A: Gruppen-Tour (gemeinsam fuer alle non-individual)
+      const groupEjects = ejectIds.filter((id) => {
+        const v = targetFor(id);
+        return v.kind === 'new' && !v.newIndividual && effectiveNewForm(id);
+      });
+      if (groupEjects.length > 0 && groupNewForm.stammTourId && groupNewForm.datum) {
+        try {
+          const { data: newTour } = await api.post<{ id: string }>(
+            '/nv-touren',
+            {
+              nv_stamm_tour_id: groupNewForm.stammTourId,
+              datum: groupNewForm.datum,
+            },
+          );
+          createdCount += 1;
+          for (const id of groupEjects) newTourIdMap.set(id, newTour.id);
+        } catch {
+          for (const id of groupEjects) failedCreateEjects.add(id);
+        }
+      }
+      // Pre-Step B: pro 'eigen'-Eject einzelne Tour.
+      for (const ejectId of ejectIds) {
+        const v = targetFor(ejectId);
+        if (v.kind !== 'new' || !v.newIndividual) continue;
+        const f = v.newForm ?? {};
+        if (!f.stammTourId || !f.datum) {
+          failedCreateEjects.add(ejectId);
+          continue;
+        }
+        try {
+          const { data: newTour } = await api.post<{ id: string }>(
+            '/nv-touren',
+            { nv_stamm_tour_id: f.stammTourId, datum: f.datum },
+          );
+          createdCount += 1;
+          newTourIdMap.set(ejectId, newTour.id);
+        } catch {
+          failedCreateEjects.add(ejectId);
+        }
+      }
+      setCreatedTourCount(createdCount);
+
       for (const ejectId of ejectIds) {
         const sel = targetFor(ejectId);
         const t = targetByShipment.get(ejectId);
-        // Phase 2: Ziel-Tour pro Modus bestimmen.
+        // Phase 2/3: Ziel-Tour pro Modus bestimmen.
         let targetTourId: string | null = null;
         if (sel.kind === 'best') targetTourId = t?.target?.tour_id ?? null;
         else if (sel.kind === 'manual') targetTourId = sel.manualTourId ?? null;
+        else if (sel.kind === 'new') targetTourId = newTourIdMap.get(ejectId) ?? null;
         // pool → kein Target
 
         if (sel.kind !== 'pool' && !targetTourId) {
+          // Create-Fail oder kein Auto-Match: skip.
           next.set(ejectId, 'no-target');
           setExecStatus(new Map(next));
           continue;
@@ -366,8 +475,8 @@ export default function NvSwapOptimizerModal({
           continue;
         }
 
-        // Step 2: Target-Add (kind='best' best-match ODER kind='manual'
-        // user-gewaehlt). Fail → Rollback-Versuch.
+        // Step 2: Target-Add (kind='best' / 'manual' / 'new' →
+        // targetTourId schon bestimmt). Fail → Rollback-Versuch.
         try {
           await api.post(
             `/nv-touren/${targetTourId}/batch-stops`,
@@ -381,6 +490,15 @@ export default function NvSwapOptimizerModal({
               removes: [],
             });
             next.set(ejectId, 'rollback');
+            // Q6 Cleanup: Wenn die neue Tour wegen unserem Eject
+            // entstand und jetzt leer ist, DELETE sie wieder.
+            if (sel.kind === 'new' && sel.newIndividual) {
+              try {
+                await api.delete(`/nv-touren/${targetTourId}`);
+              } catch {
+                /* Cleanup-best-effort; leere Tour bleibt zur Not. */
+              }
+            }
           } catch {
             next.set(ejectId, 'limbo');
           }
@@ -534,6 +652,60 @@ export default function NvSwapOptimizerModal({
                     </div>
                   </div>
 
+                  {/* Phase 3: Gemeinsame Neue-Tour-Form. Nur sichtbar
+                      wenn ≥1 Eject auf 'new' + nicht 'eigen' steht.
+                      Stamm (Default Source) + Datum (Default Source). */}
+                  {hasGroupNew && (
+                    <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 space-y-1.5">
+                      <div className="text-[11px] font-semibold text-emerald-900 inline-flex items-center gap-1">
+                        ✨ Neue Gruppen-Tour
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px]">
+                        <label className="flex items-center gap-1">
+                          <span className="text-emerald-900">Stamm:</span>
+                          <select
+                            value={groupNewForm.stammTourId ?? ''}
+                            disabled={confirmStep !== 'idle'}
+                            onChange={(e) =>
+                              setGroupNewForm((p) => ({
+                                ...p,
+                                stammTourId: e.target.value || null,
+                              }))
+                            }
+                            className="border border-emerald-300 rounded bg-white px-1 py-0.5 max-w-[10rem]"
+                          >
+                            <option value="">— waehlen —</option>
+                            {(stammQ.data ?? []).map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.code ?? s.name ?? s.id.slice(0, 8)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="flex items-center gap-1">
+                          <span className="text-emerald-900">Datum:</span>
+                          <input
+                            type="date"
+                            value={groupNewForm.datum ?? ''}
+                            disabled={confirmStep !== 'idle'}
+                            onChange={(e) =>
+                              setGroupNewForm((p) => ({
+                                ...p,
+                                datum: e.target.value || null,
+                              }))
+                            }
+                            className="border border-emerald-300 rounded bg-white px-1 py-0.5"
+                          />
+                        </label>
+                      </div>
+                      {(!groupNewForm.stammTourId || !groupNewForm.datum) && (
+                        <div className="text-[10px] text-amber-700">
+                          Stamm + Datum sind Pflicht — bitte beide setzen.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {plan.ejectIds.length > 0 && (
                     <div>
                       <div className="text-xs uppercase text-gray-500 font-semibold mb-1">
@@ -543,42 +715,121 @@ export default function NvSwapOptimizerModal({
                         {plan.ejectIds.map((id) => {
                           const s = swappableShipments.find((x) => x.id === id);
                           const t = targetByShipment.get(id);
+                          const sel = targetFor(id);
                           return (
                             <div
                               key={id}
-                              className="flex items-center gap-2 px-2 py-1.5 text-xs"
+                              className="flex flex-col gap-1 px-2 py-1.5 text-xs"
                             >
-                              <span className="font-mono">
-                                {shipmentNumberById.get(id) ?? id.slice(0, 8)}
-                              </span>
-                              <span className="text-gray-500">
-                                ·{' '}
-                                {s?.volumeM3 != null
-                                  ? `${Number(s.volumeM3).toFixed(2)} m³`
-                                  : '— m³'}
-                                {' · '}
-                                {s?.weightKg != null
-                                  ? `${Math.round(Number(s.weightKg)).toLocaleString('de-DE')} kg`
-                                  : '— kg'}
-                              </span>
-                              <span className="ml-auto inline-flex items-center gap-1">
-                                <ArrowRight size={11} className="text-gray-400" />
-                                {/* Phase 2: 3-Modi-Selector (Auto / andere
-                                    Tour / Dispotopf). Vor Execute aktiv;
-                                    waehrend/nach Execute disabled. */}
-                                <EjectTargetSelector
-                                  value={targetFor(id)}
-                                  bestMatch={t?.target ?? null}
-                                  bestMatchLoading={t?.isLoading}
-                                  tours={manualTourOptions}
-                                  disabled={confirmStep !== 'idle'}
-                                  onChange={(v) => setTargetFor(id, v)}
-                                />
-                                {/* F2.2.b-2: Per-Zeile-Execution-Status. */}
-                                <ExecStatusIcon
-                                  status={execStatus.get(id) ?? 'idle'}
-                                />
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono">
+                                  {shipmentNumberById.get(id) ?? id.slice(0, 8)}
+                                </span>
+                                <span className="text-gray-500">
+                                  ·{' '}
+                                  {s?.volumeM3 != null
+                                    ? `${Number(s.volumeM3).toFixed(2)} m³`
+                                    : '— m³'}
+                                  {' · '}
+                                  {s?.weightKg != null
+                                    ? `${Math.round(Number(s.weightKg)).toLocaleString('de-DE')} kg`
+                                    : '— kg'}
+                                </span>
+                                <span className="ml-auto inline-flex items-center gap-1">
+                                  <ArrowRight size={11} className="text-gray-400" />
+                                  <EjectTargetSelector
+                                    value={sel}
+                                    bestMatch={t?.target ?? null}
+                                    bestMatchLoading={t?.isLoading}
+                                    tours={manualTourOptions}
+                                    disabled={confirmStep !== 'idle'}
+                                    onChange={(v) => setTargetFor(id, v)}
+                                  />
+                                  {/* Phase 3: "↗ eigene Tour" Toggle nur
+                                      sichtbar bei kind='new'. */}
+                                  {sel.kind === 'new' && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setTargetFor(id, {
+                                          ...sel,
+                                          newIndividual: !sel.newIndividual,
+                                          // Bei Wechsel auf 'eigen' eigene
+                                          // Form mit Group-Defaults vorladen.
+                                          newForm: !sel.newIndividual
+                                            ? { ...groupNewForm }
+                                            : sel.newForm,
+                                        })
+                                      }
+                                      disabled={confirmStep !== 'idle'}
+                                      title={
+                                        sel.newIndividual
+                                          ? 'Zurueck in Gruppen-Tour'
+                                          : 'Eigene Tour fuer diese Sendung'
+                                      }
+                                      className={`text-[10px] px-1 py-0.5 rounded border ${
+                                        sel.newIndividual
+                                          ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                                          : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
+                                      }`}
+                                    >
+                                      ↗ eigen
+                                    </button>
+                                  )}
+                                  <ExecStatusIcon
+                                    status={execStatus.get(id) ?? 'idle'}
+                                  />
+                                </span>
+                              </div>
+                              {/* Phase 3: Eigene Form (inline) wenn
+                                  newIndividual aktiv. */}
+                              {sel.kind === 'new' && sel.newIndividual && (
+                                <div className="ml-6 flex items-center gap-2 text-[10px] text-gray-700">
+                                  <label className="flex items-center gap-1">
+                                    <span>Stamm:</span>
+                                    <select
+                                      value={sel.newForm?.stammTourId ?? ''}
+                                      disabled={confirmStep !== 'idle'}
+                                      onChange={(e) =>
+                                        setTargetFor(id, {
+                                          ...sel,
+                                          newForm: {
+                                            ...(sel.newForm ?? {}),
+                                            stammTourId:
+                                              e.target.value || null,
+                                          },
+                                        })
+                                      }
+                                      className="border border-gray-300 rounded bg-white px-1 py-0.5 max-w-[8rem]"
+                                    >
+                                      <option value="">—</option>
+                                      {(stammQ.data ?? []).map((sx) => (
+                                        <option key={sx.id} value={sx.id}>
+                                          {sx.code ?? sx.id.slice(0, 8)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="flex items-center gap-1">
+                                    <span>Datum:</span>
+                                    <input
+                                      type="date"
+                                      value={sel.newForm?.datum ?? ''}
+                                      disabled={confirmStep !== 'idle'}
+                                      onChange={(e) =>
+                                        setTargetFor(id, {
+                                          ...sel,
+                                          newForm: {
+                                            ...(sel.newForm ?? {}),
+                                            datum: e.target.value || null,
+                                          },
+                                        })
+                                      }
+                                      className="border border-gray-300 rounded bg-white px-1 py-0.5"
+                                    />
+                                  </label>
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -609,7 +860,7 @@ export default function NvSwapOptimizerModal({
           {/* F2.2.b-2: Done-Banner-Hinweis, wenn Execute durch ist. */}
           {confirmStep === 'done' && (
             <span className="text-xs text-gray-600 flex-1">
-              {execSummary(execStatus)}
+              {execSummary(execStatus, createdTourCount)}
             </span>
           )}
           {/* Inline-Confirm-Hinweis vor dem zweiten Klick. */}

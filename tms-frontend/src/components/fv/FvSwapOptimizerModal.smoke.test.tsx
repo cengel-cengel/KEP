@@ -132,12 +132,18 @@ vi.mock('../../lib/api', () => {
       subcontractors: { name: 'Sub-99' },
     },
   ];
+  // Phase 3: Subcontractors fuer Neue-Tour-Form.
+  const mockSubs = [
+    { id: 'sub-1', name: 'Sub Mueller' },
+    { id: 'sub-2', name: 'Sub Schmidt' },
+  ];
   return {
     api: {
       // URL-aware:
-      //  /best-match → mockBestMatch (Auto-Ziel da)
-      //  /tours      → mockFvTouren (Phase-2 Manual-Picker)
-      //  default     → mockOptimize (Source-Tour-Detail)
+      //  /best-match     → mockBestMatch (Auto-Ziel da)
+      //  /tours          → mockFvTouren (Phase-2 Manual-Picker)
+      //  /subcontractors → mockSubs (Phase 3 Neue-Tour-Sub-Dropdown)
+      //  default         → mockOptimize (Source-Tour-Detail)
       get: vi.fn((url: string) => {
         if (typeof url === 'string' && url.includes('/best-match')) {
           return Promise.resolve({ data: mockBestMatch });
@@ -145,11 +151,19 @@ vi.mock('../../lib/api', () => {
         if (typeof url === 'string' && url === '/tours') {
           return Promise.resolve({ data: mockFvTouren });
         }
+        if (typeof url === 'string' && url === '/subcontractors') {
+          return Promise.resolve({ data: mockSubs });
+        }
         return Promise.resolve({ data: mockOptimize });
       }),
-      // F2.3.b-2: post-Mock NUR fuer Type-Surface — Smoke-Test
-      // klickt KEIN Ausfuehren, also wird's hier nie aufgerufen.
-      post: vi.fn(() => Promise.resolve({ data: { ok: true } })),
+      // Phase 3: POST /tours → neue Tour. batch-stops → ok.
+      post: vi.fn((url: string) => {
+        if (typeof url === 'string' && url === '/tours') {
+          return Promise.resolve({ data: { id: 'new-tour-1' } });
+        }
+        return Promise.resolve({ data: { ok: true } });
+      }),
+      delete: vi.fn().mockResolvedValue({ data: { ok: true } }),
     },
     AUTH_TOKEN_KEY: 'tms_token',
   };
@@ -245,6 +259,40 @@ describe('FvSwapOptimizerModal — smoke', () => {
     const execBtn = await findByRole('button', {
       name: /Ausführen \(\d+\)/,
     });
+    expect(execBtn).toBeTruthy();
+  });
+
+  it('Phase 3: "Neue Tour"-Auswahl zeigt Gruppen-Form (Datum + Sub)', async () => {
+    const { findAllByTitle, findByText } = render(
+      <Wrapper>
+        <FvSwapOptimizerModal
+          sourceTourId="11111111-2222-3333-4444-555555555555"
+          onClose={() => {}}
+        />
+      </Wrapper>,
+    );
+    const selects = await findAllByTitle(/Ziel der Sendung waehlen/);
+    fireEvent.change(selects[0], { target: { value: '__new__' } });
+    await findByText(/Neue Gruppen-Tour/);
+    // Default-Datum (heute) gesetzt → executableCount > 0.
+    const execBtn = await findByText(/Ausführen \(\d+\)/);
+    expect(execBtn).toBeTruthy();
+  });
+
+  it('Phase 3: "↗ eigen"-Toggle zeigt inline Form fuer einzelnen Eject', async () => {
+    const { findAllByTitle, findByText, findByTitle } = render(
+      <Wrapper>
+        <FvSwapOptimizerModal
+          sourceTourId="11111111-2222-3333-4444-555555555555"
+          onClose={() => {}}
+        />
+      </Wrapper>,
+    );
+    const selects = await findAllByTitle(/Ziel der Sendung waehlen/);
+    fireEvent.change(selects[0], { target: { value: '__new__' } });
+    const eigenBtn = await findByTitle(/Eigene Tour fuer diese Sendung/);
+    fireEvent.click(eigenBtn);
+    const execBtn = await findByText(/Ausführen \(\d+\)/);
     expect(execBtn).toBeTruthy();
   });
 });

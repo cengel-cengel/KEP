@@ -138,20 +138,23 @@ export function CapacityBar({
 /**
  * Phase 2: Eject-Ziel-Selektor pro Eject-Row.
  *
- * Drei Modi:
+ * Vier Modi:
  *   · 'best'   Auto-Ziel = best-match-Vorschlag (BestTourMatch)
  *   · 'manual' explizit gewaehlte Tour aus der `tours`-Liste
+ *   · 'new'    Neue Tour anlegen (Phase 3) — gemeinsame Form fuer
+ *              alle 'new'-Ejects mit !newIndividual, sonst eigene
+ *              Form per Eject.
  *   · 'pool'   Dispotopf — Source-Remove ohne Target-Add (Phase 1)
  *
  * Encoding ueber native <select>-value:
  *   '__best__' → kind='best'
+ *   '__new__'  → kind='new'
  *   '__pool__' → kind='pool'
  *   UUID       → kind='manual', manualTourId=UUID
  *
  * tours-Liste wird vom Parent geliefert (NV-/FV-spezifisch gefiltert
  * + transformiert) — Selector kennt KEINE Mode-Logik. capacityHint
- * ist optional (FV-findAll liefert noch keinen overload — dort
- * einfach leer lassen).
+ * ist optional.
  */
 export interface TourOption {
   id: string;
@@ -161,12 +164,28 @@ export interface TourOption {
   capacityHint?: string;
 }
 
-export type EjectTargetKind = 'best' | 'pool' | 'manual';
+export type EjectTargetKind = 'best' | 'pool' | 'manual' | 'new';
+
+/**
+ * Form-Daten fuer eine neue Tour. Felder mode-spezifisch:
+ *   NV: stammTourId + datum  (Pflicht beide)
+ *   FV: datum (+ optional subcontractorId)
+ */
+export interface NewTourForm {
+  stammTourId?: string | null;
+  datum?: string | null;
+  subcontractorId?: string | null;
+}
 
 export interface EjectTargetSelectorValue {
   kind: EjectTargetKind;
   /** Nur relevant wenn kind='manual'. */
   manualTourId?: string | null;
+  /** Phase 3: kind='new' + true → Eject bekommt EIGENE Tour
+   *  (statt der gemeinsamen Gruppen-Tour). Form-Daten in newForm. */
+  newIndividual?: boolean;
+  /** Phase 3: Form-Daten der eigenen Tour (nur wenn newIndividual). */
+  newForm?: NewTourForm;
 }
 
 export function EjectTargetSelector({
@@ -211,6 +230,10 @@ export function EjectTargetSelector({
           onChange({ kind: 'best', manualTourId: null });
         } else if (v === '__pool__') {
           onChange({ kind: 'pool', manualTourId: null });
+        } else if (v === '__new__') {
+          // Phase 3: kind='new' default in Gruppen-Modus
+          // (newIndividual=undefined → Parent verwendet group-Form).
+          onChange({ kind: 'new', manualTourId: null });
         } else {
           onChange({ kind: 'manual', manualTourId: v });
         }
@@ -229,6 +252,7 @@ export function EjectTargetSelector({
           ))}
         </optgroup>
       )}
+      <option value="__new__">✨ Neue Tour</option>
       <option value="__pool__">↓ Dispotopf</option>
     </select>
   );

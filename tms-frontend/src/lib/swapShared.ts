@@ -85,14 +85,16 @@ export function countRunning(
 }
 
 /**
- * Done-Banner-Summary "✓ N verschoben · ⬇ N Dispotopf · ↻ N rollback
- *  · ⚠ N im Limbo · ✗ N übersprungen".
+ * Done-Banner-Summary "✓ N verschoben · ✨ M Tour(en) · ⬇ N Dispotopf
+ *  · ↻ N rollback · ⚠ N im Limbo · ✗ N übersprungen".
  *
  * Phase-1: 'pool' (Dispotopf — Source-Remove ohne Target-Add) bekommt
  * eigenen Bucket. skip = no-target | not-in-source | source-fail.
+ * Phase-3: optional newTourCount (Anzahl angelegter neuer Touren).
  */
 export function execSummary(
   status: Map<string, EjectExecutionStatus>,
+  newTourCount?: number,
 ): string {
   let ok = 0;
   let pool = 0;
@@ -113,6 +115,9 @@ export function execSummary(
   }
   const parts: string[] = [];
   if (ok > 0) parts.push(`✓ ${ok} verschoben`);
+  if (newTourCount && newTourCount > 0) {
+    parts.push(`✨ ${newTourCount} neue Tour${newTourCount === 1 ? '' : 'en'}`);
+  }
   if (pool > 0) parts.push(`⬇ ${pool} Dispotopf`);
   if (rollback > 0) parts.push(`↻ ${rollback} rollback`);
   if (limbo > 0) parts.push(`⚠ ${limbo} im Limbo`);

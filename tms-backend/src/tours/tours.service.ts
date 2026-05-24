@@ -131,7 +131,14 @@ export class ToursService {
         },
         shipments: {
           where: { deleted_at: null },
-          select: { id: true, ldm: true },
+          select: {
+            id: true,
+            ldm: true,
+            weight_kg: true,
+            volume_m3: true,
+            height_cm: true,
+            shipment_package_items: { select: { stackable: true } },
+          },
         },
       },
       orderBy: [{ tour_date: 'asc' }, { created_at: 'asc' }],
@@ -160,10 +167,38 @@ export class ToursService {
         if (f?.tour_id) autoTourIds.add(f.tour_id);
       }
     }
-    const enriched = rows.map((t) => ({
-      ...t,
-      auto_consolidated: autoTourIds.has(t.id),
-    }));
+    const enriched = rows.map((t) => {
+      // Phase 2.1: overload on-the-fly (analog NV-augmented-loop).
+      // FV-Manual-Picker im Swap-Modal liest tour.overload fuer
+      // capacityHint pro Option.
+      const stackShips = (t.shipments as any[]).map((s) => ({
+        ldm: Number(s.ldm ?? 0),
+        height_cm: Number(s.height_cm ?? 0),
+        weight_kg: Number(s.weight_kg ?? 0),
+        stackable: isShipmentFullyStackable(s.shipment_package_items ?? []),
+      }));
+      const totalLdm = computeEffectiveLdm(stackShips);
+      let totalKg = 0;
+      let totalVolM3 = 0;
+      for (const s of t.shipments as any[]) {
+        totalKg += Number(s.weight_kg ?? 0);
+        totalVolM3 += Number(s.volume_m3 ?? 0);
+      }
+      const maxLdm = t.max_ldm != null ? Number(t.max_ldm) : null;
+      const overload = computeOverload(
+        totalLdm,
+        totalKg,
+        maxLdm,
+        t.max_weight_kg != null ? Number(t.max_weight_kg) : null,
+        totalVolM3,
+        deriveMaxVolM3(maxLdm),
+      );
+      return {
+        ...t,
+        auto_consolidated: autoTourIds.has(t.id),
+        overload,
+      };
+    });
     return this.locks.enrichToursWithReleaseBlockInfo(enriched as any);
   }
 

@@ -124,6 +124,20 @@ describe('execSummary', () => {
     expect(execSummary(s)).toBe('⬇ 2 Dispotopf');
   });
 
+  it('Phase 3: newTourCount erweitert Banner um "✨ M Tour(en)"', () => {
+    const s = status([
+      ['a', 'ok'],
+      ['b', 'ok'],
+    ]);
+    expect(execSummary(s, 2)).toBe('✓ 2 verschoben · ✨ 2 neue Touren');
+    expect(execSummary(s, 1)).toBe('✓ 2 verschoben · ✨ 1 neue Tour');
+  });
+
+  it('newTourCount=0 → nicht im Banner', () => {
+    const s = status([['a', 'ok']]);
+    expect(execSummary(s, 0)).toBe('✓ 1 verschoben');
+  });
+
   it('laesst leere Buckets weg', () => {
     const s = status([
       ['a', 'ok'],

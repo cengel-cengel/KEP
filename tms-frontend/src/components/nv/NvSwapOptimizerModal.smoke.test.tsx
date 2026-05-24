@@ -156,12 +156,18 @@ vi.mock('../../lib/api', () => {
       nv_stamm_tour: { code: 'NV-X' },
     },
   ];
+  // Phase 3: Stamm-Touren fuer Neue-Tour-Form-Dropdown.
+  const mockNvStammTouren = [
+    { id: 'stamm-1', code: 'NV-A', name: 'A-Runde' },
+    { id: 'stamm-2', code: 'NV-B', name: 'B-Runde' },
+  ];
   return {
     api: {
       // URL-aware:
-      //  /best-match → leeres Array (kein Auto-Ziel; Test toggelt manuell)
-      //  /nv-touren  → Liste fuer Manual-Picker
-      //  default     → loading-Detail
+      //  /best-match       → leeres Array (kein Auto-Ziel; Test toggelt manuell)
+      //  /nv-touren        → Liste fuer Manual-Picker
+      //  /nv-stamm-touren  → Liste fuer Neue-Tour-Form (Phase 3)
+      //  default           → loading-Detail
       get: vi.fn((url: string) => {
         if (typeof url === 'string' && url.includes('/best-match')) {
           return Promise.resolve({ data: [] });
@@ -169,13 +175,24 @@ vi.mock('../../lib/api', () => {
         if (typeof url === 'string' && url === '/nv-touren') {
           return Promise.resolve({ data: mockNvTouren });
         }
+        if (typeof url === 'string' && url === '/nv-stamm-touren') {
+          return Promise.resolve({ data: mockNvStammTouren });
+        }
         return Promise.resolve({ data: mockLoadingDetail });
       }),
       // F2.2.b-2: batch-stops-Calls beim Execute. Smoke triggert
-      // den Pfad NICHT (kein "Ausfuehren"-Klick), aber api.post muss
-      // im Mock-Surface existieren damit Modal-Component-Import nicht
-      // crash.
-      post: vi.fn().mockResolvedValue({ data: { ok: true } }),
+      // den Pfad NICHT (kein "Ausfuehren"-Klick fuer Phase-1/2),
+      // aber api.post muss im Mock-Surface existieren damit Modal-
+      // Component-Import nicht crash. Phase 3 testet POST-Aufrufe
+      // via spy: api.post wird mit createdTour-Stub gewrappt.
+      post: vi.fn((url: string) => {
+        // POST /nv-touren → Mock-Tour zurueck (Phase 3 create-tour).
+        if (typeof url === 'string' && url === '/nv-touren') {
+          return Promise.resolve({ data: { id: 'new-tour-1' } });
+        }
+        return Promise.resolve({ data: { ok: true } });
+      }),
+      delete: vi.fn().mockResolvedValue({ data: { ok: true } }),
     },
     AUTH_TOKEN_KEY: 'tms_token',
   };
@@ -247,6 +264,40 @@ describe('NvSwapOptimizerModal — smoke', () => {
     const execBtn = await findByRole('button', {
       name: /Ausführen \(\d+\)/,
     });
+    expect(execBtn).toBeTruthy();
+  });
+
+  it('Phase 3: "Neue Tour"-Auswahl zeigt Gruppen-Form (Stamm + Datum)', async () => {
+    // Beide Ejects auf 'new' → 1 Gruppen-Form (Stamm + Datum) wird
+    // sichtbar. Default-Stamm = Source-Stamm 'stamm-1'.
+    const { findAllByTitle, findByText } = render(
+      <Wrapper>
+        <NvSwapOptimizerModal sourceTourId="tour-1" onClose={() => {}} />
+      </Wrapper>,
+    );
+    const selects = await findAllByTitle(/Ziel der Sendung waehlen/);
+    fireEvent.change(selects[0], { target: { value: '__new__' } });
+    await findByText(/Neue Gruppen-Tour/);
+    // Defaults sind aus Source-Tour vorbelegt → executableCount > 0.
+    const execBtn = await findByText(/Ausführen \(\d+\)/);
+    expect(execBtn).toBeTruthy();
+  });
+
+  it('Phase 3: "↗ eigen"-Toggle zeigt inline Form fuer einzelnen Eject', async () => {
+    const { findAllByTitle, findByText, findByTitle } = render(
+      <Wrapper>
+        <NvSwapOptimizerModal sourceTourId="tour-1" onClose={() => {}} />
+      </Wrapper>,
+    );
+    const selects = await findAllByTitle(/Ziel der Sendung waehlen/);
+    // Beide Ejects auf 'new' → Toggle erscheint.
+    fireEvent.change(selects[0], { target: { value: '__new__' } });
+    // "↗ eigen"-Button klicken → eigene Form inline.
+    const eigenBtn = await findByTitle(/Eigene Tour fuer diese Sendung/);
+    fireEvent.click(eigenBtn);
+    // Inline-Form-Hinweis: pro-Eject Datum-Input ist nun da.
+    // Ausfuehren-Button bleibt (newForm prefilled aus Group).
+    const execBtn = await findByText(/Ausführen \(\d+\)/);
     expect(execBtn).toBeTruthy();
   });
 });

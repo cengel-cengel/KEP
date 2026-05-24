@@ -1043,6 +1043,9 @@ export class NvTourenService {
         datum: true,
         status: true,
         fahrzeug_typ: true,
+        // F2.0: fuer is_stamm_kunde-Lookup (nv_stamm_kunden via
+        // Stamm-Tour-Id).
+        nv_stamm_tour_id: true,
         nv_stamm_tour: {
           select: { code: true, name: true },
         },
@@ -1072,6 +1075,15 @@ export class NvTourenService {
                 length_cm: true,
                 width_cm: true,
                 height_cm: true,
+                // F2.0: FIX-Kriterien-Felder fuer Swap-Optimizer.
+                customer_id: true,
+                loading_date: true,
+                status: true,
+                has_active_lock: true,
+                is_hazmat: true,
+                customers: {
+                  select: { priority_tier: true },
+                },
                 shipment_package_items: {
                   orderBy: [{ line_index: 'asc' }],
                   select: {
@@ -1097,7 +1109,27 @@ export class NvTourenService {
       } as any,
     });
     if (!tour) throw new NotFoundException('NV-Tour nicht gefunden');
-    return tour;
+
+    // F2.0: is_stamm_kunde-Flag pro Stop berechnen (Pattern aus
+    // svc:951-957). Tour OHNE Stamm-Tour-Bezug → alle false (kein
+    // Crash). Set<customer_id> aus nv_stamm_kunden.aktiv=true.
+    const stammTourId = (tour as any).nv_stamm_tour_id as string | null;
+    let stammSet: Set<string> | null = null;
+    if (stammTourId) {
+      const stamm = await this.prisma.nv_stamm_kunden.findMany({
+        where: { nv_stamm_tour_id: stammTourId, aktiv: true },
+        select: { customer_id: true },
+      });
+      stammSet = new Set(stamm.map((r) => r.customer_id));
+    }
+    const stopsWithFlag = (tour as any).stops.map((s: any) => ({
+      ...s,
+      is_stamm_kunde:
+        !!stammSet &&
+        !!s.shipment?.customer_id &&
+        stammSet.has(s.shipment.customer_id),
+    }));
+    return { ...tour, stops: stopsWithFlag };
   }
 
   async create(dto: CreateNvTourDto) {

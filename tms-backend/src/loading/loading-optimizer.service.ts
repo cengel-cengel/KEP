@@ -32,6 +32,19 @@ export interface ShipmentLoad {
   packageType: string;
   /** Pakete der Sendung mit moeglichen gespeicherten Drag-Positionen. */
   packageItems?: ShipmentPackageItem[];
+  /**
+   * F2.3.0: FIX-Kriterien-Felder fuer den FV-Swap-Optimizer.
+   * isFixSendung (FE lib/nvSwapOptimizer) liest sie + customer.
+   * priority_tier. Alle optional + Add-only — recommendVehicle/
+   * optimizeLoadingOrder/calculateLoadingLayout/checkOverload
+   * lesen sie NICHT, also kein Verhalten-Bruch.
+   */
+  customerId?: string | null;
+  loadingDate?: string | null;
+  status?: string | null;
+  hasActiveLock?: boolean | null;
+  isHazmat?: boolean | null;
+  customerPriorityTier?: string | null;
 }
 
 export interface Vehicle {

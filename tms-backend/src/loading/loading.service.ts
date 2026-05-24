@@ -58,6 +58,19 @@ export class LoadingService {
       packageCount: Number(s.package_count) || 0,
       packageType: String(s.package_type ?? 'other'),
       packageItems: items,
+      // F2.3.0: FIX-Kriterien-Felder fuer FV-Swap-Optimizer
+      // (lib/nvSwapOptimizer.isFixSendung liest sie). Add-only —
+      // bestehende ShipmentLoad-Konsumenten (recommendVehicle,
+      // optimizeLoadingOrder, calculateLoadingLayout, checkOverload)
+      // lesen sie NICHT.
+      customerId: s.customer_id ?? null,
+      loadingDate: s.loading_date
+        ? new Date(s.loading_date).toISOString().slice(0, 10)
+        : null,
+      status: s.status ?? null,
+      hasActiveLock: s.has_active_lock === true,
+      isHazmat: s.is_hazmat === true,
+      customerPriorityTier: s.customers?.priority_tier ?? null,
     };
   }
 
@@ -69,7 +82,10 @@ export class LoadingService {
           where: { deleted_at: null },
           orderBy: { tour_position: 'asc' },
           include: {
-            customers: { select: { name: true } },
+            // F2.3.0: customers.priority_tier fuer FV-Swap-Optimizer
+            // (Tier-FIX-Check). name bleibt fuer bestehende
+            // customer-Label-Logik.
+            customers: { select: { name: true, priority_tier: true } },
             business_partner: { select: { name: true, partner_number: true } },
             addresses_shipments_delivery_address_idToaddresses: {
               select: { city: true, name: true, zip: true },

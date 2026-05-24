@@ -1,5 +1,5 @@
 /**
- * F2.3.a FvSwapOptimizerModal — Read-Only Vorschau (FV-Pendant).
+ * F2.3.a FvSwapOptimizerModal — Vorschau + Execute (F2.3.b-2).
  *
  * Faedet F2.3.0 (BE-Daten) + F2.1/O-1 (Optimizer) ins UI:
  *   Source-Tour-Daten via useQuery(['loading','optimize', tourId])
@@ -9,16 +9,30 @@
  *   → isFixSendung mit fixTiers=['VIP','A'] (FV hat keine
  *     fv_stamm_kunden — Tier ersetzt das Konzept)
  *   → findSwapPlan
- *
- * KEINE Targets, KEIN Execute — kommt in F2.3.b-1 / b-2.
+ *   → b-1: Pro Eject best-match Ziel-Tour (FV-only, excl. Source)
+ *   → b-2: Sequenzieller Execute: Source-Remove → Target-Add,
+ *     Rollback bei Target-Fail. SHIPMENT-ID als removes-Param
+ *     (FV hat keinen stop-Layer).
  *
  * Stilistisch identisch zum NvSwapOptimizerModal; Common-Helper-
- * Extract (ExecStatusIcon, CapacityBar) ist Backlog wenn 3.
- * Modal kommt.
+ * Extract ist Backlog wenn 3. Modal kommt.
  */
-import { useMemo } from 'react';
-import { useQueries, useQuery } from '@tanstack/react-query';
-import { ArrowRight, Sparkles, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import {
+  AlertTriangle,
+  ArrowRight,
+  Check,
+  Loader2,
+  RotateCcw,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import { api } from '../../lib/api';
 import {
   findSwapPlan,
@@ -285,6 +299,138 @@ export default function FvSwapOptimizerModal({
     return map;
   }, [tourQ.data?.loadingOrder]);
 
+  // F2.3.b-2: Set der Shipment-IDs auf Source-Tour (Pre-Sanity).
+  // FV hat keinen stops-Layer — die Sendung-ID IST der Removable-
+  // Identifier fuer batchStopsFv. Wenn loadingOrder die Sendung
+  // nicht mehr enthaelt (z.B. anderer Disponent war schneller),
+  // skippen wir mit 'not-in-source' statt blind das BE zu fragen.
+  const sourceShipmentIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of tourQ.data?.loadingOrder ?? []) {
+      set.add(s.id);
+    }
+    return set;
+  }, [tourQ.data?.loadingOrder]);
+
+  // F2.3.b-2: Per-Eject-Status-Map. Mirror NvSwapOptimizerModal —
+  // dieselben States, dieselbe Sequenz; nur removes-Payload-Form
+  // unterscheidet sich (shipmentId statt stopId).
+  type EjectExecutionStatus =
+    | 'idle'
+    | 'no-target'
+    | 'not-in-source'
+    | 'running'
+    | 'ok'
+    | 'source-fail'
+    | 'rollback'
+    | 'limbo';
+  const [execStatus, setExecStatus] = useState<
+    Map<string, EjectExecutionStatus>
+  >(new Map());
+  const [confirmStep, setConfirmStep] = useState<
+    'idle' | 'confirm' | 'running' | 'done'
+  >('idle');
+
+  // Wie viele Ejects haben tatsaechlich eine ausfuehrbare Ziel-Tour?
+  const executableCount = useMemo(() => {
+    let n = 0;
+    for (const id of ejectIds) {
+      if (targetByShipment.get(id)?.target) n += 1;
+    }
+    return n;
+  }, [ejectIds, targetByShipment]);
+
+  const qc = useQueryClient();
+  const executeMut = useMutation({
+    mutationFn: async () => {
+      const next = new Map<string, EjectExecutionStatus>();
+      for (const ejectId of ejectIds) {
+        const t = targetByShipment.get(ejectId);
+        if (!t?.target) {
+          next.set(ejectId, 'no-target');
+          setExecStatus(new Map(next));
+          continue;
+        }
+        // Pre-Source-Sanity: Sendung sitzt noch auf Source-Tour.
+        if (!sourceShipmentIds.has(ejectId)) {
+          next.set(ejectId, 'not-in-source');
+          setExecStatus(new Map(next));
+          continue;
+        }
+
+        next.set(ejectId, 'running');
+        setExecStatus(new Map(next));
+
+        // Step 1: Source-Remove FIRST (shipmentId — KEIN stopId in FV).
+        // Bei Fail: Sendung bleibt in Quelle (kein Verlust).
+        try {
+          await api.post(`/tours/${sourceTourId}/batch-stops`, {
+            adds: [],
+            removes: [ejectId],
+          });
+        } catch {
+          next.set(ejectId, 'source-fail');
+          setExecStatus(new Map(next));
+          continue;
+        }
+
+        // Step 2: Target-Add. FV-BE-Pre-Checks (status='new',
+        // tour_id=null, has_active_lock, ADR-fuer-Hazmat) lehnen
+        // ggf. mit 400 ab → fall through zum Rollback.
+        try {
+          await api.post(`/tours/${t.target.tour_id}/batch-stops`, {
+            adds: [ejectId],
+            removes: [],
+          });
+          next.set(ejectId, 'ok');
+        } catch {
+          // Target-Add fail → Source-Re-Add versuchen (Rollback).
+          try {
+            await api.post(`/tours/${sourceTourId}/batch-stops`, {
+              adds: [ejectId],
+              removes: [],
+            });
+            next.set(ejectId, 'rollback');
+          } catch {
+            // Sendung jetzt nirgendwo — limbo, manuelle Korrektur.
+            next.set(ejectId, 'limbo');
+          }
+        }
+        setExecStatus(new Map(next));
+      }
+      return next;
+    },
+    onSuccess: () => {
+      // FV-Caches: Tours-Liste, Eligible-Pool, Optimize-Detail der
+      // Source-Tour. Realtime feuert ohnehin shipment.assigned
+      // (Belt+Suspenders).
+      qc.invalidateQueries({ queryKey: ['fv-touren'] });
+      qc.invalidateQueries({ queryKey: ['fv-eligible'] });
+      qc.invalidateQueries({
+        queryKey: ['loading', 'optimize', sourceTourId],
+      });
+      // Best-match-Cache der ejected Sendungen (sie haben jetzt
+      // neue tour_id) — Prefix-Match ueber alle Cache-Eintraege.
+      for (const ejectId of ejectIds) {
+        qc.invalidateQueries({
+          queryKey: ['shipment-best-match', ejectId],
+        });
+      }
+      setConfirmStep('done');
+    },
+  });
+
+  const handleAusfuehren = () => {
+    if (confirmStep === 'idle') {
+      setConfirmStep('confirm');
+      return;
+    }
+    if (confirmStep === 'confirm') {
+      setConfirmStep('running');
+      executeMut.mutate();
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-[1100] bg-black/30 flex items-start justify-center pt-[10vh]"
@@ -414,7 +560,8 @@ export default function FvSwapOptimizerModal({
                                   ? `${Math.round(Number(s.weightKg)).toLocaleString('de-DE')} kg`
                                   : '— kg'}
                               </span>
-                              {/* F2.3.b-1: Best-Match-Target FV-only. */}
+                              {/* F2.3.b-1: Best-Match-Target FV-only.
+                                  F2.3.b-2: Per-Zeile-ExecStatusIcon. */}
                               <span className="ml-auto inline-flex items-center gap-1">
                                 <ArrowRight size={11} className="text-gray-400" />
                                 {t?.isLoading ? (
@@ -437,6 +584,9 @@ export default function FvSwapOptimizerModal({
                                     keine Alt-Tour gefunden
                                   </span>
                                 )}
+                                <ExecStatusIcon
+                                  status={execStatus.get(id) ?? 'idle'}
+                                />
                               </span>
                             </div>
                           );
@@ -461,7 +611,63 @@ export default function FvSwapOptimizerModal({
           )}
         </div>
 
-        <div className="flex justify-end gap-2 px-4 py-3 border-t bg-gray-50">
+        <div className="flex items-center gap-2 px-4 py-3 border-t bg-gray-50">
+          {/* F2.3.b-2: Done-Banner, wenn Execute durch ist. */}
+          {confirmStep === 'done' && (
+            <span className="text-xs text-gray-600 flex-1">
+              {execSummary(execStatus)}
+            </span>
+          )}
+          {/* Inline-Confirm-Hinweis vor dem zweiten Klick. */}
+          {confirmStep === 'confirm' && (
+            <span className="text-xs text-red-700 flex-1">
+              {executableCount} Sendung
+              {executableCount === 1 ? '' : 'en'} wirklich verschieben?
+            </span>
+          )}
+          {confirmStep === 'idle' && <span className="flex-1" />}
+          {confirmStep === 'running' && (
+            <span className="text-xs text-gray-600 flex-1">
+              Läuft… ({countRunning(execStatus, ejectIds.length)})
+            </span>
+          )}
+
+          {plan &&
+            !plan.fixOverloaded &&
+            executableCount > 0 &&
+            confirmStep !== 'done' && (
+              <>
+                {confirmStep === 'confirm' && (
+                  <button
+                    onClick={() => setConfirmStep('idle')}
+                    className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900"
+                  >
+                    Abbrechen
+                  </button>
+                )}
+                <button
+                  onClick={handleAusfuehren}
+                  disabled={
+                    confirmStep === 'running' || executeMut.isPending
+                  }
+                  className={`px-3 py-1.5 text-sm rounded text-white disabled:opacity-50 inline-flex items-center gap-1 ${
+                    confirmStep === 'confirm'
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
+                >
+                  {confirmStep === 'running' && (
+                    <Loader2 size={12} className="animate-spin" />
+                  )}
+                  {confirmStep === 'confirm'
+                    ? 'Ja, ausführen'
+                    : confirmStep === 'running'
+                      ? 'Läuft…'
+                      : `Ausführen (${executableCount})`}
+                </button>
+              </>
+            )}
+
           <button
             onClick={onClose}
             className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-100"
@@ -472,6 +678,91 @@ export default function FvSwapOptimizerModal({
       </div>
     </div>
   );
+}
+
+/**
+ * F2.3.b-2: Per-Eject-Status-Icon. Klein + farbig — sitzt rechts vom
+ * Alt-Tour-Label in der Eject-Liste. Identisch zur NV-Variante.
+ */
+function ExecStatusIcon({ status }: { status: string }) {
+  if (status === 'idle') return null;
+  if (status === 'running') {
+    return <Loader2 size={11} className="text-blue-600 animate-spin" />;
+  }
+  if (status === 'ok') {
+    return <Check size={11} className="text-emerald-700" />;
+  }
+  if (status === 'rollback') {
+    return (
+      <span title="Target-Add fehlgeschlagen, Source-Re-Add ok">
+        <RotateCcw size={11} className="text-amber-700" />
+      </span>
+    );
+  }
+  if (status === 'limbo') {
+    return (
+      <span title="Target-Add UND Rollback fehlgeschlagen — Sendung manuell zuordnen!">
+        <AlertTriangle size={11} className="text-red-700" />
+      </span>
+    );
+  }
+  if (status === 'source-fail') {
+    return (
+      <span title="Source-Remove fehlgeschlagen — Sendung blieb in Quelle">
+        <AlertTriangle size={11} className="text-amber-700" />
+      </span>
+    );
+  }
+  if (status === 'not-in-source') {
+    return (
+      <span title="Sendung ist nicht (mehr) in der Source-Tour — uebersprungen">
+        <X size={11} className="text-gray-500" />
+      </span>
+    );
+  }
+  if (status === 'no-target') {
+    return (
+      <span title="Keine Alt-Tour vorhanden — uebersprungen">
+        <X size={11} className="text-gray-400" />
+      </span>
+    );
+  }
+  return null;
+}
+
+function countRunning(
+  status: Map<string, string>,
+  total: number,
+): string {
+  let done = 0;
+  for (const v of status.values()) {
+    if (v !== 'running' && v !== 'idle') done += 1;
+  }
+  return `${done}/${total}`;
+}
+
+function execSummary(status: Map<string, string>): string {
+  let ok = 0;
+  let rollback = 0;
+  let limbo = 0;
+  let skip = 0;
+  for (const v of status.values()) {
+    if (v === 'ok') ok += 1;
+    else if (v === 'rollback') rollback += 1;
+    else if (v === 'limbo') limbo += 1;
+    else if (
+      v === 'no-target' ||
+      v === 'not-in-source' ||
+      v === 'source-fail'
+    )
+      skip += 1;
+  }
+  const parts: string[] = [];
+  if (ok > 0) parts.push(`✓ ${ok} verschoben`);
+  if (rollback > 0) parts.push(`↻ ${rollback} rollback`);
+  if (limbo > 0) parts.push(`⚠ ${limbo} im Limbo`);
+  if (skip > 0) parts.push(`✗ ${skip} übersprungen`);
+  return parts.length > 0 ? parts.join(' · ') : 'Keine Aktion.';
 }
 
 /* ─── kleine Render-Helfer ──────────────────────────────────── */

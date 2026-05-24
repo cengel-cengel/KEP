@@ -1,10 +1,9 @@
 /**
  * B-1 SCHRITT 4: Tests für sortPackagesForOptimalPack.
- * Helper importiert von LoadingPlanPage — gleiche Logik, eigener
- * Test-Surface ohne FE-Rendering.
+ * F1.b: Helper jetzt in lib/loadingShared.ts (vorher pages/LoadingPlanPage).
  */
 import { describe, it, expect } from 'vitest';
-import { sortPackagesForOptimalPack } from '../pages/LoadingPlanPage';
+import { sortPackagesForOptimalPack } from './loadingShared';
 
 interface TestPkg {
   id: string;

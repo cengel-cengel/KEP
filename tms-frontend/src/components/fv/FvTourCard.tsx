@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Box, Trash2, Warehouse, MapPin, ExternalLink } from 'lucide-react';
+import { Box, Sparkles, Trash2, Warehouse, MapPin, ExternalLink } from 'lucide-react';
 import { api } from '../../lib/api';
 import {
   prefetchFvTourDetail,
   useHoverPrefetch,
 } from '../../lib/prefetchHelpers';
+import FvSwapOptimizerModal from './FvSwapOptimizerModal';
 import OverloadBar, {
   type OverloadInfo,
 } from '../shared/OverloadBar';
@@ -82,6 +83,8 @@ export default function FvTourCard({
   onRemoveStop: (tourId: string, shipmentId: string) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
+  // F2.3.a: Read-Only Swap-Optimizer-Vorschau (FV-Pendant zu NV).
+  const [showSwapModal, setShowSwapModal] = useState(false);
   const popupWindowRef = useRef<Window | null>(null);
   const qc = useQueryClient();
   const { selectTour } = usePanel();
@@ -233,6 +236,15 @@ export default function FvTourCard({
             <Box size={11} />
             Beladeplan
           </button>
+          {/* F2.3.a: Tausch-Vorschau (read-only). */}
+          <button
+            onClick={() => setShowSwapModal(true)}
+            className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 border border-gray-300 rounded text-gray-700 hover:bg-blue-50 hover:text-blue-700"
+            title="Tausch-Vorschlag generieren"
+          >
+            <Sparkles size={11} />
+            Tausch
+          </button>
         </div>
         <div className="mt-1 flex items-center gap-1 text-[11px] text-gray-600 flex-wrap">
           <span
@@ -305,6 +317,12 @@ export default function FvTourCard({
           );
         })}
       </div>
+      {showSwapModal && (
+        <FvSwapOptimizerModal
+          sourceTourId={tourId}
+          onClose={() => setShowSwapModal(false)}
+        />
+      )}
     </div>
   );
 }

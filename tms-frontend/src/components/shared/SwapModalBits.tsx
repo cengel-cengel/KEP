@@ -11,7 +11,11 @@ import {
   RotateCcw,
   X,
 } from 'lucide-react';
-import type { EjectExecutionStatus } from '../../lib/swapShared';
+import type {
+  BestTourMatch,
+  EjectExecutionStatus,
+} from '../../lib/swapShared';
+import { targetLabel, formatDatumShort } from '../../lib/swapShared';
 
 /**
  * F2.2.b-2 / F2.3.b-2: Per-Eject-Status-Icon. Klein + farbig, sitzt
@@ -128,5 +132,104 @@ export function CapacityBar({
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * Phase 2: Eject-Ziel-Selektor pro Eject-Row.
+ *
+ * Drei Modi:
+ *   · 'best'   Auto-Ziel = best-match-Vorschlag (BestTourMatch)
+ *   · 'manual' explizit gewaehlte Tour aus der `tours`-Liste
+ *   · 'pool'   Dispotopf — Source-Remove ohne Target-Add (Phase 1)
+ *
+ * Encoding ueber native <select>-value:
+ *   '__best__' → kind='best'
+ *   '__pool__' → kind='pool'
+ *   UUID       → kind='manual', manualTourId=UUID
+ *
+ * tours-Liste wird vom Parent geliefert (NV-/FV-spezifisch gefiltert
+ * + transformiert) — Selector kennt KEINE Mode-Logik. capacityHint
+ * ist optional (FV-findAll liefert noch keinen overload — dort
+ * einfach leer lassen).
+ */
+export interface TourOption {
+  id: string;
+  /** Anzeigbarer Tour-Name (z.B. "NV-T-42 (24.05.)"). */
+  label: string;
+  /** Optional kurzer Auslastungs-Trailer (z.B. "Vol 65%/Gew 80%"). */
+  capacityHint?: string;
+}
+
+export type EjectTargetKind = 'best' | 'pool' | 'manual';
+
+export interface EjectTargetSelectorValue {
+  kind: EjectTargetKind;
+  /** Nur relevant wenn kind='manual'. */
+  manualTourId?: string | null;
+}
+
+export function EjectTargetSelector({
+  value,
+  bestMatch,
+  bestMatchLoading,
+  tours,
+  disabled,
+  onChange,
+}: {
+  value: EjectTargetSelectorValue;
+  bestMatch?: BestTourMatch | null;
+  bestMatchLoading?: boolean;
+  tours: TourOption[];
+  disabled?: boolean;
+  onChange: (v: EjectTargetSelectorValue) => void;
+}) {
+  const selectValue =
+    value.kind === 'best'
+      ? '__best__'
+      : value.kind === 'pool'
+        ? '__pool__'
+        : (value.manualTourId ?? '__best__');
+
+  const bestLabel = bestMatchLoading
+    ? 'Auto: lade…'
+    : bestMatch
+      ? `Auto: ${targetLabel(bestMatch)}${
+          formatDatumShort(bestMatch.datum)
+            ? ` (${formatDatumShort(bestMatch.datum)})`
+            : ''
+        }`
+      : 'Auto: keine Alt-Tour';
+
+  return (
+    <select
+      value={selectValue}
+      disabled={disabled}
+      onChange={(e) => {
+        const v = e.target.value;
+        if (v === '__best__') {
+          onChange({ kind: 'best', manualTourId: null });
+        } else if (v === '__pool__') {
+          onChange({ kind: 'pool', manualTourId: null });
+        } else {
+          onChange({ kind: 'manual', manualTourId: v });
+        }
+      }}
+      className="text-[10px] px-1 py-0.5 border border-gray-300 rounded bg-white text-gray-700 disabled:opacity-60 max-w-[12rem]"
+      title="Ziel der Sendung waehlen"
+    >
+      <option value="__best__">{bestLabel}</option>
+      {tours.length > 0 && (
+        <optgroup label="andere Tour">
+          {tours.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.label}
+              {t.capacityHint ? ` · ${t.capacityHint}` : ''}
+            </option>
+          ))}
+        </optgroup>
+      )}
+      <option value="__pool__">↓ Dispotopf</option>
+    </select>
   );
 }

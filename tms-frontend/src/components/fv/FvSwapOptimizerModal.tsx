@@ -36,14 +36,15 @@ import {
 import {
   countRunning,
   execSummary,
-  formatDatumShort,
-  targetLabel,
   type BestTourMatch,
   type EjectExecutionStatus,
 } from '../../lib/swapShared';
 import {
   CapacityBar,
+  EjectTargetSelector,
   ExecStatusIcon,
+  type EjectTargetSelectorValue,
+  type TourOption,
 } from '../shared/SwapModalBits';
 
 interface Props {
@@ -294,40 +295,80 @@ export default function FvSwapOptimizerModal({
     'idle' | 'confirm' | 'running' | 'done'
   >('idle');
 
-  // Phase 1 Dispotopf: pro Eject 'best' oder 'pool'. Pool = Source-
-  // Remove ohne Target-Add → Sendung landet im FV-eligible-Pool.
-  const [targetKindMap, setTargetKindMap] = useState<
-    Map<string, 'best' | 'pool'>
+  // Phase 1+2: pro Eject die Ziel-Wahl merken. 'best' default,
+  // 'manual' mit explizit gewaehlter Tour, 'pool' Dispotopf.
+  const [targetMap, setTargetMap] = useState<
+    Map<string, EjectTargetSelectorValue>
   >(new Map());
-  const targetKindFor = (id: string): 'best' | 'pool' =>
-    targetKindMap.get(id) ?? 'best';
-  const toggleTargetKind = (id: string) => {
-    setTargetKindMap((prev) => {
+  const targetFor = (id: string): EjectTargetSelectorValue =>
+    targetMap.get(id) ?? { kind: 'best', manualTourId: null };
+  const setTargetFor = (id: string, v: EjectTargetSelectorValue) => {
+    setTargetMap((prev) => {
       const next = new Map(prev);
-      next.set(id, targetKindFor(id) === 'pool' ? 'best' : 'pool');
+      next.set(id, v);
       return next;
     });
   };
 
-  // Ausfuehrbar = Best-Target vorhanden ODER kind='pool'.
+  // Phase 2: FV-Tour-Liste fuer Manual-Picker. Filter: !== sourceTour
+  // + status='planned'. FV-findAll liefert KEINEN overload-Field, daher
+  // entfaellt capacityHint (Folge-Task: tours-findAll um overload
+  // augmentieren analog NV-augmented-loop).
+  type FvTourLite = {
+    id: string;
+    status?: string | null;
+    tour_number?: string | null;
+    tour_date?: string | null;
+    subcontractors?: { name?: string | null } | null;
+  };
+  const toursQ = useQuery<FvTourLite[]>({
+    queryKey: ['fv-touren'],
+    queryFn: async () => (await api.get<FvTourLite[]>('/tours')).data,
+    staleTime: 30_000,
+  });
+  const manualTourOptions: TourOption[] = useMemo(() => {
+    const all = toursQ.data ?? [];
+    return all
+      .filter(
+        (t) => t.id !== sourceTourId && (t.status ?? '') === 'planned',
+      )
+      .map((t) => {
+        const labelBase =
+          t.tour_number ?? t.subcontractors?.name ?? t.id.slice(0, 8);
+        const datumShort = t.tour_date ? t.tour_date.slice(0, 10) : null;
+        const label = datumShort ? `${labelBase} (${datumShort})` : labelBase;
+        return { id: t.id, label };
+      });
+  }, [toursQ.data, sourceTourId]);
+
+  // Ausfuehrbar: best mit Target, pool immer, manual mit gesetzter
+  // manualTourId.
   const executableCount = useMemo(() => {
     let n = 0;
     for (const id of ejectIds) {
-      if (targetKindFor(id) === 'pool') n += 1;
-      else if (targetByShipment.get(id)?.target) n += 1;
+      const v = targetFor(id);
+      if (v.kind === 'pool') n += 1;
+      else if (v.kind === 'manual' && v.manualTourId) n += 1;
+      else if (v.kind === 'best' && targetByShipment.get(id)?.target) n += 1;
     }
     return n;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ejectIds, targetByShipment, targetKindMap]);
+  }, [ejectIds, targetByShipment, targetMap]);
 
   const qc = useQueryClient();
   const executeMut = useMutation({
     mutationFn: async () => {
       const next = new Map<string, EjectExecutionStatus>();
       for (const ejectId of ejectIds) {
-        const kind = targetKindFor(ejectId);
+        const sel = targetFor(ejectId);
         const t = targetByShipment.get(ejectId);
-        if (kind === 'best' && !t?.target) {
+        // Phase 2: Ziel-Tour pro Modus bestimmen.
+        let targetTourId: string | null = null;
+        if (sel.kind === 'best') targetTourId = t?.target?.tour_id ?? null;
+        else if (sel.kind === 'manual') targetTourId = sel.manualTourId ?? null;
+        // pool → kein Target
+
+        if (sel.kind !== 'pool' && !targetTourId) {
           next.set(ejectId, 'no-target');
           setExecStatus(new Map(next));
           continue;
@@ -345,7 +386,7 @@ export default function FvSwapOptimizerModal({
         // Step 1: Source-Remove FIRST (shipmentId — KEIN stopId in FV).
         // FV batchStopsFv setzt tour_id=null + status='new' → Sendung
         // landet automatisch im FV-eligible-Pool (Dispotopf-Effekt
-        // out-of-the-box, auch fuer kind='best').
+        // out-of-the-box, auch fuer kind='best'/'manual').
         try {
           await api.post(`/tours/${sourceTourId}/batch-stops`, {
             adds: [],
@@ -358,17 +399,18 @@ export default function FvSwapOptimizerModal({
         }
 
         // Phase 1 Dispotopf: kind='pool' → KEIN Target-Add, fertig.
-        if (kind === 'pool') {
+        if (sel.kind === 'pool') {
           next.set(ejectId, 'pool');
           setExecStatus(new Map(next));
           continue;
         }
 
-        // Step 2: Target-Add. FV-BE-Pre-Checks (status='new',
-        // tour_id=null, has_active_lock, ADR-fuer-Hazmat) lehnen
-        // ggf. mit 400 ab → fall through zum Rollback.
+        // Step 2: Target-Add (kind='best' best-match ODER kind='manual'
+        // user-gewaehlt). FV-BE-Pre-Checks (status='new', tour_id=null,
+        // has_active_lock, ADR-fuer-Hazmat) lehnen ggf. mit 400 ab →
+        // fall through zum Rollback.
         try {
-          await api.post(`/tours/${t!.target!.tour_id}/batch-stops`, {
+          await api.post(`/tours/${targetTourId}/batch-stops`, {
             adds: [ejectId],
             removes: [],
           });
@@ -550,58 +592,19 @@ export default function FvSwapOptimizerModal({
                                   ? `${Math.round(Number(s.weightKg)).toLocaleString('de-DE')} kg`
                                   : '— kg'}
                               </span>
-                              {/* F2.3.b-1: Best-Match-Target FV-only.
-                                  F2.3.b-2: Per-Zeile-ExecStatusIcon.
-                                  Phase 1 Dispotopf: Toggle ↓ Pool. */}
+                              {/* Phase 2: 3-Modi-Selector (Auto/Manual/
+                                  Dispotopf). Vor Execute aktiv;
+                                  waehrend/nach Execute disabled. */}
                               <span className="ml-auto inline-flex items-center gap-1">
                                 <ArrowRight size={11} className="text-gray-400" />
-                                {targetKindFor(id) === 'pool' ? (
-                                  <span
-                                    className="text-[10px] text-emerald-700 font-medium"
-                                    title="Dispotopf — Sendung kehrt in den Eingang zurueck"
-                                  >
-                                    ↓ Dispotopf
-                                  </span>
-                                ) : t?.isLoading ? (
-                                  <span className="text-[10px] text-gray-400 italic animate-pulse">
-                                    lade Alt-Tour…
-                                  </span>
-                                ) : t?.target ? (
-                                  <span
-                                    className="text-[10px] text-green-700"
-                                    title={`Score ${t.target.score}${
-                                      t.target.reason ? ` · ${t.target.reason}` : ''
-                                    }`}
-                                  >
-                                    {targetLabel(t.target)}
-                                    {formatDatumShort(t.target.datum) &&
-                                      ` (${formatDatumShort(t.target.datum)})`}
-                                  </span>
-                                ) : (
-                                  <span className="text-[10px] text-amber-700">
-                                    keine Alt-Tour gefunden
-                                  </span>
-                                )}
-                                {confirmStep === 'idle' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleTargetKind(id)}
-                                    className={`text-[10px] px-1 py-0.5 rounded border ${
-                                      targetKindFor(id) === 'pool'
-                                        ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                                        : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-100'
-                                    }`}
-                                    title={
-                                      targetKindFor(id) === 'pool'
-                                        ? 'Wieder Auto-Ziel verwenden'
-                                        : 'Statt Auto-Ziel in Dispotopf entlassen'
-                                    }
-                                  >
-                                    {targetKindFor(id) === 'pool'
-                                      ? 'Auto'
-                                      : '↓'}
-                                  </button>
-                                )}
+                                <EjectTargetSelector
+                                  value={targetFor(id)}
+                                  bestMatch={t?.target ?? null}
+                                  bestMatchLoading={t?.isLoading}
+                                  tours={manualTourOptions}
+                                  disabled={confirmStep !== 'idle'}
+                                  onChange={(v) => setTargetFor(id, v)}
+                                />
                                 <ExecStatusIcon
                                   status={execStatus.get(id) ?? 'idle'}
                                 />

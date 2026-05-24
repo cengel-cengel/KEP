@@ -105,13 +105,45 @@ vi.mock('../../lib/api', () => {
       stops_count: 2,
     },
   ];
+  // Phase 2: FV-Tours-Liste fuer Manual-Picker. tour-77 'planned',
+  // tour-78 'planned', tour-99 'closed' (gefiltert). Source-Tour
+  // (11111111-…) selbst nicht in der Liste — wuerde auch durch
+  // !== sourceTourId rausgefiltert.
+  const mockFvTouren = [
+    {
+      id: '77777777-aaaa-bbbb-cccc-000000000000',
+      status: 'planned',
+      tour_number: 'FV-T-77',
+      tour_date: '2026-05-25',
+      subcontractors: { name: 'Sub-77' },
+    },
+    {
+      id: '88888888-aaaa-bbbb-cccc-000000000000',
+      status: 'planned',
+      tour_number: 'FV-T-78',
+      tour_date: '2026-05-26',
+      subcontractors: { name: 'Sub-78' },
+    },
+    {
+      id: 'cccccccc-aaaa-bbbb-cccc-000000000000',
+      status: 'closed',
+      tour_number: 'FV-T-99',
+      tour_date: '2026-05-20',
+      subcontractors: { name: 'Sub-99' },
+    },
+  ];
   return {
     api: {
-      // URL-aware: optimize-Endpoint vs best-match-Endpoint
-      // (F2.3.b-1 — useQueries pro ejectId).
+      // URL-aware:
+      //  /best-match → mockBestMatch (Auto-Ziel da)
+      //  /tours      → mockFvTouren (Phase-2 Manual-Picker)
+      //  default     → mockOptimize (Source-Tour-Detail)
       get: vi.fn((url: string) => {
         if (typeof url === 'string' && url.includes('/best-match')) {
           return Promise.resolve({ data: mockBestMatch });
+        }
+        if (typeof url === 'string' && url === '/tours') {
+          return Promise.resolve({ data: mockFvTouren });
         }
         return Promise.resolve({ data: mockOptimize });
       }),
@@ -173,11 +205,8 @@ describe('FvSwapOptimizerModal — smoke', () => {
     expect(btn).toBeTruthy();
   });
 
-  it('Phase 1: Dispotopf-Toggle schaltet Eject auf "↓ Dispotopf"-Label', async () => {
-    // best-match-Mock liefert FV-Target → kind='best' rendert
-    // Alt-Tour-Label. Nach "↓"-Klick: Label wechselt zu
-    // "↓ Dispotopf" + Toggle-Button-Text wird "Auto".
-    const { findAllByTitle, findByText } = render(
+  it('Phase 1: Dispotopf-Auswahl im Selector haelt Eject ausfuehrbar', async () => {
+    const { findAllByTitle, findByRole } = render(
       <Wrapper>
         <FvSwapOptimizerModal
           sourceTourId="11111111-2222-3333-4444-555555555555"
@@ -185,12 +214,37 @@ describe('FvSwapOptimizerModal — smoke', () => {
         />
       </Wrapper>,
     );
-    const toggleButtons = await findAllByTitle(
-      /Statt Auto-Ziel in Dispotopf entlassen/,
+    const selects = await findAllByTitle(/Ziel der Sendung waehlen/);
+    expect(selects.length).toBeGreaterThan(0);
+    fireEvent.change(selects[0], { target: { value: '__pool__' } });
+    // Pool-Modus → Ausfuehren-Button bleibt sichtbar (Pool zaehlt
+    // ohne Auto-Match in executableCount).
+    const execBtn = await findByRole('button', {
+      name: /Ausführen \(\d+\)/,
+    });
+    expect(execBtn).toBeTruthy();
+  });
+
+  it('Phase 2: Manual-Auswahl (anderer FV-Tour) macht Eject ausfuehrbar', async () => {
+    // FV-Tours-Mock liefert tour-77 ('planned') als Manual-Option.
+    // Selector-Change auf diese tourId → kind='manual' +
+    // manualTourId='77…' → "Ausführen (N)" bleibt sichtbar (oder
+    // erhoeht sich falls Auto vorher schon zaehlte).
+    const { findAllByTitle, findByRole } = render(
+      <Wrapper>
+        <FvSwapOptimizerModal
+          sourceTourId="11111111-2222-3333-4444-555555555555"
+          onClose={() => {}}
+        />
+      </Wrapper>,
     );
-    expect(toggleButtons.length).toBeGreaterThan(0);
-    fireEvent.click(toggleButtons[0]);
-    // Label-Switch: "↓ Dispotopf" erscheint nach Toggle.
-    await findByText(/↓ Dispotopf/);
+    const selects = await findAllByTitle(/Ziel der Sendung waehlen/);
+    fireEvent.change(selects[0], {
+      target: { value: '77777777-aaaa-bbbb-cccc-000000000000' },
+    });
+    const execBtn = await findByRole('button', {
+      name: /Ausführen \(\d+\)/,
+    });
+    expect(execBtn).toBeTruthy();
   });
 });

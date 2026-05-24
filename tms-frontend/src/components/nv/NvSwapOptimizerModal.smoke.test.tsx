@@ -130,13 +130,44 @@ vi.mock('../../lib/api', () => {
       },
     ],
   };
+  // Phase 2: NV-Touren-Liste fuer Manual-Picker. 2 Alt-Touren in
+  // 'PLANNING'-Status, 1 nicht-passende (status 'IN_PROGRESS' wird
+  // gefiltert). Source-Tour selbst (tour-1) wird durch !== filter
+  // ausgeschlossen.
+  const mockNvTouren = [
+    {
+      id: 'tour-1',
+      status: 'PLANNING',
+      datum: '2026-05-24',
+      nv_stamm_tour: { code: 'NV-A' },
+      overload: { vol: 0.7, weight: 0.6 },
+    },
+    {
+      id: 'tour-2',
+      status: 'PLANNING',
+      datum: '2026-05-25',
+      nv_stamm_tour: { code: 'NV-B' },
+      overload: { vol: 0.3, weight: 0.4 },
+    },
+    {
+      id: 'tour-3',
+      status: 'IN_PROGRESS',
+      datum: '2026-05-25',
+      nv_stamm_tour: { code: 'NV-X' },
+    },
+  ];
   return {
     api: {
-      // URL-aware: loading-Endpoint vs best-match-Endpoint
-      // (F2.2.b-1 — useQueries pro ejectId).
+      // URL-aware:
+      //  /best-match → leeres Array (kein Auto-Ziel; Test toggelt manuell)
+      //  /nv-touren  → Liste fuer Manual-Picker
+      //  default     → loading-Detail
       get: vi.fn((url: string) => {
         if (typeof url === 'string' && url.includes('/best-match')) {
           return Promise.resolve({ data: [] });
+        }
+        if (typeof url === 'string' && url === '/nv-touren') {
+          return Promise.resolve({ data: mockNvTouren });
         }
         return Promise.resolve({ data: mockLoadingDetail });
       }),
@@ -181,30 +212,38 @@ describe('NvSwapOptimizerModal — smoke', () => {
     await findByText(/NV-A/);
   });
 
-  it('Phase 1: Dispotopf-Toggle macht Eject ausfuehrbar ohne best-match', async () => {
-    // best-match-Mock liefert [] → kein Auto-Ziel. Vor Toggle:
-    // "keine Alt-Tour gefunden" + KEIN "Ausführen"-Button.
-    // Nach "↓"-Klick: Label "↓ Dispotopf" + Button "Ausführen (1)".
+  it('Phase 1: Dispotopf-Auswahl macht Eject ausfuehrbar ohne best-match', async () => {
+    // best-match-Mock liefert [] → kein Auto-Ziel. Vor Selektor-
+    // Change: KEIN "Ausführen"-Button. Nach Auswahl '__pool__'
+    // (Dispotopf) im Selector: "Ausführen (≥1)" erscheint.
     const { findAllByTitle, findByRole, queryByRole } = render(
       <Wrapper>
         <NvSwapOptimizerModal sourceTourId="tour-1" onClose={() => {}} />
       </Wrapper>,
     );
-    // Pre-Toggle: kein Ausfuehren-Button.
-    // (queryByRole returnt null statt zu throwen, ideal fuer Negativ-
-    // Assertion. Wir warten kurz bis Eject-Liste gerendert ist via
-    // findAllByTitle.)
-    const toggleButtons = await findAllByTitle(
-      /Statt Auto-Ziel in Dispotopf entlassen/,
-    );
-    expect(toggleButtons.length).toBeGreaterThan(0);
+    const selects = await findAllByTitle(/Ziel der Sendung waehlen/);
+    expect(selects.length).toBeGreaterThan(0);
     expect(queryByRole('button', { name: /Ausführen \(\d+\)/ })).toBeNull();
 
-    // Toggle den ersten Eject auf Dispotopf.
-    fireEvent.click(toggleButtons[0]);
+    fireEvent.change(selects[0], { target: { value: '__pool__' } });
 
-    // Post-Toggle: "Ausführen (1)" muss erscheinen (oder hoeher wenn
-    // Optimizer mehrere Ejects vorgeschlagen hat — wir akzeptieren ≥1).
+    const execBtn = await findByRole('button', {
+      name: /Ausführen \(\d+\)/,
+    });
+    expect(execBtn).toBeTruthy();
+  });
+
+  it('Phase 2: Manual-Tour-Auswahl macht Eject ausfuehrbar mit gewaehlter tourId', async () => {
+    // Manual-Pick = tour-2 (NV-B). Verifiziert dass executableCount
+    // hochgeht und der Selector den manual-Modus erkennt.
+    const { findAllByTitle, findByRole } = render(
+      <Wrapper>
+        <NvSwapOptimizerModal sourceTourId="tour-1" onClose={() => {}} />
+      </Wrapper>,
+    );
+    const selects = await findAllByTitle(/Ziel der Sendung waehlen/);
+    fireEvent.change(selects[0], { target: { value: 'tour-2' } });
+
     const execBtn = await findByRole('button', {
       name: /Ausführen \(\d+\)/,
     });

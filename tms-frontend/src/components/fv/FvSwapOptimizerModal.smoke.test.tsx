@@ -90,7 +90,14 @@ vi.mock('../../lib/api', () => {
   };
   return {
     api: {
-      get: vi.fn().mockResolvedValue({ data: mockOptimize }),
+      // URL-aware: optimize-Endpoint vs best-match-Endpoint
+      // (F2.3.b-1 — useQueries pro ejectId).
+      get: vi.fn((url: string) => {
+        if (typeof url === 'string' && url.includes('/best-match')) {
+          return Promise.resolve({ data: [] });
+        }
+        return Promise.resolve({ data: mockOptimize });
+      }),
     },
     AUTH_TOKEN_KEY: 'tms_token',
   };

@@ -105,8 +105,9 @@ function NvBody({
         tourQ.data ?? null,
         vehicle.widthCm,
         vehicle.lengthCm,
+        vehicle.heightCm,
       ),
-    [tourQ.data, vehicle.widthCm, vehicle.lengthCm],
+    [tourQ.data, vehicle.widthCm, vehicle.lengthCm, vehicle.heightCm],
   );
 
   const code = tourQ.data?.nv_stamm_tour?.code ?? '—';

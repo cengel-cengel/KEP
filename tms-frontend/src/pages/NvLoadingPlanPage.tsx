@@ -9,9 +9,7 @@ import ContextMenu, {
   type ContextMenuItem,
 } from '../components/loadingplan/ContextMenu';
 import { planNvInsertShift } from '../lib/nvRepack';
-import LoadingPlan3D, {
-  type Plan3DPackage,
-} from '../components/LoadingPlan3D';
+import LoadingPlan3D from '../components/LoadingPlan3D';
 import AxleLoadPanel from '../components/AxleLoadPanel';
 import {
   getVehicleDims,
@@ -19,6 +17,15 @@ import {
   resolveVehicleCapacity,
 } from '../lib/vehicleTypes';
 import { computeStackingLdmMetrics } from '../lib/loadingLdm';
+import { placePackages, type SharedPlacedPackage } from '../lib/loadingShared';
+import { nvExpandPackages, type NvExpandedPackage } from '../lib/nvExpand';
+
+/**
+ * NV-Pack-Output. Plan3DPackage-kompatibel (struktureller Superset)
+ * + Pass-Through-Felder fuer Drag-Persist (dbItemId) und Context-
+ * Menu (shipmentId).
+ */
+export type NvFlatPackage = NvExpandedPackage & SharedPlacedPackage;
 
 export interface NvPackageItem {
   id: string;
@@ -80,124 +87,37 @@ export interface NvLoadingDetail {
   }>;
 }
 
-// SHIPMENT_COLORS — gleicher Pool wie FV-Page für Wiedererkennbarkeit.
-const SHIPMENT_COLORS = [
-  '#ef4444', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#14b8a6',
-  '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7',
-  '#d946ef', '#ec4899', '#f43f5e',
-];
-
 /**
- * P0-6.3 BUG 1: Row-Bin-Pack Auto-Placer.
- * Respektiert Trailer-Bounds. DB-Position wird für q=0 honoriert
- * wenn vorhanden, sonst layout-packed.
+ * S-2b: Export fuer LoadingPlanPanel (workspace-Panel) Wiederverwendung.
  *
- * Algorithmus:
- *   - Pack-Cursor in Reihen entlang Trailer-Länge (posY)
- *   - Items side-by-side entlang Trailer-Breite (posX)
- *   - Row wechselt wenn nächstes Item posX+widthCm > trailerWidth
- *   - BUG-F-PACK: posY-Overflow → unplaced:true; Caller filtert vor
- *     3D-Render + zeigt Banner. (Vorher: cursorY wuchs unbounded,
- *     Pakete durchstiessen Trailer-Heck.)
- */
-/**
- * S-2b: Export für LoadingPlanPanel (workspace-Panel) Wiederverwendung.
- * Pure-Function — gleiche Logik die diese Page intern nutzt.
+ * Pure-Wrapper: nvExpandPackages (Expand-Step, lib/nvExpand) →
+ * placePackages (Pack-Algorithmus, lib/loadingShared). Damit nutzt
+ * NV identische Pack-Logik wie FV-LoadingPlanPage (Phase-1-storedPos,
+ * findPreferredStackSlot mit Mischpaletten-Erweiterung, BUG-F-PACK
+ * Overflow→unplaced).
+ *
+ * Render-Aenderung vs. vorherige NV-spezifische flattenPackages:
+ *  · Stapelbare Sendungen werden jetzt GESTAPELT (Phase 2 stack-slot-
+ *    First), nicht mehr alles auf Boden — bündigeres Bild, weniger
+ *    unplaced bei NV-Touren mit stapelbarer Ladung.
+ *  · 5 cm Gap zwischen Paketen weggefallen — Pakete liegen bündig
+ *    aneinander wie auf einer realen Palette.
+ *  · DB-persistierte Positionen (q==0 mit pos_*_cm) bleiben
+ *    unveraendert; Phase 1 honoriert sie als Hindernisse.
  */
 export function flattenPackages(
   tour: NvLoadingDetail | null,
   trailerWidthCm: number,
   trailerLengthCm: number,
-): Plan3DPackage[] {
-  if (!tour) return [];
-  const out: Plan3DPackage[] = [];
-  let cursorY = 0;
-  let cursorX = 0;
-  let rowMaxLength = 0;
-  // F1.a/P: Pattern-Align mit FV — shipIdx-Map per-Sendung statt per-
-  // Stop. NV hat zwar 1:1 stop:shipment, aber so wird die Farbe gegen
-  // doppelt vorkommende shipment.id stabil + Code-Konvention einheitlich.
-  const shipIdxMap = new Map<string, number>();
-  for (const stop of tour.stops ?? []) {
-    if (!shipIdxMap.has(stop.shipment.id)) {
-      shipIdxMap.set(stop.shipment.id, shipIdxMap.size);
-    }
-  }
-  const placeAuto = (
-    w: number,
-    l: number,
-  ): { posX: number; posY: number; unplaced: boolean } => {
-    // Neue Reihe wenn aktueller Cursor nicht mehr passt
-    if (cursorX + w > trailerWidthCm + 1e-6) {
-      cursorY += rowMaxLength + 5;
-      cursorX = 0;
-      rowMaxLength = 0;
-    }
-    // BUG-F-PACK: Wenn aktuelle Reihe Trailer-Heck ueberschreitet,
-    // markieren wir das Paket als unplaced — Caller filtert es vor
-    // dem 3D-Render + zaehlt es im Banner.
-    if (cursorY + l > trailerLengthCm + 1e-6) {
-      return { posX: 0, posY: 0, unplaced: true };
-    }
-    const posX = cursorX;
-    const posY = cursorY;
-    cursorX += w + 5;
-    if (l > rowMaxLength) rowMaxLength = l;
-    return { posX, posY, unplaced: false };
-  };
-  for (const stop of tour.stops ?? []) {
-    const ship = stop.shipment;
-    const color =
-      SHIPMENT_COLORS[
-        (shipIdxMap.get(ship.id) ?? 0) % SHIPMENT_COLORS.length
-      ];
-    const items = ship.shipment_package_items ?? [];
-    const shipFullyStackable = items.every((it) => it.stackable !== false);
-    for (const it of items) {
-      const qty = Math.max(1, Number(it.quantity ?? 1));
-      const w = Number(it.width_cm) || 0;
-      const l = Number(it.length_cm) || 0;
-      const h = Number(it.height_cm) || 0;
-      const dbPosX = it.pos_x_cm == null ? null : Number(it.pos_x_cm);
-      const dbPosY = it.pos_y_cm == null ? null : Number(it.pos_y_cm);
-      const dbPosZ = it.pos_z_cm == null ? null : Number(it.pos_z_cm);
-      const hasDbPos = dbPosX != null && dbPosY != null;
-      for (let q = 0; q < qty; q++) {
-        const useDb = q === 0 && hasDbPos;
-        let posX: number;
-        let posY: number;
-        let posZ: number;
-        let unplaced = false;
-        if (useDb) {
-          posX = dbPosX as number;
-          posY = dbPosY as number;
-          posZ = dbPosZ != null ? dbPosZ : 0;
-        } else {
-          const auto = placeAuto(w, l);
-          posX = auto.posX;
-          posY = auto.posY;
-          posZ = 0;
-          unplaced = auto.unplaced;
-        }
-        const synthSuffix = qty === 1 ? '' : `:pkg:${q}`;
-        out.push({
-          id: it.id + synthSuffix,
-          lengthCm: l,
-          widthCm: w,
-          heightCm: h,
-          posX,
-          posY,
-          posZ,
-          weightKg: Number(it.weight_kg) || 0,
-          color,
-          isStackable: shipFullyStackable && it.stackable !== false,
-          rotationDeg: Number(it.rotation_deg ?? 0) || 0,
-          unplaced,
-        });
-      }
-    }
-  }
-  return out;
+  trailerHeightCm: number = 270,
+): NvFlatPackage[] {
+  const expanded = nvExpandPackages(tour);
+  return placePackages(
+    expanded,
+    trailerLengthCm,
+    trailerWidthCm,
+    trailerHeightCm,
+  );
 }
 
 export default function NvLoadingPlanPage() {
@@ -260,8 +180,14 @@ export default function NvLoadingPlanPage() {
         tourQ.data ?? null,
         capacity.widthCm,
         capacity.lengthCm,
+        capacity.heightCm,
       ),
-    [tourQ.data, capacity.widthCm, capacity.lengthCm],
+    [
+      tourQ.data,
+      capacity.widthCm,
+      capacity.lengthCm,
+      capacity.heightCm,
+    ],
   );
 
   // BUG-F-PACK: Render/Drag-Target = nur platzierte Pakete; unplaced
@@ -374,12 +300,18 @@ export default function NvLoadingPlanPage() {
     posZCm: number,
     rotationDeg?: number,
   ) => {
-    if (!id || id.includes(':pkg:')) {
-      // synth-IDs aus quantity-Expansion können nicht persistiert werden
-      // (Backend kennt nur 1 item-Row pro line_index). Skip.
-      return;
-    }
-    persistMut.mutate({ itemId: id, posXCm, posYCm, posZCm, rotationDeg });
+    if (!id) return;
+    // Synth-Filter: quantity-Klone q>0 haben kein dbItemId und sind
+    // BE-seitig nicht persistierbar (1 Row pro line_index).
+    const pkg = packages.find((p) => p.id === id);
+    if (!pkg || !pkg.dbItemId) return;
+    persistMut.mutate({
+      itemId: pkg.dbItemId,
+      posXCm,
+      posYCm,
+      posZCm,
+      rotationDeg,
+    });
   };
 
   // B-2.1 NV Insert-Mode Drop-Cascade.
@@ -392,15 +324,10 @@ export default function NvLoadingPlanPage() {
     targetId: string | null,
     dropPosY: number,
   ) => {
-    if (!draggedId || draggedId.includes(':pkg:')) {
-      insertMode.cancel();
-      return;
-    }
-    // BUG-F-PACK: Drag-Targeting nur ueber renderedPackages —
-    // unplaced sitzen alle bei 0/0/0 und wuerden best-target-Suche
-    // verfaelschen.
+    // Synth-Filter via dbItemId (Quantity-Klone q>0 sind nicht
+    // persistierbar — sie haben kein dbItemId).
     const dragged = renderedPackages.find((p) => p.id === draggedId);
-    if (!dragged) {
+    if (!dragged || !dragged.dbItemId) {
       insertMode.cancel();
       return;
     }
@@ -423,10 +350,10 @@ export default function NvLoadingPlanPage() {
     }
     // B-2.2: shared Helper für Cascade-Shift mit row-wrap.
     // BUG-F-PACK: unplaced ausschliessen — Phantom-Pos (0/0/0) wuerde
-    // Cascade-Shift verfaelschen.
+    // Cascade-Shift verfaelschen. Synth-Klone (kein dbItemId) raus.
     const actions = planNvInsertShift({
       packages: renderedPackages
-        .filter((p) => !p.id.includes(':pkg:'))
+        .filter((p) => !!p.dbItemId)
         .map((p) => ({
           id: p.id,
           posX: p.posX,
@@ -731,12 +658,11 @@ export default function NvLoadingPlanPage() {
                   return;
                 void (async () => {
                   for (const p of packages) {
-                    if (p.id.includes(':pkg:')) continue;
-                    await api.patch(`/loading/package-item/${p.id}/position`, {
-                      posXCm: null,
-                      posYCm: null,
-                      posZCm: null,
-                    });
+                    if (!p.dbItemId) continue;
+                    await api.patch(
+                      `/loading/package-item/${p.dbItemId}/position`,
+                      { posXCm: null, posYCm: null, posZCm: null },
+                    );
                   }
                   await qc.invalidateQueries({
                     queryKey: ['nv-loading', tourId],

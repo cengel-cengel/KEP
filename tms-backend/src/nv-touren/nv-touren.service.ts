@@ -1619,6 +1619,7 @@ export class NvTourenService {
             id: true,
             shipment: {
               select: {
+                id: true,
                 package_count: true,
                 effective_pallets: true,
                 weight_kg: true,
@@ -1743,11 +1744,26 @@ export class NvTourenService {
     });
     let nextPos = (maxPosRow._max.position ?? -1) + 1;
 
+    // Dispotopf-Q3 (O-3-Phase-1): Source-Remove setzt shipments.status
+    // zurück auf 'new', damit die Sendung im nv-eligible-Pool sichtbar
+    // wird (Symmetrie zu FV batchStopsFv, das `tour_id:null, status:'new'`
+    // schon laenger so handhabt). FE-Swap-Modal-Dispotopf-Branch
+    // erwartet diese Symmetrie.
+    const removedShipmentIds = tour.stops
+      .filter((s) => removes.includes(s.id))
+      .map((s) => s.shipment.id);
+
     await this.prisma.$transaction(async (tx) => {
       if (removes.length > 0) {
         await tx.nv_tour_stops.deleteMany({
           where: { id: { in: removes } },
         });
+        if (removedShipmentIds.length > 0) {
+          await tx.shipments.updateMany({
+            where: { id: { in: removedShipmentIds } },
+            data: { status: 'new' },
+          });
+        }
       }
       for (const shipmentId of adds) {
         await tx.nv_tour_stops.create({

@@ -5,6 +5,7 @@
  */
 import {
   AlertTriangle,
+  ArrowDownToLine,
   Check,
   Loader2,
   RotateCcw,
@@ -31,6 +32,13 @@ export function ExecStatusIcon({
   }
   if (status === 'ok') {
     return <Check size={11} className="text-emerald-700" />;
+  }
+  if (status === 'pool') {
+    return (
+      <span title="In Dispotopf verschoben — Source-Remove ohne Target-Add">
+        <ArrowDownToLine size={11} className="text-emerald-700" />
+      </span>
+    );
   }
   if (status === 'rollback') {
     return (

@@ -7,7 +7,7 @@
  * api.post zu triggern (kein Klick).
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { fireEvent, render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('../../lib/api', () => {
@@ -171,5 +171,26 @@ describe('FvSwapOptimizerModal — smoke', () => {
     // Mind. 1 Eject + best-match liefert FV-Target → Button "Ausführen (N)".
     const btn = await findByRole('button', { name: /Ausführen \(\d+\)/ });
     expect(btn).toBeTruthy();
+  });
+
+  it('Phase 1: Dispotopf-Toggle schaltet Eject auf "↓ Dispotopf"-Label', async () => {
+    // best-match-Mock liefert FV-Target → kind='best' rendert
+    // Alt-Tour-Label. Nach "↓"-Klick: Label wechselt zu
+    // "↓ Dispotopf" + Toggle-Button-Text wird "Auto".
+    const { findAllByTitle, findByText } = render(
+      <Wrapper>
+        <FvSwapOptimizerModal
+          sourceTourId="11111111-2222-3333-4444-555555555555"
+          onClose={() => {}}
+        />
+      </Wrapper>,
+    );
+    const toggleButtons = await findAllByTitle(
+      /Statt Auto-Ziel in Dispotopf entlassen/,
+    );
+    expect(toggleButtons.length).toBeGreaterThan(0);
+    fireEvent.click(toggleButtons[0]);
+    // Label-Switch: "↓ Dispotopf" erscheint nach Toggle.
+    await findByText(/↓ Dispotopf/);
   });
 });

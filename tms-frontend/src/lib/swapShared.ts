@@ -39,6 +39,8 @@ export interface BestTourMatch {
  *   source-fail    Source-Remove fail — Sendung bleibt in Quelle
  *   rollback       Target-Add fail, Source-Re-Add ok
  *   limbo          Target-Add UND Rollback fail — manuell beheben
+ *   pool           Phase 1 Dispotopf — nur Source-Remove, kein
+ *                  Target-Add. Sendung landet im Eingang-Pool.
  */
 export type EjectExecutionStatus =
   | 'idle'
@@ -48,7 +50,8 @@ export type EjectExecutionStatus =
   | 'ok'
   | 'source-fail'
   | 'rollback'
-  | 'limbo';
+  | 'limbo'
+  | 'pool';
 
 /** Anzeige-Label der Ziel-Tour (Tour-Nr > Sub-Name > ID-Kurzform). */
 export function targetLabel(m: BestTourMatch): string {
@@ -82,18 +85,23 @@ export function countRunning(
 }
 
 /**
- * Done-Banner-Summary "✓ N verschoben · ↻ N rollback · ⚠ N im Limbo
- *  · ✗ N übersprungen". skip = no-target | not-in-source | source-fail.
+ * Done-Banner-Summary "✓ N verschoben · ⬇ N Dispotopf · ↻ N rollback
+ *  · ⚠ N im Limbo · ✗ N übersprungen".
+ *
+ * Phase-1: 'pool' (Dispotopf — Source-Remove ohne Target-Add) bekommt
+ * eigenen Bucket. skip = no-target | not-in-source | source-fail.
  */
 export function execSummary(
   status: Map<string, EjectExecutionStatus>,
 ): string {
   let ok = 0;
+  let pool = 0;
   let rollback = 0;
   let limbo = 0;
   let skip = 0;
   for (const v of status.values()) {
     if (v === 'ok') ok += 1;
+    else if (v === 'pool') pool += 1;
     else if (v === 'rollback') rollback += 1;
     else if (v === 'limbo') limbo += 1;
     else if (
@@ -105,6 +113,7 @@ export function execSummary(
   }
   const parts: string[] = [];
   if (ok > 0) parts.push(`✓ ${ok} verschoben`);
+  if (pool > 0) parts.push(`⬇ ${pool} Dispotopf`);
   if (rollback > 0) parts.push(`↻ ${rollback} rollback`);
   if (limbo > 0) parts.push(`⚠ ${limbo} im Limbo`);
   if (skip > 0) parts.push(`✗ ${skip} übersprungen`);

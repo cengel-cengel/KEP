@@ -4,9 +4,12 @@
  * Scope: renders-without-crash mit mock-NvLoadingDetail. KEIN
  * Coverage-Detail — der Algorithmus selbst ist in nvSwapOptimizer.
  * test.ts ausfuehrlich getestet.
+ *
+ * Phase 1 Dispotopf-Test: User klickt "↓" pro Eject → executableCount
+ * geht hoch, "Ausführen (N)" erscheint auch ohne best-match-Target.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { fireEvent, render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // ─── Mock VOR Imports ──────────────────────────────────────────
@@ -36,7 +39,7 @@ vi.mock('../../lib/api', () => {
           id: 'sh-stamm',
           shipment_number: 'S-STAMM',
           ldm: 4,
-          weight_kg: 1000,
+          weight_kg: 2000,
           length_cm: 480,
           width_cm: 240,
           height_cm: 100,
@@ -54,7 +57,7 @@ vi.mock('../../lib/api', () => {
               length_cm: 480,
               width_cm: 240,
               height_cm: 100,
-              weight_kg: 1000,
+              weight_kg: 2000,
               stackable: false,
             },
           ],
@@ -68,7 +71,7 @@ vi.mock('../../lib/api', () => {
           id: 'sh-a',
           shipment_number: 'S-A',
           ldm: 3,
-          weight_kg: 800,
+          weight_kg: 2000,
           length_cm: 360,
           width_cm: 240,
           height_cm: 100,
@@ -87,7 +90,7 @@ vi.mock('../../lib/api', () => {
               length_cm: 360,
               width_cm: 240,
               height_cm: 100,
-              weight_kg: 800,
+              weight_kg: 2000,
               stackable: true,
             },
           ],
@@ -101,7 +104,7 @@ vi.mock('../../lib/api', () => {
           id: 'sh-b',
           shipment_number: 'S-B',
           ldm: 4,
-          weight_kg: 900,
+          weight_kg: 2000,
           length_cm: 480,
           width_cm: 240,
           height_cm: 100,
@@ -119,7 +122,7 @@ vi.mock('../../lib/api', () => {
               length_cm: 480,
               width_cm: 240,
               height_cm: 100,
-              weight_kg: 900,
+              weight_kg: 2000,
               stackable: true,
             },
           ],
@@ -176,5 +179,35 @@ describe('NvSwapOptimizerModal — smoke', () => {
     );
     // Modal-Header enthaelt den Code aus mockLoadingDetail.
     await findByText(/NV-A/);
+  });
+
+  it('Phase 1: Dispotopf-Toggle macht Eject ausfuehrbar ohne best-match', async () => {
+    // best-match-Mock liefert [] → kein Auto-Ziel. Vor Toggle:
+    // "keine Alt-Tour gefunden" + KEIN "Ausführen"-Button.
+    // Nach "↓"-Klick: Label "↓ Dispotopf" + Button "Ausführen (1)".
+    const { findAllByTitle, findByRole, queryByRole } = render(
+      <Wrapper>
+        <NvSwapOptimizerModal sourceTourId="tour-1" onClose={() => {}} />
+      </Wrapper>,
+    );
+    // Pre-Toggle: kein Ausfuehren-Button.
+    // (queryByRole returnt null statt zu throwen, ideal fuer Negativ-
+    // Assertion. Wir warten kurz bis Eject-Liste gerendert ist via
+    // findAllByTitle.)
+    const toggleButtons = await findAllByTitle(
+      /Statt Auto-Ziel in Dispotopf entlassen/,
+    );
+    expect(toggleButtons.length).toBeGreaterThan(0);
+    expect(queryByRole('button', { name: /Ausführen \(\d+\)/ })).toBeNull();
+
+    // Toggle den ersten Eject auf Dispotopf.
+    fireEvent.click(toggleButtons[0]);
+
+    // Post-Toggle: "Ausführen (1)" muss erscheinen (oder hoeher wenn
+    // Optimizer mehrere Ejects vorgeschlagen hat — wir akzeptieren ≥1).
+    const execBtn = await findByRole('button', {
+      name: /Ausführen \(\d+\)/,
+    });
+    expect(execBtn).toBeTruthy();
   });
 });

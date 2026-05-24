@@ -294,22 +294,40 @@ export default function FvSwapOptimizerModal({
     'idle' | 'confirm' | 'running' | 'done'
   >('idle');
 
-  // Wie viele Ejects haben tatsaechlich eine ausfuehrbare Ziel-Tour?
+  // Phase 1 Dispotopf: pro Eject 'best' oder 'pool'. Pool = Source-
+  // Remove ohne Target-Add → Sendung landet im FV-eligible-Pool.
+  const [targetKindMap, setTargetKindMap] = useState<
+    Map<string, 'best' | 'pool'>
+  >(new Map());
+  const targetKindFor = (id: string): 'best' | 'pool' =>
+    targetKindMap.get(id) ?? 'best';
+  const toggleTargetKind = (id: string) => {
+    setTargetKindMap((prev) => {
+      const next = new Map(prev);
+      next.set(id, targetKindFor(id) === 'pool' ? 'best' : 'pool');
+      return next;
+    });
+  };
+
+  // Ausfuehrbar = Best-Target vorhanden ODER kind='pool'.
   const executableCount = useMemo(() => {
     let n = 0;
     for (const id of ejectIds) {
-      if (targetByShipment.get(id)?.target) n += 1;
+      if (targetKindFor(id) === 'pool') n += 1;
+      else if (targetByShipment.get(id)?.target) n += 1;
     }
     return n;
-  }, [ejectIds, targetByShipment]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ejectIds, targetByShipment, targetKindMap]);
 
   const qc = useQueryClient();
   const executeMut = useMutation({
     mutationFn: async () => {
       const next = new Map<string, EjectExecutionStatus>();
       for (const ejectId of ejectIds) {
+        const kind = targetKindFor(ejectId);
         const t = targetByShipment.get(ejectId);
-        if (!t?.target) {
+        if (kind === 'best' && !t?.target) {
           next.set(ejectId, 'no-target');
           setExecStatus(new Map(next));
           continue;
@@ -325,7 +343,9 @@ export default function FvSwapOptimizerModal({
         setExecStatus(new Map(next));
 
         // Step 1: Source-Remove FIRST (shipmentId — KEIN stopId in FV).
-        // Bei Fail: Sendung bleibt in Quelle (kein Verlust).
+        // FV batchStopsFv setzt tour_id=null + status='new' → Sendung
+        // landet automatisch im FV-eligible-Pool (Dispotopf-Effekt
+        // out-of-the-box, auch fuer kind='best').
         try {
           await api.post(`/tours/${sourceTourId}/batch-stops`, {
             adds: [],
@@ -337,11 +357,18 @@ export default function FvSwapOptimizerModal({
           continue;
         }
 
+        // Phase 1 Dispotopf: kind='pool' → KEIN Target-Add, fertig.
+        if (kind === 'pool') {
+          next.set(ejectId, 'pool');
+          setExecStatus(new Map(next));
+          continue;
+        }
+
         // Step 2: Target-Add. FV-BE-Pre-Checks (status='new',
         // tour_id=null, has_active_lock, ADR-fuer-Hazmat) lehnen
         // ggf. mit 400 ab → fall through zum Rollback.
         try {
-          await api.post(`/tours/${t.target.tour_id}/batch-stops`, {
+          await api.post(`/tours/${t!.target!.tour_id}/batch-stops`, {
             adds: [ejectId],
             removes: [],
           });
@@ -524,10 +551,18 @@ export default function FvSwapOptimizerModal({
                                   : '— kg'}
                               </span>
                               {/* F2.3.b-1: Best-Match-Target FV-only.
-                                  F2.3.b-2: Per-Zeile-ExecStatusIcon. */}
+                                  F2.3.b-2: Per-Zeile-ExecStatusIcon.
+                                  Phase 1 Dispotopf: Toggle ↓ Pool. */}
                               <span className="ml-auto inline-flex items-center gap-1">
                                 <ArrowRight size={11} className="text-gray-400" />
-                                {t?.isLoading ? (
+                                {targetKindFor(id) === 'pool' ? (
+                                  <span
+                                    className="text-[10px] text-emerald-700 font-medium"
+                                    title="Dispotopf — Sendung kehrt in den Eingang zurueck"
+                                  >
+                                    ↓ Dispotopf
+                                  </span>
+                                ) : t?.isLoading ? (
                                   <span className="text-[10px] text-gray-400 italic animate-pulse">
                                     lade Alt-Tour…
                                   </span>
@@ -546,6 +581,26 @@ export default function FvSwapOptimizerModal({
                                   <span className="text-[10px] text-amber-700">
                                     keine Alt-Tour gefunden
                                   </span>
+                                )}
+                                {confirmStep === 'idle' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleTargetKind(id)}
+                                    className={`text-[10px] px-1 py-0.5 rounded border ${
+                                      targetKindFor(id) === 'pool'
+                                        ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                        : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-100'
+                                    }`}
+                                    title={
+                                      targetKindFor(id) === 'pool'
+                                        ? 'Wieder Auto-Ziel verwenden'
+                                        : 'Statt Auto-Ziel in Dispotopf entlassen'
+                                    }
+                                  >
+                                    {targetKindFor(id) === 'pool'
+                                      ? 'Auto'
+                                      : '↓'}
+                                  </button>
                                 )}
                                 <ExecStatusIcon
                                   status={execStatus.get(id) ?? 'idle'}

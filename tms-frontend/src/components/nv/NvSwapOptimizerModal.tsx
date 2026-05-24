@@ -247,23 +247,43 @@ export default function NvSwapOptimizerModal({
     'idle' | 'confirm' | 'running' | 'done'
   >('idle');
 
-  // Wie viele Ejects haben tatsaechlich eine ausfuehrbare Target-Tour?
-  // (Disabled-Button-Hint + Summary-Text.)
+  // Phase 1 Dispotopf: pro Eject merken ob Ziel = 'best' (Best-Match
+  // ausfuehren) oder 'pool' (Source-Remove only, Sendung in Eingang).
+  // Default 'best'; User toggelt per Row-Button.
+  const [targetKindMap, setTargetKindMap] = useState<
+    Map<string, 'best' | 'pool'>
+  >(new Map());
+  const targetKindFor = (id: string): 'best' | 'pool' =>
+    targetKindMap.get(id) ?? 'best';
+  const toggleTargetKind = (id: string) => {
+    setTargetKindMap((prev) => {
+      const next = new Map(prev);
+      next.set(id, targetKindFor(id) === 'pool' ? 'best' : 'pool');
+      return next;
+    });
+  };
+
+  // Ausfuehrbar = Best-Target vorhanden ODER kind='pool' gesetzt.
+  // Pool-Ejects brauchen kein best-match (das ist gerade ihr Witz).
   const executableCount = useMemo(() => {
     let n = 0;
     for (const id of ejectIds) {
-      if (targetByShipment.get(id)?.target) n += 1;
+      if (targetKindFor(id) === 'pool') n += 1;
+      else if (targetByShipment.get(id)?.target) n += 1;
     }
     return n;
-  }, [ejectIds, targetByShipment]);
+  // targetKindFor liest aus targetKindMap — Dependency reicht.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ejectIds, targetByShipment, targetKindMap]);
 
   const qc = useQueryClient();
   const executeMut = useMutation({
     mutationFn: async () => {
       const next = new Map<string, EjectExecutionStatus>();
       for (const ejectId of ejectIds) {
+        const kind = targetKindFor(ejectId);
         const t = targetByShipment.get(ejectId);
-        if (!t?.target) {
+        if (kind === 'best' && !t?.target) {
           next.set(ejectId, 'no-target');
           setExecStatus(new Map(next));
           continue;
@@ -281,6 +301,8 @@ export default function NvSwapOptimizerModal({
         setExecStatus(new Map(next));
 
         // Step 1: Source-Remove (stopId, NICHT shipmentId).
+        // BE setzt shipments.status='new' fuer entfernte Stops →
+        // Sendung erscheint im nv-eligible-Pool (= Dispotopf).
         try {
           await api.post(`/nv-touren/${sourceTourId}/batch-stops`, {
             adds: [],
@@ -292,10 +314,17 @@ export default function NvSwapOptimizerModal({
           continue;
         }
 
+        // Phase 1 Dispotopf: kind='pool' → KEIN Target-Add, fertig.
+        if (kind === 'pool') {
+          next.set(ejectId, 'pool');
+          setExecStatus(new Map(next));
+          continue;
+        }
+
         // Step 2: Target-Add. Fail → Rollback-Versuch.
         try {
           await api.post(
-            `/nv-touren/${t.target.tour_id}/batch-stops`,
+            `/nv-touren/${t!.target!.tour_id}/batch-stops`,
             { adds: [ejectId], removes: [] },
           );
           next.set(ejectId, 'ok');
@@ -488,7 +517,14 @@ export default function NvSwapOptimizerModal({
                               </span>
                               <span className="ml-auto inline-flex items-center gap-1">
                                 <ArrowRight size={11} className="text-gray-400" />
-                                {t?.isLoading ? (
+                                {targetKindFor(id) === 'pool' ? (
+                                  <span
+                                    className="text-[10px] text-emerald-700 font-medium"
+                                    title="Dispotopf — Sendung kehrt in den Eingang zurueck"
+                                  >
+                                    ↓ Dispotopf
+                                  </span>
+                                ) : t?.isLoading ? (
                                   <span className="text-[10px] text-gray-400 italic animate-pulse">
                                     lade Alt-Tour…
                                   </span>
@@ -507,6 +543,28 @@ export default function NvSwapOptimizerModal({
                                   <span className="text-[10px] text-amber-700">
                                     keine Alt-Tour gefunden
                                   </span>
+                                )}
+                                {/* Phase 1 Dispotopf Toggle. Vor Execute
+                                    aktiv; waehrend/nach Execute disabled. */}
+                                {confirmStep === 'idle' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleTargetKind(id)}
+                                    className={`text-[10px] px-1 py-0.5 rounded border ${
+                                      targetKindFor(id) === 'pool'
+                                        ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                        : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-100'
+                                    }`}
+                                    title={
+                                      targetKindFor(id) === 'pool'
+                                        ? 'Wieder Auto-Ziel verwenden'
+                                        : 'Statt Auto-Ziel in Dispotopf entlassen'
+                                    }
+                                  >
+                                    {targetKindFor(id) === 'pool'
+                                      ? 'Auto'
+                                      : '↓'}
+                                  </button>
                                 )}
                                 {/* F2.2.b-2: Per-Zeile-Execution-Status. */}
                                 <ExecStatusIcon

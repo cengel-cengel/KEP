@@ -100,19 +100,28 @@ describe('countRunning', () => {
 });
 
 describe('execSummary', () => {
-  it('rendert alle 4 Buckets', () => {
+  it('rendert alle 5 Buckets (inkl. pool)', () => {
     const s = status([
       ['a', 'ok'],
       ['b', 'ok'],
-      ['c', 'rollback'],
-      ['d', 'limbo'],
-      ['e', 'no-target'],
-      ['f', 'not-in-source'],
-      ['g', 'source-fail'],
+      ['c', 'pool'],
+      ['d', 'rollback'],
+      ['e', 'limbo'],
+      ['f', 'no-target'],
+      ['g', 'not-in-source'],
+      ['h', 'source-fail'],
     ]);
     expect(execSummary(s)).toBe(
-      '✓ 2 verschoben · ↻ 1 rollback · ⚠ 1 im Limbo · ✗ 3 übersprungen',
+      '✓ 2 verschoben · ⬇ 1 Dispotopf · ↻ 1 rollback · ⚠ 1 im Limbo · ✗ 3 übersprungen',
     );
+  });
+
+  it('nur Dispotopf-Aktionen', () => {
+    const s = status([
+      ['a', 'pool'],
+      ['b', 'pool'],
+    ]);
+    expect(execSummary(s)).toBe('⬇ 2 Dispotopf');
   });
 
   it('laesst leere Buckets weg', () => {

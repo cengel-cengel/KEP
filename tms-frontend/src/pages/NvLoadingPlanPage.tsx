@@ -12,10 +12,12 @@ import { planNvInsertShift } from '../lib/nvRepack';
 import LoadingPlan3D, {
   type Plan3DPackage,
 } from '../components/LoadingPlan3D';
+import AxleLoadPanel from '../components/AxleLoadPanel';
 import {
   getVehicleDims,
   resolveFahrzeugTyp,
 } from '../lib/vehicleTypes';
+import { computeStackingLdmMetrics } from '../lib/loadingLdm';
 
 export interface NvPackageItem {
   id: string;
@@ -91,7 +93,15 @@ export function flattenPackages(
   let cursorY = 0;
   let cursorX = 0;
   let rowMaxLength = 0;
-  let shipIdx = 0;
+  // F1.a/P: Pattern-Align mit FV — shipIdx-Map per-Sendung statt per-
+  // Stop. NV hat zwar 1:1 stop:shipment, aber so wird die Farbe gegen
+  // doppelt vorkommende shipment.id stabil + Code-Konvention einheitlich.
+  const shipIdxMap = new Map<string, number>();
+  for (const stop of tour.stops ?? []) {
+    if (!shipIdxMap.has(stop.shipment.id)) {
+      shipIdxMap.set(stop.shipment.id, shipIdxMap.size);
+    }
+  }
   const placeAuto = (
     w: number,
     l: number,
@@ -110,8 +120,10 @@ export function flattenPackages(
   };
   for (const stop of tour.stops ?? []) {
     const ship = stop.shipment;
-    const color = SHIPMENT_COLORS[shipIdx % SHIPMENT_COLORS.length];
-    shipIdx++;
+    const color =
+      SHIPMENT_COLORS[
+        (shipIdxMap.get(ship.id) ?? 0) % SHIPMENT_COLORS.length
+      ];
     const items = ship.shipment_package_items ?? [];
     const shipFullyStackable = items.every((it) => it.stackable !== false);
     for (const it of items) {
@@ -206,6 +218,69 @@ export default function NvLoadingPlanPage() {
     [tourQ.data, vehicle.widthCm, vehicle.lengthCm],
   );
 
+  // F1.a/K-L-M-N Kennzahlen: per-Sendung ldm/isStackable aus tour.stops
+  // ableiten + Vol/Gewicht aus packages (per-package, inkl. Mehrfach-
+  // Quantity). Verwendet dieselben Helper wie FV-Page.
+  const ldmShipments = useMemo(() => {
+    const stops = tourQ.data?.stops ?? [];
+    return stops.map((s) => ({
+      ldm: Number(s.shipment.ldm) || 0,
+      isStackable: (s.shipment.shipment_package_items ?? []).every(
+        (it) => it.stackable !== false,
+      ),
+    }));
+  }, [tourQ.data?.stops]);
+
+  const ldmMetrics = useMemo(
+    () => computeStackingLdmMetrics(vehicle.maxLdm, ldmShipments),
+    [vehicle.maxLdm, ldmShipments],
+  );
+
+  const cargoVolM3 = useMemo(() => {
+    let v = 0;
+    for (const p of packages) {
+      v += p.lengthCm * p.widthCm * p.heightCm;
+    }
+    return v / 1e6;
+  }, [packages]);
+
+  const trailerVolM3 = useMemo(() => {
+    return (vehicle.lengthCm * vehicle.widthCm * vehicle.heightCm) / 1e6;
+  }, [vehicle.lengthCm, vehicle.widthCm, vehicle.heightCm]);
+
+  const volUtil = useMemo(() => {
+    if (trailerVolM3 <= 0) return 0;
+    return (cargoVolM3 / trailerVolM3) * 100;
+  }, [cargoVolM3, trailerVolM3]);
+
+  const totalWeightKg = useMemo(() => {
+    let w = 0;
+    for (const p of packages) {
+      w += Number(p.weightKg) || 0;
+    }
+    return w;
+  }, [packages]);
+
+  const weightUtil = useMemo(() => {
+    if (vehicle.maxWeightKg <= 0) return null;
+    return (totalWeightKg / vehicle.maxWeightKg) * 100;
+  }, [totalWeightKg, vehicle.maxWeightKg]);
+
+  const isOverloaded =
+    ldmMetrics.floorPct > 100 ||
+    ldmMetrics.effectivePct > 100 ||
+    volUtil > 100 ||
+    (weightUtil != null && weightUtil > 100);
+
+  // F1.a/S Toast-Helper (Pattern aus FV-Page) — 2.5s auto-dismiss.
+  const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(
+    null,
+  );
+  function showToast(msg: string, type: 'ok' | 'err' = 'ok') {
+    setToast({ msg, type });
+    window.setTimeout(() => setToast(null), 2500);
+  }
+
   const persistMut = useMutation({
     mutationFn: async (vars: {
       itemId: string;
@@ -228,6 +303,10 @@ export default function NvLoadingPlanPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['nv-loading', tourId] });
+      showToast('Position gespeichert');
+    },
+    onError: () => {
+      showToast('Speichern fehlgeschlagen', 'err');
     },
   });
 
@@ -323,6 +402,20 @@ export default function NvLoadingPlanPage() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
+      {/* F1.a/S Toast */}
+      {toast && (
+        <div
+          className={
+            'fixed top-4 right-4 z-50 rounded-lg shadow-lg px-4 py-2 text-sm border ' +
+            (toast.type === 'err'
+              ? 'bg-red-50 border-red-300 text-red-800'
+              : 'bg-emerald-50 border-emerald-300 text-emerald-800')
+          }
+        >
+          {toast.msg}
+        </div>
+      )}
+
       <div className="flex items-center gap-3 px-4 py-2 bg-white border-b">
         <div className="font-semibold text-gray-800">
           NV-Beladeplan
@@ -363,27 +456,169 @@ export default function NvLoadingPlanPage() {
           <div className="text-sm text-gray-400">Tour nicht gefunden.</div>
         )}
         {tourQ.data && (
-          <LoadingPlan3D
-            vehicle={{
-              lengthCm: vehicle.lengthCm,
-              widthCm: vehicle.widthCm,
-              heightCm: vehicle.heightCm,
-            }}
-            packages={packages}
-            onPositionChange={handlePosition}
-            insertMode={insertMode.active}
-            onInsertAt={handleNvInsertAt}
-            onPackageContextMenu={(pkgId, x, y) => {
-              const pkg = packages.find((p) => p.id === pkgId);
-              if (!pkg) return;
-              setCtxMenu({
-                pkgId,
-                shipmentId: (pkg as { shipmentId?: string }).shipmentId ?? '',
-                x,
-                y,
-              });
-            }}
-          />
+          <div className="space-y-3">
+            {/* F1.a/K Kennzahlen-Bar */}
+            <div className="flex items-center gap-4 bg-gray-100 p-2 rounded border border-gray-200 text-sm flex-wrap">
+              <span
+                className={
+                  ldmMetrics.floorPct > 100
+                    ? 'text-red-600 font-bold'
+                    : 'text-gray-800'
+                }
+                title="Ohne Stapelvorteil: Summe Lademeter / Kapazität (Anzeige max. 100 %)"
+              >
+                Boden-ldm: {Math.min(100, ldmMetrics.floorPct).toFixed(0)}%
+              </span>
+              <span
+                className={
+                  ldmMetrics.effectivePct > 100
+                    ? 'text-red-600 font-semibold'
+                    : 'text-emerald-800'
+                }
+                title="Stapelbar zählt mit Faktor ½ — so viel „Platz“ bleibt rechnerisch frei"
+              >
+                Effektiv: {ldmMetrics.effectivePct.toFixed(0)}%
+              </span>
+              <span
+                className={
+                  volUtil > 100 ? 'text-red-600 font-bold' : 'text-gray-700'
+                }
+              >
+                Vol: {volUtil.toFixed(0)}%
+              </span>
+              <span
+                className={
+                  weightUtil != null && weightUtil > 100
+                    ? 'text-red-600 font-bold'
+                    : 'text-gray-700'
+                }
+              >
+                Gew: {weightUtil?.toFixed(0) ?? '—'}%
+              </span>
+            </div>
+
+            {/* F1.a/L Lademeter-Detail */}
+            <div className="text-gray-800 leading-relaxed bg-blue-50 p-3 rounded border border-blue-200 space-y-2 text-sm">
+              <div className="font-medium text-gray-900">Lademeter</div>
+              <div className="grid sm:grid-cols-2 gap-2 text-xs sm:text-sm">
+                <div>
+                  <span className="text-gray-600">Boden (ohne Stapelvorteil):</span>{' '}
+                  <strong>
+                    {ldmMetrics.floorUsed.toFixed(2)} / {ldmMetrics.maxLdm.toFixed(1)} ldm
+                  </strong>
+                  <div className="mt-1 h-2 w-full rounded-full bg-gray-200 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${
+                        ldmMetrics.floorPct > 100 ? 'bg-red-500' : 'bg-[#1e40af]'
+                      }`}
+                      style={{ width: `${Math.min(100, ldmMetrics.floorPct)}%` }}
+                    />
+                  </div>
+                  <span className="text-[11px] text-gray-500">Balken max. 100 % (reiner Bodenbedarf)</span>
+                </div>
+                <div>
+                  <span className="text-gray-600">Effektiv (stapelbar ÷2):</span>{' '}
+                  <strong>
+                    {ldmMetrics.effectiveUsed.toFixed(2)} / {ldmMetrics.maxLdm.toFixed(1)} ldm
+                  </strong>
+                  <div className="mt-1 h-2 w-full rounded-full bg-gray-200 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${
+                        ldmMetrics.effectivePct > 100 ? 'bg-red-500' : 'bg-emerald-600'
+                      }`}
+                      style={{ width: `${Math.min(100, ldmMetrics.effectivePct)}%` }}
+                    />
+                  </div>
+                  <span className="text-[11px] text-gray-500">
+                    Zusätzlich frei durch Stapeln:{' '}
+                    <strong>{ldmMetrics.freeEffectiveLdm.toFixed(2)} ldm</strong>{' '}
+                    (vs. Boden {ldmMetrics.freeFloorLdm.toFixed(2)} ldm)
+                  </span>
+                </div>
+              </div>
+              <div className="text-xs text-emerald-900 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5">
+                Stapel-Potenzial: <strong>{ldmMetrics.headroomLdm.toFixed(2)} ldm</strong>{' '}
+                — Summe der Hälfte aller stapelbaren Sendungen (Faktor 2 auf den
+                Boden-Lademeter). Packstücke werden in der Tour-Reihenfolge
+                automatisch gestapelt, wenn Höhe und Stapelbarkeit passen.
+              </div>
+            </div>
+
+            {/* F1.a/N Vol/Gewicht-Mini-Stats */}
+            <div className="text-gray-700 bg-slate-50 p-2 rounded border border-slate-200 text-xs sm:text-sm">
+              📐 {cargoVolM3.toFixed(1)} m³ / {trailerVolM3.toFixed(1)} m³ (
+              {volUtil.toFixed(0)}% Volumen) · ⚖{' '}
+              {totalWeightKg.toLocaleString('de-DE')} kg /{' '}
+              {vehicle.maxWeightKg.toLocaleString('de-DE')} kg (
+              {weightUtil?.toFixed(0) ?? '—'}% Gewicht)
+            </div>
+
+            {/* F1.a/M Overload-Warning */}
+            {isOverloaded && (
+              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2 space-y-1">
+                <div className="font-medium">⚠ Überladung für gewähltes Fahrzeug</div>
+                {ldmMetrics.floorPct > 100 && (
+                  <div>
+                    Boden-ldm: {ldmMetrics.floorUsed.toFixed(1)} /{' '}
+                    {ldmMetrics.maxLdm.toFixed(1)} ldm
+                  </div>
+                )}
+                {ldmMetrics.effectivePct > 100 && (
+                  <div>
+                    Effektiv-ldm: {ldmMetrics.effectiveUsed.toFixed(1)} /{' '}
+                    {ldmMetrics.maxLdm.toFixed(1)} ldm
+                  </div>
+                )}
+                {volUtil > 100 && (
+                  <div>
+                    Volumen: {cargoVolM3.toFixed(1)} / {trailerVolM3.toFixed(1)} m³
+                  </div>
+                )}
+                {weightUtil != null && weightUtil > 100 && (
+                  <div>
+                    Gewicht: {totalWeightKg.toLocaleString('de-DE')} /{' '}
+                    {vehicle.maxWeightKg.toLocaleString('de-DE')} kg
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 3D-Canvas */}
+            <LoadingPlan3D
+              vehicle={{
+                lengthCm: vehicle.lengthCm,
+                widthCm: vehicle.widthCm,
+                heightCm: vehicle.heightCm,
+              }}
+              packages={packages}
+              onPositionChange={handlePosition}
+              insertMode={insertMode.active}
+              onInsertAt={handleNvInsertAt}
+              onPackageContextMenu={(pkgId, x, y) => {
+                const pkg = packages.find((p) => p.id === pkgId);
+                if (!pkg) return;
+                setCtxMenu({
+                  pkgId,
+                  shipmentId:
+                    (pkg as { shipmentId?: string }).shipmentId ?? '',
+                  x,
+                  y,
+                });
+              }}
+            />
+
+            {/* F1.a/O Achslast */}
+            <AxleLoadPanel
+              packages={packages.map((p) => ({
+                posY: p.posY,
+                weightKg: Number(p.weightKg) || 0,
+              }))}
+              vehicleType={vehicle.type}
+              trailerLength_m={vehicle.lengthCm / 100}
+              groundedCount={packages.filter((p) => p.posZ < 1e-6).length}
+              totalCount={packages.length}
+            />
+          </div>
         )}
       </div>
       {ctxMenu &&

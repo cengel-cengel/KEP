@@ -108,7 +108,7 @@ function isToday(iso: string | null | undefined): boolean {
   return d.getTime() === today.getTime();
 }
 
-function isOverdue(
+export function isOverdue(
   iso: string | null | undefined,
   status: string | null | undefined,
 ): boolean {

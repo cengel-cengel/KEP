@@ -110,6 +110,36 @@ describe('YardShipmentDetailModal', () => {
     expect(screen.queryByText('Volle Details')).toBeNull();
   });
 
+  it('"+ Zur Tour": triggert onAddToTour + onClose', () => {
+    const onClose = vi.fn();
+    const onAddToTour = vi.fn();
+    render(
+      <YardShipmentDetailModal
+        shipment={nv}
+        isOpen
+        onClose={onClose}
+        onAddToTour={onAddToTour}
+      />,
+    );
+    fireEvent.click(screen.getByText('+ Zur Tour'));
+    expect(onAddToTour).toHaveBeenCalledWith('sh-1');
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('ohne onAddToTour: Button ausgeblendet (Hof-Modal-Scope)', () => {
+    // Hof-Modal-Verwendung: nur Volle-Details + Schließen sichtbar.
+    render(
+      <YardShipmentDetailModal
+        shipment={nv}
+        isOpen
+        onClose={() => {}}
+        onOpenFullDetail={() => {}}
+      />,
+    );
+    expect(screen.queryByText('+ Zur Tour')).toBeNull();
+    expect(screen.getByText('Volle Details')).toBeInTheDocument();
+  });
+
   it('shipment=null + isOpen=false: rendert nichts (kein Crash)', () => {
     const { container } = render(
       <YardShipmentDetailModal

@@ -46,6 +46,14 @@ interface Props {
   /** Optional: oeffnet S-5-Detail-Panel (desktop-side). Wenn nicht
    *  gesetzt → Button "Volle Details" wird ausgeblendet. */
   onOpenFullDetail?: (shipmentId: string) => void;
+  /**
+   * Optional: "Zur Tour +"-Button (Karten-Modal-only). Wenn gesetzt →
+   * Button erscheint im Footer; Klick feuert onAddToTour + schliesst
+   * Modal. Hof-Modal laesst das undefined → Button bleibt aus.
+   * Semantik: dispatcht togglePendingAdd der active-tour-Pending-Sync
+   * (UNVERAENDERT zum alten Pin-Tap-Verhalten der Karte).
+   */
+  onAddToTour?: (shipmentId: string) => void;
 }
 
 function fmtNum(
@@ -75,6 +83,7 @@ export default function YardShipmentDetailModal({
   isOpen,
   onClose,
   onOpenFullDetail,
+  onAddToTour,
 }: Props) {
   const s = shipment;
   if (!s && !isOpen) return null;
@@ -193,18 +202,6 @@ export default function YardShipmentDetailModal({
           </div>
 
           <div className="px-4 py-3 border-t flex items-center justify-end gap-2 bg-gray-50">
-            {onOpenFullDetail && s?.id && (
-              <button
-                type="button"
-                onClick={() => {
-                  onOpenFullDetail(s.id);
-                  onClose();
-                }}
-                className="text-sm px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 min-h-[44px]"
-              >
-                Volle Details
-              </button>
-            )}
             <Dialog.Close asChild>
               <button
                 type="button"
@@ -213,6 +210,32 @@ export default function YardShipmentDetailModal({
                 Schließen
               </button>
             </Dialog.Close>
+            {onOpenFullDetail && s?.id && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenFullDetail(s.id);
+                  onClose();
+                }}
+                className="text-sm px-3 py-2 rounded-md bg-white border border-blue-600 text-blue-700 hover:bg-blue-50 active:bg-blue-100 min-h-[44px]"
+              >
+                Volle Details
+              </button>
+            )}
+            {onAddToTour && s?.id && (
+              <button
+                type="button"
+                onClick={() => {
+                  // togglePendingAdd-Wrapper schliesst Modal automatisch
+                  // — User-Workflow: Tap → Modal → "+ Zur Tour" → weiter.
+                  onAddToTour(s.id);
+                  onClose();
+                }}
+                className="text-sm px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 min-h-[44px] font-medium"
+              >
+                + Zur Tour
+              </button>
+            )}
           </div>
         </Dialog.Content>
       </Dialog.Portal>

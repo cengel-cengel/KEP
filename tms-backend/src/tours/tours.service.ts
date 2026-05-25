@@ -2492,6 +2492,19 @@ export class ToursService {
           // S-6.2: country_code fuer Slot-Country-Prefix.
           select: { zip: true, city: true, country_code: true },
         },
+        // S-6.3 B: package_items pro Sendung fuer Hof-Trailer-Pack.
+        shipment_package_items: {
+          orderBy: { line_index: 'asc' as const },
+          select: {
+            id: true,
+            length_cm: true,
+            width_cm: true,
+            height_cm: true,
+            weight_kg: true,
+            quantity: true,
+            stackable: true,
+          },
+        },
       },
       take: 500,
     });
@@ -2522,6 +2535,16 @@ export class ToursService {
       relation_id: string | null;
       relation_code: string | null;
       depot_label: string | null;
+      // S-6.3 B: package_items pro Sendung (Hof-Trailer-Pack).
+      package_items: Array<{
+        id: string;
+        length_cm: number | null;
+        width_cm: number | null;
+        height_cm: number | null;
+        weight_kg: number | null;
+        quantity: number | null;
+        stackable: boolean;
+      }>;
     }> = [];
     for (const c of candidates) {
       const a = c.addresses_shipments_loading_address_idToaddresses;
@@ -2575,6 +2598,15 @@ export class ToursService {
             c.relation?.default_hall_location?.description ??
             c.relation?.default_hall_location?.code ??
             null,
+          package_items: (c.shipment_package_items ?? []).map((it) => ({
+            id: it.id,
+            length_cm: it.length_cm ?? null,
+            width_cm: it.width_cm ?? null,
+            height_cm: it.height_cm ?? null,
+            weight_kg: it.weight_kg != null ? Number(it.weight_kg) : null,
+            quantity: it.quantity ?? null,
+            stackable: it.stackable,
+          })),
         });
       }
     }

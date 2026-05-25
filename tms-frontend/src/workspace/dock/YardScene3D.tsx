@@ -143,6 +143,15 @@ export interface YardSlot {
   variant?: 'normal' | 'overflow';
   /** Sendungen in diesem Slot. */
   shipments: YardShipment[];
+  /** S-6.3 B: FFD-Trailer-Zuordnung (Sendungs-IDs pro virtuellem
+   *  Trailer). Heute (C-Phase) wird das fuer Header-LKW-Summe
+   *  konsumiert; B-Phase rendert N anhaengergroße Stellplaetze pro
+   *  Gruppe basierend darauf. */
+  trailers?: Array<{
+    shipmentIds: string[];
+    volumeM3: number;
+    weightKg: number;
+  }>;
 }
 
 /**

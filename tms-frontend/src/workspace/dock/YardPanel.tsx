@@ -46,6 +46,7 @@ import {
   sortPackagesForOptimalPack,
   type SharedPackage,
 } from '../../lib/loadingShared';
+import { ffdPackShipments } from '../../lib/yardFfd';
 
 interface NearbyShipment {
   id: string;
@@ -75,6 +76,16 @@ interface NearbyShipment {
   relation_id?: string | null;
   relation_code?: string | null;
   depot_label?: string | null;
+  // S-6.3 B: package_items pro Sendung (Hof-Trailer-Pack).
+  package_items?: Array<{
+    id: string;
+    length_cm: number | null;
+    width_cm: number | null;
+    height_cm: number | null;
+    weight_kg: number | null;
+    quantity: number | null;
+    stackable: boolean;
+  }> | null;
 }
 
 /**
@@ -452,10 +463,39 @@ export default function YardPanel() {
     const out: YardSlot[] = sorted.map(([key, g]) => {
       const cc = uniformCountry(g.ships);
       const prefix = cc && cc !== 'DE' ? `${cc} · ` : '';
+      // S-6.3 C: FFD-Bin-Pack pro Gruppe → LKW-Zahl.
+      // Pack-Einheit = Sendung (NIE gesplittet, Regel #2).
+      // volumeM3 fallback: shipBoxDims-Heuristik (L*W*H ÷ 1e6) wenn
+      // Aggregat-Field NULL ist, damit FFD nicht 0 m³ zaehlt.
+      const ffdInput = g.ships.map((s) => {
+        let vol = Number(s.volume_m3 ?? 0);
+        if (!vol && s.length_cm && s.width_cm && s.height_cm) {
+          vol =
+            (Number(s.length_cm) *
+              Number(s.width_cm) *
+              Number(s.height_cm)) /
+            1e6;
+        }
+        return {
+          id: s.id,
+          volumeM3: vol,
+          weightKg: Number(s.weight_kg ?? 0),
+        };
+      });
+      const trailers = ffdPackShipments(ffdInput);
+      const lkw = trailers.length;
+      const sdg = g.ships.length;
+      // Slot-Label: "<group> · N Sdg · ≈ K LKW"
+      const baseLabel = `${prefix}${g.label}`;
+      const fullLabel = `${baseLabel} · ${sdg} Sdg · ≈ ${lkw} LKW`;
       return {
         id: `g-${key}`,
-        label: `${prefix}${g.label} (${g.ships.length})`,
+        label: fullLabel,
         variant: 'normal' as const,
+        // S-6.3 B: Trailers fuer Pack-Render (B-Phase). Heute (C)
+        // konsumiert YardScene3D sie noch nicht; B aktiviert die
+        // multi-Trailer-Stellplatz-Render-Logik.
+        trailers,
         shipments: g.ships.map((s) => ({
           id: s.id,
           shipmentNumber: s.shipment_number,
@@ -513,6 +553,14 @@ export default function YardPanel() {
   }
 
   const totalNearby = nearbyQ.data?.length ?? 0;
+  // S-6.3 C: Summe der Trailer-Bins ueber alle nicht-Ueberlauf-Slots
+  // (Pool-LKW-Bedarf). Ueberlauf zaehlt KEIN LKW — die Sendungen
+  // dort sind ja bereits ungeschickt platzierbar.
+  const totalLkw = slots.reduce(
+    (sum, s) =>
+      s.variant === 'overflow' ? sum : sum + (s.trailers?.length ?? 0),
+    0,
+  );
   const isLoading = nearbyQ.isLoading || nvTourQ.isLoading || fvTourQ.isLoading;
 
   return (
@@ -529,6 +577,11 @@ export default function YardPanel() {
         <span className="font-mono text-gray-700">
           {totalNearby} im Pool
         </span>
+        {totalLkw > 0 && (
+          <span className="text-blue-700">
+            · ≈ {totalLkw} LKW
+          </span>
+        )}
         {placedInTrailer.length > 0 && (
           <span className="text-amber-700">
             · {placedInTrailer.length} im Auflieger

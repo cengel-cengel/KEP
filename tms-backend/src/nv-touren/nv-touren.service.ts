@@ -3152,6 +3152,22 @@ export class NvTourenService {
             country_code: true,
           },
         },
+        // S-6.3 B: package_items pro Sendung fuer Hof-Trailer-Pack.
+        // Pro Trailer wird placePackages auf den items aller
+        // zugewiesenen Sendungen laufen. Reihenfolge: line_index asc
+        // damit Pack-Output deterministisch ist.
+        shipment_package_items: {
+          orderBy: { line_index: 'asc' as const },
+          select: {
+            id: true,
+            length_cm: true,
+            width_cm: true,
+            height_cm: true,
+            weight_kg: true,
+            quantity: true,
+            stackable: true,
+          },
+        },
       },
       take: 500,
     });
@@ -3175,6 +3191,16 @@ export class NvTourenService {
       loading_street: string | null;
       loading_country: string | null;
       distance_km: number;
+      // S-6.3 B: package_items pro Sendung (Hof-Trailer-Pack).
+      package_items: Array<{
+        id: string;
+        length_cm: number | null;
+        width_cm: number | null;
+        height_cm: number | null;
+        weight_kg: number | null;
+        quantity: number | null;
+        stackable: boolean;
+      }>;
     }> = [];
     for (const c of candidates) {
       const a = c.addresses_shipments_loading_address_idToaddresses;
@@ -3206,6 +3232,15 @@ export class NvTourenService {
           loading_street: a.street ?? null,
           loading_country: a.country_code ?? null,
           distance_km: minDist,
+          package_items: (c.shipment_package_items ?? []).map((it) => ({
+            id: it.id,
+            length_cm: it.length_cm ?? null,
+            width_cm: it.width_cm ?? null,
+            height_cm: it.height_cm ?? null,
+            weight_kg: it.weight_kg != null ? Number(it.weight_kg) : null,
+            quantity: it.quantity ?? null,
+            stackable: it.stackable,
+          })),
         });
       }
     }

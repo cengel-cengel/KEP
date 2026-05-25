@@ -256,9 +256,14 @@ describe('YardPanel — smoke', () => {
     );
     expect(await screen.findByText(/20 km Umkreis/)).toBeInTheDocument();
     expect(await screen.findByText(/3 im Pool/)).toBeInTheDocument();
-    // NV gruppiert nach Versender-PLZ.
-    expect(await screen.findByText(/PLZ 80331 \(2\)/)).toBeInTheDocument();
-    expect(await screen.findByText(/PLZ 80335 \(1\)/)).toBeInTheDocument();
+    // NV gruppiert nach Versender-PLZ. S-6.3-Format:
+    // "<group> · N Sdg · ≈ K LKW".
+    expect(
+      await screen.findByText(/PLZ 80331 · 2 Sdg · ≈ \d+ LKW/),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/PLZ 80335 · 1 Sdg · ≈ \d+ LKW/),
+    ).toBeInTheDocument();
   });
 
   it('S-6.1 FV-Sammelgut: Gruppe = Depot-Label', async () => {
@@ -316,7 +321,7 @@ describe('YardPanel — smoke', () => {
     );
     // Beide Sendungen gruppieren auf "Depot Hub Hamburg" (2 Stueck).
     expect(
-      await screen.findByText(/Depot Hub Hamburg \(2\)/),
+      await screen.findByText(/Depot Hub Hamburg · 2 Sdg · ≈ \d+ LKW/),
     ).toBeInTheDocument();
     // KEIN Versender-PLZ-Slot bei FV.
     expect(screen.queryByText(/PLZ 80331/)).toBeNull();
@@ -375,7 +380,7 @@ describe('YardPanel — smoke', () => {
       </Wrapper>,
     );
     expect(
-      await screen.findByText(/Empfangs-PLZ 50667 \(2\)/),
+      await screen.findByText(/Empfangs-PLZ 50667 · 2 Sdg · ≈ \d+ LKW/),
     ).toBeInTheDocument();
   });
 
@@ -414,7 +419,7 @@ describe('YardPanel — smoke', () => {
       </Wrapper>,
     );
     expect(
-      await screen.findByText(/Empfangs-PLZ 60311 \(1\)/),
+      await screen.findByText(/Empfangs-PLZ 60311 · 1 Sdg · ≈ \d+ LKW/),
     ).toBeInTheDocument();
   });
 
@@ -494,7 +499,9 @@ describe('YardPanel — smoke', () => {
       </Wrapper>,
     );
     // DE wird NICHT als Prefix gerendert (Default-Land).
-    expect(await screen.findByText(/^PLZ 80331 \(2\)$/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/^PLZ 80331 · 2 Sdg · ≈ \d+ LKW$/),
+    ).toBeInTheDocument();
   });
 
   it('S-6.2 Country-Prefix: einheitliche AT-Gruppe → "AT · " Prefix', async () => {
@@ -525,7 +532,7 @@ describe('YardPanel — smoke', () => {
       </Wrapper>,
     );
     expect(
-      await screen.findByText(/AT · PLZ 1010 \(2\)/),
+      await screen.findByText(/AT · PLZ 1010 · 2 Sdg · ≈ \d+ LKW/),
     ).toBeInTheDocument();
   });
 
@@ -548,7 +555,91 @@ describe('YardPanel — smoke', () => {
     );
     // Beide haben PLZ 80331 → eine Gruppe mit Count 2 — KEIN Praefix
     // (DE+AT gemischt → uniformCountry returns null).
-    expect(await screen.findByText(/^PLZ 80331 \(2\)$/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/^PLZ 80331 · 2 Sdg · ≈ \d+ LKW$/),
+    ).toBeInTheDocument();
+  });
+
+  it('S-6.3 C: LKW-Total im Header (≈ N LKW) summiert ueber Slots', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        // 2 Sendungen je 10 m³ → 1 LKW (Slot PLZ 80331)
+        // 1 Sendung 5 m³ → 1 LKW (Slot PLZ 80335)
+        // Σ ≈ 2 LKW.
+        return Promise.resolve({
+          data: mockNearbyNv.map((s, i) => ({
+            ...s,
+            volume_m3: i === 2 ? 5 : 10,
+          })),
+        });
+      }
+      return Promise.resolve({ data: { stops: [] } });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    // Header zeigt "≈ 2 LKW".
+    expect(await screen.findByText(/≈ 2 LKW/)).toBeInTheDocument();
+  });
+
+  it('S-6.3 C: Slot-Label enthaelt "N Sdg · ≈ K LKW"', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({ data: mockNearbyNv });
+      }
+      return Promise.resolve({ data: { stops: [] } });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    expect(
+      await screen.findByText(/PLZ 80331 · 2 Sdg · ≈ 1 LKW/),
+    ).toBeInTheDocument();
+  });
+
+  it('S-6.3 C: 3 Sendungen je 40 m³ → 2 LKW im Slot (FFD)', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        // Alle in PLZ 80331 (gleiche Gruppe).
+        return Promise.resolve({
+          data: [
+            {
+              ...mockNearbyNv[0],
+              id: 's-x1',
+              volume_m3: 40,
+              weight_kg: 1000,
+            },
+            {
+              ...mockNearbyNv[0],
+              id: 's-x2',
+              volume_m3: 40,
+              weight_kg: 1000,
+            },
+            {
+              ...mockNearbyNv[0],
+              id: 's-x3',
+              volume_m3: 40,
+              weight_kg: 1000,
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ data: { stops: [] } });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    // 3 Sendungen × 40 = 120 m³. 40+40=80 ≤ 88 OK, 3. Sendung neuer
+    // Trailer → 2 Trailer fuer den Slot.
+    expect(
+      await screen.findByText(/PLZ 80331 · 3 Sdg · ≈ 2 LKW/),
+    ).toBeInTheDocument();
   });
 
   it('S-6.2 Auflieger-Vorladung: placed-Pakete erreichen YardScene3D', async () => {

@@ -531,10 +531,14 @@ export default function FvSwapOptimizerModal({
               removes: [],
             });
             next.set(ejectId, 'rollback');
-            // Q6 Cleanup (FV-Variante): tours hat keinen DELETE —
-            // leere eigen-Tour wird via PATCH status='cancelled'
-            // entwertet (tour_status-Enum kennt 'cancelled', findAll
-            // filtert sie raus). NV nutzt DELETE; FV PATCH.
+            // Q6 Cleanup (FV-Variante): cancel statt delete —
+            // FV-Tour ist ein Geschaeftsdokument mit FK-Relationen
+            // (returns/surplus: NoAction=RESTRICT, drafts/driver_*:
+            // Cascade, shipments.tour_id: SetNull). Hard-DELETE
+            // koennte FK-blocken oder still Daten anomalisieren;
+            // status='cancelled' nutzt den bestehenden findAll-
+            // notIn-Filter, ist FK-agnostisch und audit-faehig.
+            // NV-Pendant nutzt DELETE (schlankere FK-Landschaft).
             if (sel.kind === 'new' && sel.newIndividual) {
               try {
                 await api.patch(`/tours/${targetTourId}`, {

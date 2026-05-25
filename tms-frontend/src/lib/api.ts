@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getClientId } from '../realtime/realtimeClient';
+import { notifyUnauthorized } from './authBridge';
 
 const AUTH_TOKEN_KEY = 'tms_token';
 
@@ -34,8 +35,24 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem(AUTH_TOKEN_KEY);
-      window.location.href = '/login';
+      const url: string =
+        (error.config && typeof error.config.url === 'string'
+          ? error.config.url
+          : '') || '';
+      // Auth-Fix-B Whitelist: 401 auf /auth/login NICHT abfangen —
+      // LoginPage zeigt Wrong-Password lokal als Inline-Fehler.
+      if (!url.includes('/auth/login')) {
+        // Auth-Fix-B Soft-Redirect: AuthProvider-Bridge feuert
+        // logout() + navigate('/login'). Wenn keine Bridge
+        // installiert (App noch nicht gemountet, Test ausserhalb
+        // React-Tree) → window.location.replace als Fallback
+        // (replace statt href: kein extra History-Eintrag).
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+        const handled = notifyUnauthorized();
+        if (!handled && typeof window !== 'undefined') {
+          window.location.replace('/login');
+        }
+      }
     }
     return Promise.reject(error);
   }

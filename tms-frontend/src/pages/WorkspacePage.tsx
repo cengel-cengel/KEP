@@ -29,6 +29,7 @@ import {
   WorkspaceRuntimeProvider,
 } from '../workspace/runtime/WorkspaceRuntimeContext';
 import DockRuntime from '../workspace/dock/DockRuntime';
+import { preloadDockPanels } from '../workspace/dock/panelRegistry';
 import { useWorkspaceLayouts } from '../hooks/useWorkspaceLayouts';
 
 export default function WorkspacePage() {
@@ -77,6 +78,15 @@ function WorkspacePageInner() {
     } catch {
       /* Inkompatibel — silent, User sieht keine Aenderung. */
     }
+  }, []);
+
+  // Perf-1: Idle-Preload der lazy Dock-Panels (LoadingPlan/Yard/Map).
+  // Drei.js + Leaflet sind nicht mehr im Initial-Bundle; ohne Preload
+  // gäbe es einen ~600-1500ms-Spinner beim ersten Panel-Klick auf 3G.
+  // requestIdleCallback (Fallback setTimeout) startet den Hintergrund-
+  // Download nach Initial-Paint → Klick fühlt sich instant an.
+  useEffect(() => {
+    preloadDockPanels();
   }, []);
 
   // W-3.2.D Layout-Storage Cleanup (alt-Keys mit Prefix 'PanelGroup:').

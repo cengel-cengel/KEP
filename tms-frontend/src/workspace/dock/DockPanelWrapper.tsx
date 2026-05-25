@@ -12,10 +12,16 @@
  * S-2b: Panel-Api wird via DockPanelProvider durchgereicht — Panels
  * die Visibility-State brauchen (LoadingPlanPanel) können das via
  * useDockPanelApi() konsumieren.
+ *
+ * Perf-1: Lazy-Panels (LoadingPlan/Yard/Map) werden mit Suspense +
+ * ErrorBoundary umhüllt. Suspense fängt den Chunk-Load-Loading-State,
+ * ErrorBoundary den Chunk-Load-Fehler (Network/Deployment-mismatch).
  */
+import { Suspense } from 'react';
 import type { IDockviewPanelProps } from 'dockview';
 import { PANEL_REGISTRY, type PanelId } from './panelRegistry';
 import { DockPanelProvider } from './DockPanelContext';
+import LazyPanelErrorBoundary from './LazyPanelErrorBoundary';
 
 /**
  * Common params (alle Panels): panelId. Detail-Panel (S-5) ergaenzt
@@ -28,6 +34,19 @@ interface DockPanelParams {
   entityType?: 'shipment' | 'tour' | 'nv-tour';
   entityId?: string;
   mode?: 'nv' | 'fv';
+}
+
+/** Perf-1: dezenter Spinner während Chunk-Load. ~150-800ms auf 3G,
+ *  bei Idle-Preload meist <50ms (Cache-Hit). */
+function PanelLoading({ title }: { title: string }) {
+  return (
+    <div className="h-full w-full flex items-center justify-center bg-white">
+      <div className="text-xs text-gray-500 flex items-center gap-2">
+        <div className="w-3 h-3 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin" />
+        <span>{title} lädt…</span>
+      </div>
+    </div>
+  );
 }
 
 export default function DockPanelWrapper(
@@ -52,14 +71,25 @@ export default function DockPanelWrapper(
   const Component = entry.component;
   // h-full damit das Panel die volle dockview-Container-Höhe nutzt
   // (Map braucht das insbesondere — Leaflet liest container.clientHeight).
+  const content = (
+    <div className="h-full w-full overflow-hidden">
+      <Component />
+    </div>
+  );
   return (
     <DockPanelProvider
       api={props.api}
       params={props.params as unknown as Record<string, unknown>}
     >
-      <div className="h-full w-full overflow-hidden">
-        <Component />
-      </div>
+      {entry.lazy ? (
+        <LazyPanelErrorBoundary label={panelId}>
+          <Suspense fallback={<PanelLoading title={entry.title} />}>
+            {content}
+          </Suspense>
+        </LazyPanelErrorBoundary>
+      ) : (
+        content
+      )}
     </DockPanelProvider>
   );
 }

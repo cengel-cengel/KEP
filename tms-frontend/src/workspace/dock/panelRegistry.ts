@@ -8,14 +8,28 @@
  *
  * Title wird in der Tab-Leiste angezeigt (dockview rendert eigene
  * Tab-Komponenten; wir liefern den Titel via Panel-params).
+ *
+ * Perf-1: 3D-/Leaflet-Panels (LoadingPlanPanel, YardPanel, MapPanel)
+ * sind via React.lazy() ausgelagert. Three.js (~150 kB min) +
+ * @react-three/* (~80 kB) + leaflet (~140 kB) laden nicht mehr
+ * eagerly beim App-Start, sondern erst wenn das Panel im Dock
+ * angezeigt wird. Idle-Preload (preloadDockPanels) startet im
+ * Hintergrund nach dem ersten Idle-Frame — damit der erste Klick
+ * auf Yard/Beladeplan/Karte praktisch nie auf den Netzwerk-Roundtrip
+ * warten muss.
  */
-import type { ComponentType } from 'react';
+import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 import QueuePanel from '../../components/workspace/QueuePanel';
 import BoardPanel from '../../components/workspace/BoardPanel';
-import MapPanel from '../../components/workspace/MapPanel';
 import DetailPanel from './DetailPanel';
-import LoadingPlanPanel from './LoadingPlanPanel';
-import YardPanel from './YardPanel';
+
+// Perf-1: lazy-Imports — werden zu eigenen Chunks (LoadingPlanPanel-*.js,
+// YardPanel-*.js, MapPanel-*.js) compiliert. Vendor-Deps (three/leaflet)
+// landen via Vite's split-chunks im selben oder einem dedizierten
+// vendor-Chunk (siehe vite.config manualChunks).
+const LoadingPlanPanel = lazy(() => import('./LoadingPlanPanel'));
+const YardPanel = lazy(() => import('./YardPanel'));
+const MapPanel = lazy(() => import('../../components/workspace/MapPanel'));
 
 export type PanelId =
   | 'queue'
@@ -28,7 +42,10 @@ export type PanelId =
 export interface PanelRegistryEntry {
   id: PanelId;
   title: string;
-  component: ComponentType;
+  component: ComponentType | LazyExoticComponent<ComponentType<unknown>>;
+  /** Perf-1: Markiert lazy Panels — DockPanelWrapper umhüllt sie
+   *  zusätzlich mit Suspense + ErrorBoundary. */
+  lazy?: boolean;
 }
 
 export const PANEL_REGISTRY: Record<PanelId, PanelRegistryEntry> = {
@@ -46,11 +63,13 @@ export const PANEL_REGISTRY: Record<PanelId, PanelRegistryEntry> = {
     id: 'map',
     title: 'Karte',
     component: MapPanel,
+    lazy: true,
   },
   loadingPlan: {
     id: 'loadingPlan',
     title: 'Beladeplan',
     component: LoadingPlanPanel,
+    lazy: true,
   },
   detail: {
     id: 'detail',
@@ -61,5 +80,39 @@ export const PANEL_REGISTRY: Record<PanelId, PanelRegistryEntry> = {
     id: 'yard',
     title: 'Hof',
     component: YardPanel,
+    lazy: true,
   },
 };
+
+/**
+ * Perf-1: Idle-Preload. Lädt die lazy-Panels im Hintergrund sobald
+ * der Browser idle ist (kein blocking, kein Spinner-Risiko).
+ * Aufruf einmal nach App-Mount (z.B. WorkspacePage useEffect).
+ *
+ * Mobile (3G/LTE): kostenlose Latenz-Versteckung — User-Klick auf
+ * Yard-Tab fühlt sich instant an statt 600-1500ms warten.
+ * Desktop: vernachlässigbar; Browser-Cache übernimmt sofort.
+ *
+ * Fallback wenn requestIdleCallback fehlt (Safari < 16.4):
+ * setTimeout(400ms) — gibt mainthread Zeit für initial paint.
+ */
+export function preloadDockPanels(): void {
+  const trigger = () => {
+    // Fire-and-forget; Vite-dynamic-imports geben Promises, wir
+    // lassen sie laufen und Browser-Cache übernimmt das Ergebnis.
+    void import('./LoadingPlanPanel');
+    void import('./YardPanel');
+    void import('../../components/workspace/MapPanel');
+  };
+  if (typeof window === 'undefined') return; // SSR-safe (nicht aktiv).
+  const ric = (
+    window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+    }
+  ).requestIdleCallback;
+  if (typeof ric === 'function') {
+    ric(trigger, { timeout: 2000 });
+  } else {
+    window.setTimeout(trigger, 400);
+  }
+}

@@ -2478,10 +2478,19 @@ export class ToursService {
         },
         customers: { select: { id: true, name: true } },
         addresses_shipments_loading_address_idToaddresses: {
-          select: { lat: true, lng: true, zip: true, city: true },
+          // S-6.2: street + country_code fuer Hof-Per-Sendung-Label.
+          select: {
+            lat: true,
+            lng: true,
+            zip: true,
+            city: true,
+            street: true,
+            country_code: true,
+          },
         },
         addresses_shipments_delivery_address_idToaddresses: {
-          select: { zip: true, city: true },
+          // S-6.2: country_code fuer Slot-Country-Prefix.
+          select: { zip: true, city: true, country_code: true },
         },
       },
       take: 500,
@@ -2501,11 +2510,15 @@ export class ToursService {
       lng: number;
       zip: string | null;
       city: string | null;
+      // S-6.2: Adress-Detail fuer Per-Sendung-Label + Country-Prefix
+      loading_street: string | null;
+      loading_country: string | null;
       distance_km: number;
       // S-6.1 Empfaenger-Gruppierung
       transport_type: string | null;
       delivery_zip: string | null;
       delivery_city: string | null;
+      delivery_country: string | null;
       relation_id: string | null;
       relation_code: string | null;
       depot_label: string | null;
@@ -2549,10 +2562,13 @@ export class ToursService {
           lng: cLng,
           zip: a.zip ?? null,
           city: a.city ?? null,
+          loading_street: a.street ?? null,
+          loading_country: a.country_code ?? null,
           distance_km: minDist,
           transport_type: c.transport_type ?? null,
           delivery_zip: delivery?.zip ?? null,
           delivery_city: delivery?.city ?? null,
+          delivery_country: delivery?.country_code ?? null,
           relation_id: c.relation_id ?? null,
           relation_code: c.relation?.code ?? null,
           depot_label:

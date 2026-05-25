@@ -22,16 +22,44 @@ import { MemoryRouter } from 'react-router-dom';
 vi.mock('./YardScene3D', () => ({
   default: ({
     slots,
+    placedInTrailer,
     onShipmentClick,
   }: {
     slots: Array<{
       id: string;
       label: string;
-      shipments: Array<{ id: string; shipmentNumber?: string | null }>;
+      shipments: Array<{
+        id: string;
+        shipmentNumber?: string | null;
+        customerName?: string | null;
+        loadingStreet?: string | null;
+        loadingZip?: string | null;
+        loadingCity?: string | null;
+        loadingCountry?: string | null;
+        deliveryZip?: string | null;
+        deliveryCountry?: string | null;
+        relationCode?: string | null;
+        depotLabel?: string | null;
+        mode?: 'nv' | 'fv';
+      }>;
     }>;
+    placedInTrailer?: Array<{ id: string; shipmentId?: string | null }>;
     onShipmentClick?: (id: string) => void;
   }) => (
     <ul data-testid="scene-stub">
+      <li
+        data-testid="placed-count"
+        data-count={(placedInTrailer ?? []).length}
+      />
+      {(placedInTrailer ?? []).map((p) => (
+        <button
+          key={`placed-${p.id}`}
+          data-testid={`placed-${p.id}`}
+          onClick={() => p.shipmentId && onShipmentClick?.(p.shipmentId)}
+        >
+          {p.shipmentId}
+        </button>
+      ))}
       {slots.map((slot) => (
         <li key={slot.id} data-slot={slot.id}>
           {slot.label}
@@ -39,6 +67,16 @@ vi.mock('./YardScene3D', () => ({
             <button
               key={s.id}
               data-testid={`yard-ship-${s.id}`}
+              data-customer={s.customerName ?? ''}
+              data-street={s.loadingStreet ?? ''}
+              data-zip={s.loadingZip ?? ''}
+              data-city={s.loadingCity ?? ''}
+              data-country={s.loadingCountry ?? ''}
+              data-delivery-zip={s.deliveryZip ?? ''}
+              data-delivery-country={s.deliveryCountry ?? ''}
+              data-relation={s.relationCode ?? ''}
+              data-depot={s.depotLabel ?? ''}
+              data-mode={s.mode ?? ''}
               onClick={() => onShipmentClick?.(s.id)}
             >
               {s.shipmentNumber ?? s.id}
@@ -86,6 +124,8 @@ const mockNearbyNv = [
     lng: 11.5,
     zip: '80331',
     city: 'Muenchen',
+    loading_street: 'Marienplatz 1',
+    loading_country: 'DE',
     distance_km: 5,
   },
   {
@@ -98,6 +138,8 @@ const mockNearbyNv = [
     lng: 11.51,
     zip: '80331',
     city: 'Muenchen',
+    loading_street: 'Marienplatz 2',
+    loading_country: 'DE',
     distance_km: 7,
   },
   {
@@ -110,6 +152,8 @@ const mockNearbyNv = [
     lng: 11.6,
     zip: '80335',
     city: 'Muenchen',
+    loading_street: 'Hauptbahnhof 1',
+    loading_country: 'DE',
     distance_km: 12,
   },
 ];
@@ -139,13 +183,19 @@ vi.mock('../../state/panel', () => ({
   }),
 }));
 
-// NvLoadingPlanPage flattenPackages stubben — liefert leeren
-// unplaced-Set; YardPanel rendert dann keinen Ueberlauf-Slot.
+// NvLoadingPlanPage flattenPackages + lib/loadingShared.placePackages
+// — pro Test überschreibbar via mockImplementation der jeweiligen Spy.
+const flattenNvSpy = vi.fn<
+  (...args: unknown[]) => Array<Record<string, unknown>>
+>(() => []);
+const placePkgSpy = vi.fn<
+  (...args: unknown[]) => Array<Record<string, unknown>>
+>(() => []);
 vi.mock('../../pages/NvLoadingPlanPage', () => ({
-  flattenPackages: () => [],
+  flattenPackages: (...args: unknown[]) => flattenNvSpy(...args),
 }));
 vi.mock('../../lib/loadingShared', () => ({
-  placePackages: () => [],
+  placePackages: (...args: unknown[]) => placePkgSpy(...args),
 }));
 
 import YardPanel from './YardPanel';
@@ -164,6 +214,10 @@ function Wrapper({ children }: { children: ReactNode }) {
 afterEach(() => {
   selectShipmentSpy.mockClear();
   apiGet.mockReset();
+  flattenNvSpy.mockReset();
+  flattenNvSpy.mockImplementation(() => []);
+  placePkgSpy.mockReset();
+  placePkgSpy.mockImplementation(() => []);
   workspaceMock.mode = 'nv';
   runtimeMock.activeTourViewId = 'tour-1';
 });
@@ -400,5 +454,160 @@ describe('YardPanel — smoke', () => {
     const btn = await screen.findByTestId('yard-ship-s-1');
     fireEvent.click(btn);
     expect(selectShipmentSpy).toHaveBeenCalledWith('s-1');
+  });
+
+  it('S-6.2 NV: Per-Sendung-Label-Felder erreichen YardScene3D', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({ data: mockNearbyNv });
+      }
+      return Promise.resolve({ data: { stops: [] } });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    const btn = await screen.findByTestId('yard-ship-s-1');
+    expect(btn).toHaveAttribute('data-customer', 'Kunde A');
+    expect(btn).toHaveAttribute('data-street', 'Marienplatz 1');
+    expect(btn).toHaveAttribute('data-zip', '80331');
+    expect(btn).toHaveAttribute('data-city', 'Muenchen');
+    expect(btn).toHaveAttribute('data-country', 'DE');
+    expect(btn).toHaveAttribute('data-mode', 'nv');
+  });
+
+  it('S-6.2 Country-Prefix: einheitliche DE-Gruppe → KEIN Prefix', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({ data: mockNearbyNv });
+      }
+      return Promise.resolve({ data: { stops: [] } });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    // DE wird NICHT als Prefix gerendert (Default-Land).
+    expect(await screen.findByText(/^PLZ 80331 \(2\)$/)).toBeInTheDocument();
+  });
+
+  it('S-6.2 Country-Prefix: einheitliche AT-Gruppe → "AT · " Prefix', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({
+          data: [
+            {
+              ...mockNearbyNv[0],
+              id: 's-at1',
+              zip: '1010',
+              loading_country: 'AT',
+            },
+            {
+              ...mockNearbyNv[1],
+              id: 's-at2',
+              zip: '1010',
+              loading_country: 'AT',
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ data: { stops: [] } });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    expect(
+      await screen.findByText(/AT · PLZ 1010 \(2\)/),
+    ).toBeInTheDocument();
+  });
+
+  it('S-6.2 Country-Prefix: gemischte Gruppe (DE + AT) → KEIN Prefix', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({
+          data: [
+            { ...mockNearbyNv[0], id: 's-mix1', loading_country: 'DE' },
+            { ...mockNearbyNv[1], id: 's-mix2', loading_country: 'AT' },
+          ],
+        });
+      }
+      return Promise.resolve({ data: { stops: [] } });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    // Beide haben PLZ 80331 → eine Gruppe mit Count 2 — KEIN Praefix
+    // (DE+AT gemischt → uniformCountry returns null).
+    expect(await screen.findByText(/^PLZ 80331 \(2\)$/)).toBeInTheDocument();
+  });
+
+  it('S-6.2 Auflieger-Vorladung: placed-Pakete erreichen YardScene3D', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({ data: [] });
+      }
+      if (url.includes('/nv-touren/tour-1/loading')) {
+        return Promise.resolve({ data: { id: 'tour-1', stops: [] } });
+      }
+      return Promise.resolve({ data: { stops: [] } });
+    });
+    // flattenNvSpy gibt 2 placed-Pakete + 1 unplaced zurueck.
+    flattenNvSpy.mockImplementation(() => [
+      {
+        id: 'pkg-a',
+        shipmentId: 'sh-1',
+        lengthCm: 120,
+        widthCm: 80,
+        heightCm: 100,
+        posX: 0,
+        posY: 0,
+        posZ: 0,
+        color: '#aaa',
+        unplaced: false,
+      },
+      {
+        id: 'pkg-b',
+        shipmentId: 'sh-1',
+        lengthCm: 120,
+        widthCm: 80,
+        heightCm: 100,
+        posX: 0,
+        posY: 120,
+        posZ: 0,
+        color: '#aaa',
+        unplaced: false,
+      },
+      {
+        id: 'pkg-c',
+        shipmentId: 'sh-2',
+        lengthCm: 120,
+        widthCm: 80,
+        heightCm: 100,
+        posX: 0,
+        posY: 0,
+        posZ: 0,
+        color: '#bbb',
+        unplaced: true,
+      },
+    ]);
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    // 2 placed-Pakete (pkg-a, pkg-b) reichen via prop durch.
+    const placedCount = await screen.findByTestId('placed-count');
+    expect(placedCount).toHaveAttribute('data-count', '2');
+    // Header zeigt "2 im Auflieger".
+    expect(screen.getByText(/2 im Auflieger/)).toBeInTheDocument();
+    // Click auf placed-Box → selectShipment(shipmentId).
+    fireEvent.click(screen.getByTestId('placed-pkg-a'));
+    expect(selectShipmentSpy).toHaveBeenCalledWith('sh-1');
   });
 });

@@ -40,6 +40,88 @@ export interface YardShipment {
   heightCm?: number | null;
   /** Optionaler Marker — Ueberlauf-Box rot faerben. */
   isOverflow?: boolean;
+  /** S-6.2 Per-Sendung-Label-Felder. Box-Label = customer
+   *  (kompakt), Hover-Tooltip zeigt full address. mode steuert
+   *  ob NV-Abhol-Adresse oder FV-Zustell-Detail. */
+  customerName?: string | null;
+  loadingStreet?: string | null;
+  loadingZip?: string | null;
+  loadingCity?: string | null;
+  loadingCountry?: string | null;
+  deliveryZip?: string | null;
+  deliveryCity?: string | null;
+  deliveryCountry?: string | null;
+  transportType?: string | null;
+  relationCode?: string | null;
+  depotLabel?: string | null;
+  mode?: 'nv' | 'fv';
+}
+
+/**
+ * S-6.2 / S-6.2-Adjust: Per-Sendung-Label.
+ *
+ * Verhalten
+ *   · IMMER sichtbar (touch-tauglich; KEIN hover-Toggle).
+ *   · Position vom Caller: am Slot-Edge AUSSERHALB der Boden-Streifen
+ *     (nicht ueber der Box, kein Overlap).
+ *   · Mehrzeilig kompakt: Sendungs-Nr · Kunde · Adresse/Empfaenger.
+ *     Truncate via max-w + truncate; Bei zu vielen Sendungen pro
+ *     Slot greift der count-Threshold im SlotMesh (siehe unten).
+ *   · Distance-Fade: Html-Prop distanceFactor + transform. Weiter
+ *     entfernt → kleiner gerendert; verschwindet quasi-organisch
+ *     bei Out-Zoom (kein Custom-useFrame noetig).
+ */
+function ShipmentLabel({ s }: { s: YardShipment }) {
+  const isFv = s.mode === 'fv';
+  const tt = (s.transportType ?? '').toUpperCase();
+  const fvIsSammelgut =
+    tt === 'SAMMELGUT' || tt === 'TEILLAST' || tt === 'KOMPLETT';
+
+  // Zweite Zeile: Adresse (NV) / Empfaenger (FV).
+  const country = isFv
+    ? (s.deliveryCountry ?? s.loadingCountry)
+    : s.loadingCountry;
+  const showCountry = country && country !== 'DE' ? country : null;
+
+  let secondary: string | null = null;
+  if (isFv) {
+    if (fvIsSammelgut) {
+      secondary = s.depotLabel
+        ? `Depot ${s.depotLabel}`
+        : s.relationCode
+          ? `Relation ${s.relationCode}`
+          : s.deliveryZip
+            ? `Empfangs-PLZ ${s.deliveryZip}`
+            : null;
+    } else {
+      secondary = s.deliveryZip ? `Empfangs-PLZ ${s.deliveryZip}` : null;
+    }
+  } else {
+    if (s.loadingStreet || s.loadingZip || s.loadingCity) {
+      secondary = [
+        s.loadingStreet,
+        [s.loadingZip, s.loadingCity].filter(Boolean).join(' '),
+      ]
+        .filter(Boolean)
+        .join(', ');
+    }
+  }
+  if (showCountry && secondary) secondary = `${showCountry} · ${secondary}`;
+
+  return (
+    <div className="text-[10px] leading-tight bg-white/90 text-gray-800 px-1.5 py-0.5 rounded border border-gray-300 shadow-sm whitespace-nowrap max-w-[16rem] truncate pointer-events-none">
+      <div className="font-mono font-semibold text-gray-900">
+        {s.shipmentNumber ?? s.id.slice(0, 8)}
+        {s.customerName && (
+          <>
+            <span className="text-gray-400"> · </span>
+            <span className="font-normal">{s.customerName}</span>
+          </>
+        )}
+      </div>
+      {secondary && <div className="text-gray-600">{secondary}</div>}
+    </div>
+  );
 }
 
 export interface YardSlot {
@@ -53,6 +135,26 @@ export interface YardSlot {
   shipments: YardShipment[];
 }
 
+/**
+ * S-6.2 Auflieger-Vorladung — placed Pakete der aktiven Tour.
+ * Identische Position-Formel wie LoadingPlan3D L675-680. Look
+ * leicht abgehoben (niedrigere Opacity, kalt-blauer Farbton)
+ * damit der Hof-Inhalt visuell vom Auflieger-Inhalt
+ * unterscheidbar bleibt.
+ */
+export interface YardPlacedPackage {
+  id: string;
+  shipmentId?: string | null;
+  /** placePackages-Output: cm. */
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
+  posX: number;
+  posY: number;
+  posZ: number;
+  color?: string | null;
+}
+
 interface Props {
   /** Trailer-Geometrie (cm). */
   trailerLengthCm: number;
@@ -60,6 +162,8 @@ interface Props {
   trailerHeightCm: number;
   /** Slot-Liste rechts neben dem Auflieger. */
   slots: YardSlot[];
+  /** S-6.2: bereits im Auflieger platzierte Pakete der aktiven Tour. */
+  placedInTrailer?: YardPlacedPackage[];
   onShipmentClick?: (id: string) => void;
   frameloop?: 'always' | 'never';
 }
@@ -150,6 +254,7 @@ export default function YardScene3D({
   trailerWidthCm,
   trailerHeightCm,
   slots,
+  placedInTrailer,
   onShipmentClick,
   frameloop = 'always',
 }: Props) {
@@ -240,6 +345,45 @@ export default function YardScene3D({
           Auflieger
         </div>
       </Html>
+
+      {/* S-6.2 Auflieger-Vorladung: bereits platzierte Pakete der
+          aktiven Tour. Positions-Formel identisch zu LoadingPlan3D
+          L675-680. Look leicht abgehoben (kalt-blau, opacity 0.7).
+          Click → onShipmentClick. */}
+      {(placedInTrailer ?? []).map((p) => {
+        const lx = p.lengthCm / 100;
+        const ly = p.heightCm / 100;
+        const lz = p.widthCm / 100;
+        const cx = p.posY / 100 + lx / 2;
+        const cy = p.posZ / 100 + ly / 2;
+        const cz = p.posX / 100 - trailerWidthCm / 200 + lz / 2;
+        return (
+          <mesh
+            key={p.id}
+            position={[cx, cy, cz]}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (p.shipmentId) onShipmentClick?.(p.shipmentId);
+            }}
+            onPointerOver={(e) => {
+              if (!p.shipmentId) return;
+              e.stopPropagation();
+              document.body.style.cursor = 'pointer';
+            }}
+            onPointerOut={() => {
+              document.body.style.cursor = '';
+            }}
+          >
+            <boxGeometry args={[lx, ly, lz]} />
+            <meshStandardMaterial
+              color={p.color ?? '#60a5fa'}
+              transparent
+              opacity={0.7}
+            />
+            <Edges color="#1e3a8a" threshold={1} />
+          </mesh>
+        );
+      })}
 
       {/* Stellplaetze */}
       {slotLayouts.map(({ slot, centerZ }) => (
@@ -360,16 +504,26 @@ function SlotMesh({
             opacity={0.85}
           />
           <Edges color={s.isOverflow ? '#991b1b' : '#1e3a8a'} threshold={1} />
-          <Html
-            position={[0, dims.heightCm / 100 / 2 + 0.15, 0]}
-            center
-            zIndexRange={[0, 0]}
-          >
-            <div className="text-[9px] font-mono text-white bg-black/60 px-1 rounded whitespace-nowrap pointer-events-none">
-              {s.shipmentNumber ?? s.id.slice(0, 8)}
-            </div>
-          </Html>
         </mesh>
+      ))}
+      {/* S-6.2-Adjust: Per-Sendung-Labels IMMER sichtbar (touch),
+          am Anfang der Reihe (posY - lengthCm/2), AUSSERHALB der
+          Boden-Streifen (+z-Seite, kameranah). Distance-Fade ueber
+          Html distanceFactor — Out-Zoom schrumpft Labels organisch. */}
+      {layout.map(({ s, dims, posY }) => (
+        <Html
+          key={`label-${s.id}`}
+          position={scaleVec3(
+            posY - dims.lengthCm / 2 - 10,
+            50,
+            trailerWidthCm / 2 + 30,
+          )}
+          center
+          distanceFactor={6}
+          zIndexRange={[0, 0]}
+        >
+          <ShipmentLabel s={s} />
+        </Html>
       ))}
     </group>
   );

@@ -3142,7 +3142,15 @@ export class NvTourenService {
         loading_date: true,
         customers: { select: { id: true, name: true } },
         addresses_shipments_loading_address_idToaddresses: {
-          select: { lat: true, lng: true, zip: true, city: true },
+          // S-6.2: street + country_code fuer Hof-Per-Sendung-Label.
+          select: {
+            lat: true,
+            lng: true,
+            zip: true,
+            city: true,
+            street: true,
+            country_code: true,
+          },
         },
       },
       take: 500,
@@ -3163,6 +3171,9 @@ export class NvTourenService {
       lng: number;
       zip: string | null;
       city: string | null;
+      // S-6.2: Loading-Adresse-Detail
+      loading_street: string | null;
+      loading_country: string | null;
       distance_km: number;
     }> = [];
     for (const c of candidates) {
@@ -3192,6 +3203,8 @@ export class NvTourenService {
           lng: cLng,
           zip: a.zip ?? null,
           city: a.city ?? null,
+          loading_street: a.street ?? null,
+          loading_country: a.country_code ?? null,
           distance_km: minDist,
         });
       }

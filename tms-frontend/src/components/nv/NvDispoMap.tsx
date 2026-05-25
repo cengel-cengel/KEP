@@ -48,11 +48,21 @@ export type MapShipment = {
   loading_address?: {
     lat?: string | number | null;
     lng?: string | number | null;
+    /** Map-Pin-Modal-Erweiterung — Strasse fuer Detail-Modal. */
+    street?: string | null;
     zip?: string | null;
     city?: string | null;
+    country_code?: string | null;
   } | null;
   color?: string;
   tour_gebiet_code?: string | null;
+  /** Map-Pin-Modal-Erweiterung — BE liefert die Felder via eligible-
+   *  shipments include; FE-Typ zog sie bisher nicht durch. Decimal-
+   *  kompatibel (Prisma → string|number|null). */
+  weight_kg?: number | string | null;
+  volume_m3?: number | string | null;
+  effective_pallets?: number | null;
+  ldm?: number | string | null;
 };
 
 function toLatLng(

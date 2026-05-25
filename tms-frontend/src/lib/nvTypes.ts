@@ -62,6 +62,13 @@ export type EligibleShipment = {
   /** TEIL C: classification-Indikator (Migration 47).
    *  SAMMELGUT (default) / CHARTER_UMSCHLAG / CHARTER_DIREKT. */
   classification?: string | null;
+  /** Map-Pin-Modal-Erweiterung — BE liefert via Prisma include ALLE
+   *  top-level shipment fields; FE-Typ zog die hier bisher nicht
+   *  durch. Decimal-tolerant (Prisma → string|number|null). */
+  weight_kg?: string | number | null;
+  volume_m3?: string | number | null;
+  effective_pallets?: number | null;
+  ldm?: string | number | null;
 };
 
 export type Stop = {

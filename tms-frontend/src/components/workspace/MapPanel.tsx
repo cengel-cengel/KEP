@@ -35,6 +35,10 @@ import NvDispoMap, {
 import { useWorkspace, useWorkspaceLayout } from '../../state/workspace';
 import { useWorkspaceRuntime } from '../../workspace/runtime/WorkspaceRuntimeContext';
 import { useEligibleShipments, useTourDetail } from '../../hooks/useDispoData';
+import YardShipmentDetailModal, {
+  type YardModalShipment,
+} from '../../workspace/dock/YardShipmentDetailModal';
+import { usePanel } from '../../state/panel';
 import {
   buildFvTourStops,
   type FvTourDetailLite,
@@ -205,6 +209,8 @@ export default function MapPanel() {
   // R3+ Sub-Gebiet-Filter: wenn activeTour gesetzt + Sub-Gebiet
   // bekannt, filtere Sendungen auf matched_tour_gebiet_code.
   // Ohne activeTour: alle eligible (alte Verhalten).
+  // Map-Pin-Modal: weight_kg/volume_m3/effective_pallets/ldm sind via
+  // BE Prisma-include schon im Payload — hier nur durchschleifen.
   const mapShipmentsNv = useMemo<MapShipment[]>(() => {
     if (mode !== 'nv') return [];
     const all = (eligNvQ.data ?? []).map((s) => ({
@@ -216,6 +222,10 @@ export default function MapPanel() {
         (s.matched_tour_gebiet_code && farbenMap?.get(s.matched_tour_gebiet_code)) ||
         undefined,
       tour_gebiet_code: s.matched_tour_gebiet_code,
+      weight_kg: s.weight_kg ?? null,
+      volume_m3: s.volume_m3 ?? null,
+      effective_pallets: s.effective_pallets ?? null,
+      ldm: s.ldm ?? null,
     }));
     if (!activeSubGebietCode) return all;
     return all.filter((s) => s.tour_gebiet_code === activeSubGebietCode);
@@ -420,16 +430,50 @@ export default function MapPanel() {
   }, [activeTour]);
 
   const [clickedSequence, setClickedSequence] = useState<string[]>([]);
+  // Map-Pin-Modal-State (Option A): Pin-Tap → Modal statt direkt
+  // Tour-Add. Tour-Add laeuft jetzt explizit via Modal-"+ Zur Tour"-
+  // Button (handleAddToTour). FV defensiv: mapShipmentsNv ist im
+  // FV-Mode []  → kein Pin-Tap moeglich → kein Modal-Trigger.
+  const [modalShipmentId, setModalShipmentId] = useState<string | null>(null);
+  const panel = usePanel();
 
-  // Wrap onPinClick mit clickedSequence-Update für NV.
+  // Pin-Tap-Handler: oeffnet Modal. KEIN direkter Tour-Add mehr.
   const handlePinClick = (shipmentId: string) => {
-    if (mode === 'nv') {
-      setClickedSequence((prev) =>
-        prev.includes(shipmentId) ? prev : [...prev, shipmentId],
-      );
-    }
+    if (mode !== 'nv') return; // FV hat keine Pins; defensiv.
+    setModalShipmentId(shipmentId);
+  };
+
+  // "+ Zur Tour" im Modal: UNVERAENDERTE togglePendingAdd-Semantik
+  // (vorher Pin-Tap, jetzt Button-Click). clickedSequence weiterhin
+  // gepflegt fuer visuelles Tour-Build-Breadcrumb.
+  const handleAddToTour = (shipmentId: string) => {
+    setClickedSequence((prev) =>
+      prev.includes(shipmentId) ? prev : [...prev, shipmentId],
+    );
     onPinClick?.(shipmentId);
   };
+
+  // Map-Pin-Modal: shipment-Lookup aus mapShipmentsNv → YardModal-
+  // Shape. AddressGeo (loading_address) liefert street/zip/city
+  // (BE eligible-shipments include).
+  const modalShipment = useMemo<YardModalShipment | null>(() => {
+    if (!modalShipmentId) return null;
+    const s = mapShipmentsNv.find((m) => m.id === modalShipmentId);
+    if (!s) return null;
+    const addr = s.loading_address ?? null;
+    return {
+      id: s.id,
+      shipment_number: s.shipment_number ?? null,
+      customer_name: s.customer?.name ?? null,
+      zip: addr?.zip ?? null,
+      city: addr?.city ?? null,
+      loading_street: addr?.street ?? null,
+      loading_country: addr?.country_code ?? null,
+      weight_kg: s.weight_kg != null ? Number(s.weight_kg) : null,
+      volume_m3: s.volume_m3 != null ? Number(s.volume_m3) : null,
+      effective_pallets: s.effective_pallets ?? null,
+    };
+  }, [modalShipmentId, mapShipmentsNv]);
 
   if (mapCollapsed) {
     return (
@@ -550,6 +594,18 @@ export default function MapPanel() {
           />
         )}
       </div>
+      {/* Map-Pin-Modal (Option A). NV-only:
+            · Pin-Tap → Modal mit "+ Zur Tour"-Button (handleAddToTour
+              dispatcht das alte togglePendingAdd via onPinClick).
+            · "Volle Details" → panel.selectShipment (S-5-Detail-Panel
+              desktop-side, dieselbe Cascade wie YardPanel). */}
+      <YardShipmentDetailModal
+        shipment={modalShipment}
+        isOpen={modalShipmentId != null}
+        onClose={() => setModalShipmentId(null)}
+        onOpenFullDetail={(id) => panel.selectShipment(id)}
+        onAddToTour={handleAddToTour}
+      />
     </div>
   );
 }

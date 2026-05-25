@@ -48,8 +48,29 @@ vi.mock('../../realtime/realtimeClient', () => ({
   },
 }));
 
+// NvDispoMap-Stub: rendert pro shipment einen Pin-Button + ein
+// Tour-Stop-Button (Auflieger-Analog), damit handlePinClick / onTour-
+// StopClick aus MapPanel testbar werden. KEIN Leaflet im jsdom.
 vi.mock('../nv/NvDispoMap', () => ({
-  default: () => <div data-testid="nv-dispo-map-stub" />,
+  default: ({
+    shipments,
+    onPinClick,
+  }: {
+    shipments: Array<{ id: string }>;
+    onPinClick?: (id: string) => void;
+  }) => (
+    <div data-testid="nv-dispo-map-stub">
+      {shipments.map((s) => (
+        <button
+          key={s.id}
+          data-testid={`map-pin-${s.id}`}
+          onClick={() => onPinClick?.(s.id)}
+        >
+          pin {s.id}
+        </button>
+      ))}
+    </div>
+  ),
 }));
 
 // Heavy Modal-Tree wegmocken — wir testen nur renderbarkeit der Panels.
@@ -168,6 +189,67 @@ describe('MapPanel — smoke', () => {
         </Wrapper>,
       ),
     ).not.toThrow();
+  });
+
+  it('Map-Pin-Tap → Modal mit "+ Zur Tour"-Button (Option A, NV)', async () => {
+    // Eligible-Shipments-Mock fuer mapShipmentsNv. NV-Mode-Default.
+    const apiMock = (
+      await import('../../lib/api')
+    ).api as unknown as { get: ReturnType<typeof vi.fn> };
+    apiMock.get.mockImplementation((url: string) => {
+      if (url.includes('/nv-touren/eligible-shipments')) {
+        return Promise.resolve({
+          data: [
+            {
+              id: 's-map-1',
+              shipment_number: 'M-1',
+              customer_id: 'c-1',
+              loading_date: '2099-12-31',
+              delivery_date: '2099-12-31',
+              package_count: 1,
+              customer: { name: 'Map-Kunde' },
+              loading_address: {
+                lat: 48,
+                lng: 11,
+                street: 'Marienpl 1',
+                zip: '80331',
+                city: 'M',
+                country_code: 'DE',
+              },
+              pin_address: {
+                lat: 48,
+                lng: 11,
+                street: 'Marienpl 1',
+                zip: '80331',
+                city: 'M',
+                country_code: 'DE',
+              },
+              matched_tour_gebiet_id: 'g-1',
+              matched_tour_gebiet_code: 'G1',
+              is_stamm_kunde: false,
+              weight_kg: 1500,
+              volume_m3: 8.5,
+              effective_pallets: 3,
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    render(
+      <Wrapper>
+        <MapPanel />
+      </Wrapper>,
+    );
+    // Pin-Button erscheint via NvDispoMap-Stub.
+    const pin = await screen.findByTestId('map-pin-s-map-1');
+    fireEvent.click(pin);
+    // Modal oeffnet — X-Close-Button (Schließen aria-label) als Marker.
+    expect(await screen.findByLabelText('Schließen')).toBeInTheDocument();
+    // "+ Zur Tour"-Button ist sichtbar (Karten-Modal-Scope).
+    expect(screen.getByText('+ Zur Tour')).toBeInTheDocument();
+    // "Volle Details" ebenfalls.
+    expect(screen.getByText('Volle Details')).toBeInTheDocument();
   });
 });
 

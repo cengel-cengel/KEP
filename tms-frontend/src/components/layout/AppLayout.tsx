@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import ContextPanel from '../panel/ContextPanel';
@@ -9,8 +9,15 @@ import { usePanel } from '../../state/panel';
 export default function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { entity, width } = usePanel();
+  const location = useLocation();
+  // S-5: Innerhalb der Workspace-Page rendert der Detail-Tab das
+  // Detail (dockview-Panel). Das ContextPanel-Overlay wuerde sonst
+  // doppelt erscheinen + den Workspace-Layout-Bereich verschmaelern.
+  // Aussehrhalb /workspace bleibt das Overlay wie bisher (legacy-
+  // Pages wie /tours, /shipments, /nv-disposition haben keinen Dock).
+  const inWorkspace = location.pathname.startsWith('/workspace');
   // W-1: Panel pusht main-content via padding-right.
-  const rightPad = entity ? width : 0;
+  const rightPad = entity && !inWorkspace ? width : 0;
   return (
     <div className="min-h-screen flex bg-gray-50">
       <Sidebar
@@ -26,7 +33,7 @@ export default function AppLayout() {
           <Outlet />
         </main>
       </div>
-      <ContextPanel />
+      {!inWorkspace && <ContextPanel />}
       <CommandPalette />
     </div>
   );

@@ -17,8 +17,17 @@ import type { IDockviewPanelProps } from 'dockview';
 import { PANEL_REGISTRY, type PanelId } from './panelRegistry';
 import { DockPanelProvider } from './DockPanelContext';
 
+/**
+ * Common params (alle Panels): panelId. Detail-Panel (S-5) ergaenzt
+ * entityType/entityId/mode — durchgereicht via DockPanelContext-
+ * params, die DetailPanel via useDockPanelParams() liest.
+ */
 interface DockPanelParams {
   panelId: PanelId;
+  // Detail-Panel-spezifisch:
+  entityType?: 'shipment' | 'tour' | 'nv-tour';
+  entityId?: string;
+  mode?: 'nv' | 'fv';
 }
 
 export default function DockPanelWrapper(
@@ -44,7 +53,10 @@ export default function DockPanelWrapper(
   // h-full damit das Panel die volle dockview-Container-Höhe nutzt
   // (Map braucht das insbesondere — Leaflet liest container.clientHeight).
   return (
-    <DockPanelProvider api={props.api}>
+    <DockPanelProvider
+      api={props.api}
+      params={props.params as unknown as Record<string, unknown>}
+    >
       <div className="h-full w-full overflow-hidden">
         <Component />
       </div>

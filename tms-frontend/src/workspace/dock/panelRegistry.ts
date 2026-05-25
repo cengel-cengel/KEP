@@ -13,9 +13,10 @@ import type { ComponentType } from 'react';
 import QueuePanel from '../../components/workspace/QueuePanel';
 import BoardPanel from '../../components/workspace/BoardPanel';
 import MapPanel from '../../components/workspace/MapPanel';
+import DetailPanel from './DetailPanel';
 import LoadingPlanPanel from './LoadingPlanPanel';
 
-export type PanelId = 'queue' | 'board' | 'map' | 'loadingPlan';
+export type PanelId = 'queue' | 'board' | 'map' | 'loadingPlan' | 'detail';
 
 export interface PanelRegistryEntry {
   id: PanelId;
@@ -43,5 +44,10 @@ export const PANEL_REGISTRY: Record<PanelId, PanelRegistryEntry> = {
     id: 'loadingPlan',
     title: 'Beladeplan',
     component: LoadingPlanPanel,
+  },
+  detail: {
+    id: 'detail',
+    title: 'Detail',
+    component: DetailPanel,
   },
 };

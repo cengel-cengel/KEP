@@ -185,10 +185,13 @@ export default function FvTourCard({
       <div
         className="px-3 py-2 border-b bg-gray-50 cursor-pointer"
         onClick={(e) => {
-          // Klick auf Header → Panel (außer Btn-Klicks bubblen nicht)
+          // Klick auf Header → Detail-Panel. Cmd/Ctrl-Klick öffnet
+          // ein eigenes Tab (Multi-Vergleich); button-Klicks bubblen
+          // nicht (frueh-Return).
           const tag = (e.target as HTMLElement).closest('button');
           if (tag) return;
-          selectTour(tourId);
+          const multi = e.metaKey || e.ctrlKey;
+          selectTour(tourId, { multi });
         }}
       >
         {maxAxisRatio >= 0.7 ? (

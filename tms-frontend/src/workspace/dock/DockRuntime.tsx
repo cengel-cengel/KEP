@@ -33,6 +33,7 @@ import {
   type SerializedDockview,
 } from 'dockview';
 import 'dockview/dist/styles/dockview.css';
+import { installDockBridge } from '../../lib/dockBridge';
 import CustomTab from './CustomTab';
 import DockPanelWrapper from './DockPanelWrapper';
 import { buildDefaultLayout } from './layoutDefaults';
@@ -118,6 +119,10 @@ export default function DockRuntime({
       // damit die Restore selbst nicht sofort einen storeLayout
       // triggert (no-op-Speicherung ist harmlos, aber unnötig).
       layoutSubRef.current = event.api.onDidLayoutChange(schedulePersist);
+      // Detail-Panel-Bridge: stellt event.api als Modul-Slot bereit,
+      // damit Klick-Handler (TourCards, Maps, Eingang) addPanel/
+      // getPanel aufrufen koennen ohne den Provider-Tree zu wandern.
+      installDockBridge(event.api);
       // S-3b-2: Api an Parent reichen (WorkspacePage → TopBar fuer
       // Save/Load der benannten Backend-Layouts).
       onApiReady?.(event.api);
@@ -169,6 +174,9 @@ export default function DockRuntime({
       }
       layoutSubRef.current?.dispose();
       layoutSubRef.current = null;
+      // Detail-Bridge zuruecksetzen — sonst behalten Klick-Handler
+      // eine stale-Api-Referenz, wenn die Workspace-Page unmountet.
+      installDockBridge(null);
     };
   }, []);
 

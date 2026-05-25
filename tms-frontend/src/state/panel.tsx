@@ -7,6 +7,8 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { getDockApi } from '../lib/dockBridge';
+import { openDetailPanel } from '../workspace/dock/openDetailPanel';
 
 /**
  * W-1 ContextPanel-State.
@@ -16,7 +18,22 @@ import {
  * Page-Navigationen erhalten. Panel-Width + pinned-Flag
  * ebenfalls per Tab persistent (sessionStorage später,
  * jetzt: localStorage = cross-tab konsistent).
+ *
+ * S-5 Detail-Panel-Bridge: selectShipment/selectTour/selectNvTour
+ * öffnen ZUSÄTZLICH ein dockview-Detail-Panel, wenn die Workspace-
+ * Page gemountet ist (getDockApi() != null). Außerhalb /workspace
+ * macht die Bridge nichts → ContextPanel-Overlay-Fallback greift
+ * unverändert. opts.multi=true (Cmd/Ctrl+Klick) öffnet ein eigenes
+ * Tab statt single-swap.
  */
+
+export interface SelectOpts {
+  /** Cmd/Ctrl+Klick im Handler → eigenes Detail-Tab. */
+  multi?: boolean;
+  /** Mode-Override fuer Shipment (default ableiten aus Workspace
+   *  funktioniert nicht in einem reinen State-Hook — Caller setzt). */
+  mode?: 'nv' | 'fv';
+}
 
 export type PanelEntityType = 'shipment' | 'tour' | 'nv-tour';
 
@@ -35,9 +52,9 @@ interface PanelContextValue {
   entity: PanelEntity | null;
   width: number;
   pinned: boolean;
-  selectShipment: (id: string) => void;
-  selectTour: (id: string) => void;
-  selectNvTour: (id: string) => void;
+  selectShipment: (id: string, opts?: SelectOpts) => void;
+  selectTour: (id: string, opts?: SelectOpts) => void;
+  selectNvTour: (id: string, opts?: SelectOpts) => void;
   close: () => void;
   togglePin: () => void;
   setWidth: (px: number) => void;
@@ -89,14 +106,32 @@ export function PanelProvider({ children }: { children: ReactNode }) {
     saveState(state);
   }, [state]);
 
-  const selectShipment = useCallback((id: string) => {
+  const selectShipment = useCallback((id: string, opts?: SelectOpts) => {
     setState((s) => ({ ...s, entity: { type: 'shipment', id } }));
+    const dockApi = getDockApi();
+    if (dockApi) {
+      // Shipment-Mode-Default = 'fv' (ShipmentDetailsTab nutzt
+      // mode nicht primaer; Caller darf via opts.mode forcen).
+      openDetailPanel(dockApi, 'shipment', id, opts?.mode ?? 'fv', {
+        multi: opts?.multi,
+      });
+    }
   }, []);
-  const selectTour = useCallback((id: string) => {
+  const selectTour = useCallback((id: string, opts?: SelectOpts) => {
     setState((s) => ({ ...s, entity: { type: 'tour', id } }));
+    const dockApi = getDockApi();
+    if (dockApi) {
+      openDetailPanel(dockApi, 'tour', id, 'fv', { multi: opts?.multi });
+    }
   }, []);
-  const selectNvTour = useCallback((id: string) => {
+  const selectNvTour = useCallback((id: string, opts?: SelectOpts) => {
     setState((s) => ({ ...s, entity: { type: 'nv-tour', id } }));
+    const dockApi = getDockApi();
+    if (dockApi) {
+      openDetailPanel(dockApi, 'nv-tour', id, 'nv', {
+        multi: opts?.multi,
+      });
+    }
   }, []);
   const close = useCallback(() => {
     setState((s) => ({ ...s, entity: null }));

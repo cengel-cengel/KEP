@@ -191,12 +191,13 @@ export default function TourCard({
       <div
         className="px-3 py-2 border-b bg-gray-50 flex items-center justify-between cursor-pointer hover:bg-gray-100"
         onClick={(e) => {
-          // P0-11: Plain-Click öffnet Panel + togglet Map-Highlight.
-          // Cmd/Ctrl+Click NUR Map-Highlight (keine Panel-Änderung).
-          if (!e.metaKey && !e.ctrlKey) {
-            selectNvTour(tour.id);
-          }
-          onToggleTourView();
+          // S-5: Plain-Klick = Detail-Panel single-swap + Map-Toggle.
+          // Cmd/Ctrl+Klick = zusaetzliches Detail-Tab (Multi-Vergleich)
+          // ohne Map-Toggle (P0-11-Erbe: Cmd war urspruenglich nur
+          // Map-Highlight; jetzt steuert es Multi-Tab statt nichts).
+          const multi = e.metaKey || e.ctrlKey;
+          selectNvTour(tour.id, { multi });
+          if (!multi) onToggleTourView();
         }}
         title={isActive ? 'Tour-Karte schließen' : 'Tour-Karte anzeigen'}
       >

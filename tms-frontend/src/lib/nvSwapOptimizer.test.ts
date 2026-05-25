@@ -1,8 +1,10 @@
 /**
  * F2.1 + O-1 Tests fuer nvSwapOptimizer (pure, synthetisch).
  *
- * Heutiges Datum ist laut Projekt-Kontext 2026-05-24 → "2025-01-01"
- * ist eindeutig overdue (kein Datums-Mock noetig).
+ * "2025-01-01" ist eindeutig overdue → fix-Status (Datums-Mock
+ * unnoetig). Default-loading_date verwendet ein Far-future-Datum
+ * (2099-12-31), damit der Test nicht ueber Tageswechsel
+ * versehentlich auf overdue umkippt.
  *
  * O-1: Optimizer-Metriken sind Volumen (m³) + Gewicht (kg). ldm/
  * Stack-Faktor sind RAUS — Volumen ist die natuerliche 3D-Metrik
@@ -25,7 +27,7 @@ function mk(o: Partial<SwapShipment> & { id: string }): SwapShipment {
     has_active_lock: false,
     is_hazmat: false,
     status: 'new',
-    loading_date: '2026-05-24',
+    loading_date: '2099-12-31',
     ...o,
   };
 }

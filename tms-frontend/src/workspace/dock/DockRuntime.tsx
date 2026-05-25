@@ -28,10 +28,12 @@ import {
   type DockviewApi,
   type DockviewIDisposable,
   type DockviewReadyEvent,
+  type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
   type SerializedDockview,
 } from 'dockview';
 import 'dockview/dist/styles/dockview.css';
+import CustomTab from './CustomTab';
 import DockPanelWrapper from './DockPanelWrapper';
 import { buildDefaultLayout } from './layoutDefaults';
 import {
@@ -43,6 +45,10 @@ import {
 const components: Record<string, React.FC<IDockviewPanelProps>> = {
   panel: DockPanelWrapper,
 };
+
+// S-4: Default-Tab-Renderer mit Float/Popout-Buttons (gilt fuer
+// ALLE Panels — kein per-Panel tabComponent-opt-in noetig).
+const defaultTabComponent: React.FC<IDockviewPanelHeaderProps> = CustomTab;
 
 /** Persist-Debounce in ms — schützt vor onDidLayoutChange-Spam. */
 const PERSIST_DEBOUNCE_MS = 400;
@@ -181,8 +187,19 @@ export default function DockRuntime({
     >
       <DockviewReact
         components={components}
+        defaultTabComponent={defaultTabComponent}
         defaultRenderer="always"
         onReady={onReady}
+        // S-4: Floating-Groups explizit aktivieren + im Viewport
+        // halten (sonst koennen frei gedraggte Fenster ausserhalb
+        // sichtbarem Bereich enden). Popout (=window.open) wird
+        // per Tab-Button getriggert (CustomTab.onPopout).
+        // serializeLayout/fromJSON erfasst Floating-Bounds bereits
+        // out-of-the-box (dockview-Default-Verhalten); userTouched
+        // bleibt korrekt, weil der Tab-Button-Klick als
+        // pointerdown-im-Container zaehlt.
+        disableFloatingGroups={false}
+        floatingGroupBounds="boundedWithinViewport"
         className="dockview-theme-light h-full w-full"
       />
     </div>

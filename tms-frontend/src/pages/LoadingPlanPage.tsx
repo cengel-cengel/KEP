@@ -331,10 +331,15 @@ export default function LoadingPlanPage() {
 
 
 
+  // S-6.3 A-Fix: Default-Ansicht laeuft jetzt mit Carlos-Stack-Rule-
+  // Sortierung vor placePackages (vorher nur im Repack-Optimal-Knopf
+  // explizit, Default war DB-Reihenfolge → suboptimal). Symmetrisch
+  // zur NV-flattenPackages-Aenderung.
   const placedPackages = useMemo(
     () => {
+      const sorted = sortPackagesForOptimalPack(packagesFlat);
       const r = placePackages(
-        packagesFlat,
+        sorted,
         vehicleDims.lengthCm,
         vehicleDims.widthCm,
         vehicleDims.heightCm,

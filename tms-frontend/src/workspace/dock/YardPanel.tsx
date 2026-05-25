@@ -43,6 +43,7 @@ import {
 } from '../../pages/NvLoadingPlanPage';
 import {
   placePackages,
+  sortPackagesForOptimalPack,
   type SharedPackage,
 } from '../../lib/loadingShared';
 
@@ -264,7 +265,9 @@ export default function YardPanel() {
           }
         }
       }
-      const placed = placePackages(list, L, W, H);
+      // S-6.3 A-Fix: Carlos-Stack-Rule-Sortierung vor placePackages
+      // (Default-Pfad lief vorher ohne Pre-Sort).
+      const placed = placePackages(sortPackagesForOptimalPack(list), L, W, H);
       for (const p of placed) {
         if (p.unplaced) {
           overflowIds.add(p.shipmentId);
@@ -283,7 +286,38 @@ export default function YardPanel() {
         });
       }
     }
-    return { overflowShipmentIds: overflowIds, placedInTrailer };
+    // S-6.3 Overflow-Grund-Diagnose: vergleichen totales Cargo-Vol
+    // gegen Trailer-Vol-Kapazitaet. Wenn Σ Vol > Kapazitaet →
+    // echte Ueberkapazitaet ("Σ Vol > Kapazität"). Sonst Pack-
+    // Inefficiency trotz Bodenreserve ("Pack-Grenze (Reserve)").
+    // Sattel-Default (88.13 m³) — YardPanel rechnet ohne
+    // resolveVehicleCapacity-Cascade, daher konservativ-grosser Wert.
+    const TRAILER_VOL_M3 = (1360 * 240 * 270) / 1e6;
+    const totalVolM3 = (() => {
+      let v = 0;
+      for (const p of placedInTrailer) {
+        v += (p.lengthCm * p.widthCm * p.heightCm) / 1e6;
+      }
+      // Overflow-Pakete sind im placePackages-Output mit posX/Y/Z=
+      // (0,0,0) markiert, aber dim-erhalten — wir muessen sie
+      // separat dazuzaehlen. Sie sind im placed-Output nicht
+      // enthalten (gefiltert). Stattdessen iterieren wir das
+      // Pre-Pack-Material:
+      //   NV: flattenNvPackages liefert ALLES inkl. unplaced — bereits
+      //       in placedInTrailer-Loop weggefiltert. Aggregat per
+      //       Pre-Pack-Vol via packageData.unplacedVol-Helper.
+      // Vereinfachung Phase A-Fix: Ueberlauf-Vol pro Sendung kommt
+      // aus overflowShipments[i].volumeM3 (siehe useMemo unten).
+      // → Hier nur placedInTrailer-Vol. Total wird in der Reason-
+      // useMemo unten gebildet (kennt overflowShipments-Vol).
+      return v;
+    })();
+    return {
+      overflowShipmentIds: overflowIds,
+      placedInTrailer,
+      placedVolM3: totalVolM3,
+      trailerVolM3: TRAILER_VOL_M3,
+    };
   }, [mode, nvTourQ.data, fvTourQ.data]);
 
   const overflowShipmentIds = packData.overflowShipmentIds;
@@ -343,6 +377,28 @@ export default function YardPanel() {
     }
     return [];
   }, [mode, nvTourQ.data, fvTourQ.data, overflowShipmentIds]);
+
+  // S-6.3 Overflow-Grund (binary). Berechnet Total-Cargo-Vol
+  // (placed + unplaced) und vergleicht mit Trailer-Vol (88.13 m³
+  // Sattel-Default). Per-Sendung-Reason ist hier gleich (binary),
+  // wird aber pro Box gerendert (Carlos-Spec: "pro unplaced-Sendung").
+  const overflowReason: 'vol-over-capacity' | 'pack-limit' | null = useMemo(() => {
+    if (overflowShipments.length === 0) return null;
+    const trailerVol = packData.trailerVolM3;
+    let unplacedVol = 0;
+    for (const s of overflowShipments) {
+      const v = (s as { volumeM3?: number | null }).volumeM3 ?? 0;
+      unplacedVol += Number(v) || 0;
+    }
+    const total = packData.placedVolM3 + unplacedVol;
+    return total > trailerVol ? 'vol-over-capacity' : 'pack-limit';
+  }, [overflowShipments, packData]);
+  const overflowReasonLabel: string | null =
+    overflowReason === 'vol-over-capacity'
+      ? 'Σ Vol > Kapazität'
+      : overflowReason === 'pack-limit'
+        ? 'Pack-Grenze (Reserve)'
+        : null;
 
   const nearbyWithoutGeo = useMemo(() => {
     // nearby-Endpoint filtert lat/lng-NULL bereits aus. Wir bekommen
@@ -429,11 +485,18 @@ export default function YardPanel() {
       };
     });
     if (overflowShipments.length > 0) {
+      // S-6.3: Slot-Label inkl. Grund (Σ Vol > Kapazität vs Pack-
+      // Grenze). Pro-Box-Label bekommt overflowReason zusaetzlich
+      // (siehe YardScene3D ShipmentLabel Zeile 3).
+      const reasonSuffix = overflowReasonLabel ? ` · ${overflowReasonLabel}` : '';
       out.push({
         id: 'overflow',
-        label: `Überlauf (${overflowShipments.length} nicht plazierbar)`,
+        label: `Überlauf (${overflowShipments.length} nicht plazierbar)${reasonSuffix}`,
         variant: 'overflow' as const,
-        shipments: overflowShipments,
+        shipments: overflowShipments.map((s) => ({
+          ...s,
+          overflowReason: overflowReasonLabel ?? undefined,
+        })),
       });
     }
     return out;

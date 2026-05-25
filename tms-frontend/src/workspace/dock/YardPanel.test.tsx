@@ -196,6 +196,10 @@ vi.mock('../../pages/NvLoadingPlanPage', () => ({
 }));
 vi.mock('../../lib/loadingShared', () => ({
   placePackages: (...args: unknown[]) => placePkgSpy(...args),
+  // S-6.3 A-Fix: identity-Stub fuer Sort. Echte Logik ist in
+  // sortPackagesForOptimalPack.test.ts abgedeckt — hier nur
+  // sicherstellen dass der YardPanel-Import nicht crashed.
+  sortPackagesForOptimalPack: <T,>(arr: T[]) => arr,
 }));
 
 import YardPanel from './YardPanel';
@@ -609,5 +613,131 @@ describe('YardPanel — smoke', () => {
     // Click auf placed-Box → selectShipment(shipmentId).
     fireEvent.click(screen.getByTestId('placed-pkg-a'));
     expect(selectShipmentSpy).toHaveBeenCalledWith('sh-1');
+  });
+
+  it('S-6.3 Overflow-Grund "Pack-Grenze (Reserve)" wenn Σ Vol ≤ Kapazitaet', async () => {
+    // 1 unplaced kleine Sendung — Σ Vol weit unter Sattel 88 m³.
+    // Erwartung: Reason = "Pack-Grenze (Reserve)".
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({ data: [] });
+      }
+      return Promise.resolve({
+        data: {
+          id: 'tour-1',
+          stops: [
+            {
+              id: 'stop-of',
+              shipment: {
+                id: 'sh-of',
+                shipment_number: 'OF-1',
+                length_cm: 120,
+                width_cm: 80,
+                height_cm: 100,
+                weight_kg: 100,
+                volume_m3: 0.96,
+              },
+            },
+          ],
+        },
+      });
+    });
+    flattenNvSpy.mockImplementation(() => [
+      {
+        id: 'pkg-of',
+        shipmentId: 'sh-of',
+        lengthCm: 120,
+        widthCm: 80,
+        heightCm: 100,
+        posX: 0,
+        posY: 0,
+        posZ: 0,
+        color: '#ccc',
+        unplaced: true,
+      },
+    ]);
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    expect(
+      await screen.findByText(/Pack-Grenze \(Reserve\)/),
+    ).toBeInTheDocument();
+  });
+
+  it('S-6.3 Overflow-Grund "Σ Vol > Kapazität" wenn Σ Vol > Sattel-Vol', async () => {
+    // 1 unplaced + 1 placed XXL — Σ Vol > 88 m³ Sattel-Default.
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({ data: [] });
+      }
+      return Promise.resolve({
+        data: {
+          id: 'tour-1',
+          stops: [
+            {
+              id: 'stop-xxl',
+              shipment: {
+                id: 'sh-xxl',
+                shipment_number: 'XXL-1',
+                length_cm: 1360,
+                width_cm: 240,
+                height_cm: 270,
+                weight_kg: 5000,
+                volume_m3: 88.0,
+              },
+            },
+            {
+              id: 'stop-of',
+              shipment: {
+                id: 'sh-of',
+                shipment_number: 'OF-1',
+                length_cm: 200,
+                width_cm: 240,
+                height_cm: 270,
+                weight_kg: 500,
+                volume_m3: 12.96,
+              },
+            },
+          ],
+        },
+      });
+    });
+    // 1 placed XXL (verbraucht fast 88 m³), 1 unplaced gross (13 m³)
+    flattenNvSpy.mockImplementation(() => [
+      {
+        id: 'pkg-xxl',
+        shipmentId: 'sh-xxl',
+        lengthCm: 1360,
+        widthCm: 240,
+        heightCm: 270,
+        posX: 0,
+        posY: 0,
+        posZ: 0,
+        color: '#888',
+        unplaced: false,
+      },
+      {
+        id: 'pkg-of',
+        shipmentId: 'sh-of',
+        lengthCm: 200,
+        widthCm: 240,
+        heightCm: 270,
+        posX: 0,
+        posY: 0,
+        posZ: 0,
+        color: '#ccc',
+        unplaced: true,
+      },
+    ]);
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    expect(
+      await screen.findByText(/Σ Vol > Kapazität/),
+    ).toBeInTheDocument();
   });
 });

@@ -40,6 +40,11 @@ export interface YardShipment {
   heightCm?: number | null;
   /** Optionaler Marker — Ueberlauf-Box rot faerben. */
   isOverflow?: boolean;
+  /** S-6.3: kurzer Grund (z.B. "Σ Vol > Kapazität" oder
+   *  "Pack-Grenze (Reserve)") — wird im Label sichtbar gemacht,
+   *  damit Disponent unterscheiden kann zwischen echtem
+   *  Kapazitaets-Limit und Pack-Inefficiency. */
+  overflowReason?: string | null;
   /** S-6.2 Per-Sendung-Label-Felder. Box-Label = customer
    *  (kompakt), Hover-Tooltip zeigt full address. mode steuert
    *  ob NV-Abhol-Adresse oder FV-Zustell-Detail. */
@@ -120,6 +125,11 @@ function ShipmentLabel({ s }: { s: YardShipment }) {
         )}
       </div>
       {secondary && <div className="text-gray-600">{secondary}</div>}
+      {s.overflowReason && (
+        <div className="text-red-700 font-semibold">
+          ⚠ {s.overflowReason}
+        </div>
+      )}
     </div>
   );
 }

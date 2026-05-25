@@ -17,7 +17,7 @@ import {
   resolveVehicleCapacity,
 } from '../lib/vehicleTypes';
 import { computeStackingLdmMetrics } from '../lib/loadingLdm';
-import { placePackages, type SharedPlacedPackage } from '../lib/loadingShared';
+import { placePackages, sortPackagesForOptimalPack, type SharedPlacedPackage } from '../lib/loadingShared';
 import { nvExpandPackages, type NvExpandedPackage } from '../lib/nvExpand';
 
 /**
@@ -105,6 +105,19 @@ export interface NvLoadingDetail {
  *  · DB-persistierte Positionen (q==0 mit pos_*_cm) bleiben
  *    unveraendert; Phase 1 honoriert sie als Hindernisse.
  */
+/**
+ * S-6.3 A-Fix: Pre-Sort via sortPackagesForOptimalPack VOR
+ * placePackages. Vorher: Default-Ansicht packte items in DB-Reihenfolge
+ * → Mischpaletten/Stack-Slots wurden suboptimal vergeben →
+ * Pakete fielen als unplaced raus trotz Bodenreserve (Carlos-Bsp
+ * N040: 13 Pal / ~17 m² von 32 m²). Carlos-Stack-Rule (non-stackable
+ * first, weight desc, vol desc) sortiert die Items optimal.
+ *
+ * Regel #2: sortPackagesForOptimalPack operiert auf der flachen
+ * Paket-Liste; eine Sendung wird durch den Sort NICHT zerlegt — alle
+ * Pakete einer Sendung bleiben fuer placePackages weiterhin
+ * adressierbar via shipmentId.
+ */
 export function flattenPackages(
   tour: NvLoadingDetail | null,
   trailerWidthCm: number,
@@ -112,8 +125,9 @@ export function flattenPackages(
   trailerHeightCm: number = 270,
 ): NvFlatPackage[] {
   const expanded = nvExpandPackages(tour);
+  const sorted = sortPackagesForOptimalPack(expanded);
   return placePackages(
-    expanded,
+    sorted,
     trailerLengthCm,
     trailerWidthCm,
     trailerHeightCm,

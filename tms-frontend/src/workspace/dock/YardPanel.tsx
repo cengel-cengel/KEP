@@ -542,6 +542,119 @@ export default function YardPanel() {
     return out;
   }, [nearbyQ.data, overflowShipments, mode]);
 
+  // S-6.3 B: Pro Lane + FFD-Trailer die package_items expand+sort+
+  // placePackages-Run → echte gestackte Boxen im 3D-Block. Perf-Cap:
+  // wenn Gesamt-Item-Count > MAX_TOTAL_BOXES → nur erste M Trailer
+  // pro Lane mit Items, Rest leerer Rahmen + "+K LKW"-Hinweis im
+  // Render. Carlos's 30-LKW-Pool ~> 1500 Boxes ohne Cap.
+  const MAX_TOTAL_BOXES = 600;
+  const TRAILER_VISIBLE_PER_LANE = 5;
+  // FV-Farbpalette (10) — pro Sendung-Index in der Lane.
+  const COLORS = useMemo(
+    () => [
+      '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+      '#06b6d4', '#84cc16', '#ec4899', '#6366f1', '#14b8a6',
+    ],
+    [],
+  );
+  const lanesWithPacks = useMemo<YardSlot[]>(() => {
+    if (!nearbyQ.data) return slots;
+    // Map shipmentId → NearbyShipment (incl. package_items) fuer
+    // schnellen Lookup.
+    const byId = new Map<string, NearbyShipment>();
+    for (const s of nearbyQ.data) byId.set(s.id, s);
+
+    // 1. Pro Lane + Trailer placePackages-Output bauen. Items pro
+    //    Sendung: package_items × quantity. Color: Lane-lokale
+    //    Sendungs-Index-Palette (gleicher Hex pro Sendung — Items
+    //    der gleichen Sendung sehen identisch aus, klick-able).
+    type PreTrailer = {
+      shipmentIds: string[];
+      items: Array<
+        SharedPackage & {
+          id: string;
+          shipmentId: string;
+          color: string;
+        }
+      >;
+      placedItems: YardPlacedPackage[];
+    };
+    const trailerData = new Map<string, PreTrailer[]>();
+    let totalItems = 0;
+    for (const slot of slots) {
+      if (slot.variant === 'overflow' || !slot.trailers) continue;
+      const laneColors = new Map<string, string>();
+      const expanded: PreTrailer[] = [];
+      for (const t of slot.trailers) {
+        const items: PreTrailer['items'] = [];
+        for (const sid of t.shipmentIds) {
+          if (!laneColors.has(sid)) {
+            laneColors.set(sid, COLORS[laneColors.size % COLORS.length]);
+          }
+          const ship = byId.get(sid);
+          if (!ship) continue;
+          const pkgItems = ship.package_items ?? [];
+          const allStackable =
+            pkgItems.length > 0 &&
+            pkgItems.every((it) => it.stackable !== false);
+          for (const it of pkgItems) {
+            const qty = Math.max(1, Number(it.quantity ?? 1));
+            for (let q = 0; q < qty; q++) {
+              items.push({
+                id: `${sid}:${it.id}:${q}`,
+                shipmentId: sid,
+                color: laneColors.get(sid) ?? '#3b82f6',
+                lengthCm: Number(it.length_cm) || 0,
+                widthCm: Number(it.width_cm) || 0,
+                heightCm: Number(it.height_cm) || 0,
+                weightKg: Number(it.weight_kg) || 0,
+                isStackable: allStackable && it.stackable !== false,
+                storedPosX: null,
+                storedPosY: null,
+                storedPosZ: null,
+              });
+            }
+          }
+        }
+        // Sort + placePackages auf Sattel-Geometrie.
+        const sorted = sortPackagesForOptimalPack(items);
+        const placed = placePackages(sorted, 1360, 240, 270);
+        const placedItems: YardPlacedPackage[] = placed
+          .filter((p) => !p.unplaced)
+          .map((p) => ({
+            id: p.id,
+            shipmentId: p.shipmentId ?? null,
+            lengthCm: p.lengthCm,
+            widthCm: p.widthCm,
+            heightCm: p.heightCm,
+            posX: p.posX,
+            posY: p.posY,
+            posZ: p.posZ,
+            color: p.color,
+          }));
+        totalItems += placedItems.length;
+        expanded.push({ shipmentIds: t.shipmentIds, items, placedItems });
+      }
+      trailerData.set(slot.id, expanded);
+    }
+
+    // 2. Perf-Cap anwenden, falls noetig.
+    const cap = totalItems > MAX_TOTAL_BOXES;
+    return slots.map((slot) => {
+      if (slot.variant === 'overflow' || !slot.trailers) return slot;
+      const pre = trailerData.get(slot.id) ?? [];
+      const packedTrailers = pre.map((pt, i) => ({
+        shipmentIds: pt.shipmentIds,
+        // Cap-Schwellwert: wenn aktiv UND Trailer-Index >= M → leer.
+        capped: cap && i >= TRAILER_VISIBLE_PER_LANE,
+        placedItems:
+          cap && i >= TRAILER_VISIBLE_PER_LANE ? [] : pt.placedItems,
+      }));
+      return { ...slot, packedTrailers };
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slots, nearbyQ.data, COLORS]);
+
   if (!tourId) {
     return (
       <div className="h-full flex items-center justify-center p-6 text-xs text-gray-500 text-center">
@@ -614,7 +727,7 @@ export default function YardPanel() {
             trailerLengthCm={1360}
             trailerWidthCm={240}
             trailerHeightCm={270}
-            slots={slots}
+            slots={lanesWithPacks}
             placedInTrailer={placedInTrailer}
             frameloop={frameloop}
             onShipmentClick={(id) => panel.selectShipment(id)}

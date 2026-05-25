@@ -141,7 +141,8 @@ export interface YardSlot {
   label: string;
   /** Ueberlauf-Slot bekommt rote Streifen. */
   variant?: 'normal' | 'overflow';
-  /** Sendungen in diesem Slot. */
+  /** Sendungen in diesem Slot (representative-Boxes, S-6.2-Fallback
+   *  wenn packedTrailers nicht gesetzt sind — z.B. Ueberlauf-Slot). */
   shipments: YardShipment[];
   /** S-6.3 B: FFD-Trailer-Zuordnung (Sendungs-IDs pro virtuellem
    *  Trailer). Heute (C-Phase) wird das fuer Header-LKW-Summe
@@ -151,6 +152,18 @@ export interface YardSlot {
     shipmentIds: string[];
     volumeM3: number;
     weightKg: number;
+  }>;
+  /** S-6.3 B: Pro virtuellem Trailer — placePackages-Output, fertig
+   *  fuer Three-Mesh-Render im Lane-Block. Reihenfolge identisch zu
+   *  trailers[]. Wenn gesetzt → YardScene3D rendert N anhaengergroße
+   *  Bloecke nebeneinander (lane-x-Achse) mit echten gestapelten
+   *  Boxen; ohne packedTrailers → fallback representative shipments
+   *  (Ueberlauf). */
+  packedTrailers?: Array<{
+    shipmentIds: string[];
+    /** Wenn true: leerer Rahmen + "+K LKW"-Hinweis (Perf-Cap). */
+    capped?: boolean;
+    placedItems?: YardPlacedPackage[];
   }>;
 }
 
@@ -189,11 +202,25 @@ interface Props {
 
 const GAP_CM = 80;
 const SHIP_ROW_GAP_CM = 30;
+/** S-6.3 B: Spalt zwischen den anhaengergroßen Bloecken in einer
+ *  Lane (LKW hintereinander). Kleiner als GAP_CM, weil im selben
+ *  Stellplatz — soll Lkw-Konturen klar trennen, aber kompakt bleiben. */
+const TRAILER_BLOCK_GAP_CM = 40;
 const DEFAULT_PAL_L = 120;
 const DEFAULT_PAL_W = 80;
 const DEFAULT_PAL_H = 100;
 const TRAILER_W_LIMIT = 240; // Boxes nicht breiter als Stellplatz
 const TRAILER_H_LIMIT = 270;
+
+/** Lane-Laenge in cm = K Bloecke × Trailer-Laenge + (K-1) × gap.
+ *  Bei K=0 (nur Ueberlauf/keine Trailer) → trailerLengthCm (Default). */
+function laneLengthCm(numTrailers: number, trailerLengthCm: number): number {
+  if (numTrailers <= 0) return trailerLengthCm;
+  return (
+    numTrailers * trailerLengthCm +
+    Math.max(0, numTrailers - 1) * TRAILER_BLOCK_GAP_CM
+  );
+}
 
 /**
  * S-6.1: Volumen-treue Box-Dimensionen.
@@ -292,22 +319,35 @@ export default function YardScene3D({
     return out;
   }, [slots, trailerWidthCm]);
 
+  // S-6.3 B: Lanes koennen sich entlang x verlaengern (N anhaenger-
+  // grosse Bloecke hintereinander). max-lane-length steuert die
+  // Szene-Laenge — Kamera muss raus genug rausziehen.
+  const maxLaneLengthCm = useMemo(() => {
+    let max = trailerLengthCm;
+    for (const s of slots) {
+      const k = s.packedTrailers?.length ?? 0;
+      const ll = laneLengthCm(k, trailerLengthCm);
+      if (ll > max) max = ll;
+    }
+    return max;
+  }, [slots, trailerLengthCm]);
+
   // Camera position: weit genug raus, damit alle Slots sichtbar sind.
   const cameraPos = useMemo<[number, number, number]>(() => {
-    const sceneLength = trailerLengthCm;
+    const sceneLength = maxLaneLengthCm;
     const sceneWidth =
       trailerWidthCm + slots.length * (trailerWidthCm + GAP_CM) + GAP_CM;
     const m = Math.max(sceneLength, sceneWidth) / 100;
     // Kamera schraeg von oben, ein Stueck rechts vom Schwerpunkt.
     return [m * 0.4, m * 0.8, m * 0.7];
-  }, [trailerLengthCm, trailerWidthCm, slots.length]);
+  }, [maxLaneLengthCm, trailerWidthCm, slots.length]);
 
   // Total grid-size: groesser als Auflieger + alle Slots
   const gridSize = useMemo(() => {
     const sceneWidth =
       trailerWidthCm + slots.length * (trailerWidthCm + GAP_CM) + GAP_CM * 2;
-    return Math.max(trailerLengthCm, sceneWidth) / 100;
-  }, [trailerLengthCm, trailerWidthCm, slots.length]);
+    return Math.max(maxLaneLengthCm, sceneWidth) / 100;
+  }, [maxLaneLengthCm, trailerWidthCm, slots.length]);
 
   return (
     <Canvas
@@ -320,7 +360,7 @@ export default function YardScene3D({
       <directionalLight position={[-5, 4, -3]} intensity={0.3} />
       <gridHelper
         args={[gridSize, Math.floor(gridSize), '#cbd5e1', '#e2e8f0']}
-        position={[trailerLengthCm / 200, 0, 0]}
+        position={[maxLaneLengthCm / 200, 0, 0]}
       />
 
       {/* Auflieger (highlighted, gold) */}
@@ -412,6 +452,7 @@ export default function YardScene3D({
           centerZ={centerZ}
           trailerLengthCm={trailerLengthCm}
           trailerWidthCm={trailerWidthCm}
+          trailerHeightCm={trailerHeightCm}
           onShipmentClick={onShipmentClick}
         />
       ))}
@@ -422,6 +463,235 @@ export default function YardScene3D({
 }
 
 function SlotMesh({
+  slot,
+  centerZ,
+  trailerLengthCm,
+  trailerWidthCm,
+  trailerHeightCm,
+  onShipmentClick,
+}: {
+  slot: YardSlot;
+  centerZ: number;
+  trailerLengthCm: number;
+  trailerWidthCm: number;
+  trailerHeightCm: number;
+  onShipmentClick?: (id: string) => void;
+}) {
+  // S-6.3 B: Pack-Render-Pfad. Wenn packedTrailers gesetzt sind (NV+FV
+  // FFD-Allocation pro Lane), rendern wir N anhaengergroße Bloecke
+  // hintereinander entlang x-Achse mit gepackten Boxen drin (Lkw zaehlbar).
+  // Fallback (Ueberlauf-Slot, kein packedTrailers): legacy
+  // representative-Sendungs-Boxen via shipBoxDims (S-6.1).
+  if (slot.packedTrailers && slot.variant !== 'overflow') {
+    return (
+      <PackedLaneMesh
+        slot={slot}
+        centerZ={centerZ}
+        trailerLengthCm={trailerLengthCm}
+        trailerWidthCm={trailerWidthCm}
+        trailerHeightCm={trailerHeightCm}
+        onShipmentClick={onShipmentClick}
+      />
+    );
+  }
+  return (
+    <RepresentativeLaneMesh
+      slot={slot}
+      centerZ={centerZ}
+      trailerLengthCm={trailerLengthCm}
+      trailerWidthCm={trailerWidthCm}
+      onShipmentClick={onShipmentClick}
+    />
+  );
+}
+
+/**
+ * S-6.3 B: PackedLaneMesh — N anhaengergroße Bloecke hintereinander.
+ *
+ * Layout
+ *   · Lane-Boden = laneLengthCm × trailerWidthCm Asphalt-Plane,
+ *     erstreckt sich entlang +x von 0 bis K × L + (K-1) × gap.
+ *   · Pro Trailer-Block bei x = i·(L+gap)+L/2:
+ *       - Wireframe-Boxgeometry (L×H×W in Three) + dezente Edges
+ *       - Block-eigener Boden (Auflieger-Farbton, dezenter Highlight)
+ *       - Gepackte Boxen: placedItems mit Pos-Formel L675-680
+ *   · Capped (Perf-Cap): kein Item-Render, nur Wireframe + ein
+ *     "+K LKW (Pack-Cap)"-Hinweis auf dem ersten capped Block.
+ *
+ * Click-Verhalten
+ *   · Mesh-Click auf Item → onShipmentClick(item.shipmentId) →
+ *     S-5-Detail-Panel.
+ */
+function PackedLaneMesh({
+  slot,
+  centerZ,
+  trailerLengthCm,
+  trailerWidthCm,
+  trailerHeightCm,
+  onShipmentClick,
+}: {
+  slot: YardSlot;
+  centerZ: number;
+  trailerLengthCm: number;
+  trailerWidthCm: number;
+  trailerHeightCm: number;
+  onShipmentClick?: (id: string) => void;
+}) {
+  const packedTrailers = slot.packedTrailers ?? [];
+  const K = packedTrailers.length;
+  const laneLen = laneLengthCm(K, trailerLengthCm);
+  const firstCappedIdx = packedTrailers.findIndex((t) => t.capped);
+  const cappedCount = packedTrailers.filter((t) => t.capped).length;
+
+  return (
+    <group position={scaleVec3(0, 0, centerZ)}>
+      {/* Lane-Boden (Asphalt), erstreckt sich ueber ganze Lane. */}
+      <mesh
+        position={scaleVec3(laneLen / 2, 0.4, 0)}
+        rotation={[-Math.PI / 2, 0, 0]}
+        receiveShadow
+      >
+        <planeGeometry args={[laneLen / 100, trailerWidthCm / 100]} />
+        <meshStandardMaterial color="#f8fafc" />
+      </mesh>
+      {/* 4 Park-Streifen entlang Lane. */}
+      {[-1, -0.33, 0.33, 1].map((zFrac, i) => (
+        <mesh
+          key={i}
+          position={scaleVec3(
+            laneLen / 2,
+            0.5,
+            (trailerWidthCm / 2) * zFrac,
+          )}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <planeGeometry args={[laneLen / 100, 0.05]} />
+          <meshStandardMaterial color="#cbd5e1" />
+        </mesh>
+      ))}
+      {/* Lane-Label: "PLZ X · N Sdg · ≈ K LKW" — am Lane-Anfang,
+          AUSSERHALB der Boden-Streifen. */}
+      <Html
+        position={scaleVec3(trailerLengthCm / 2, 0, -trailerWidthCm / 2 - 20)}
+        center
+        zIndexRange={[0, 0]}
+      >
+        <div className="text-[11px] font-medium px-2 py-0.5 rounded shadow-sm whitespace-nowrap text-slate-700 bg-white/70 pointer-events-none">
+          {slot.label}
+        </div>
+      </Html>
+
+      {/* Pro Trailer-Block: Wireframe + Boden + Items. */}
+      {packedTrailers.map((pt, i) => {
+        const xOffsetCm = i * (trailerLengthCm + TRAILER_BLOCK_GAP_CM);
+        const blockCenterX = xOffsetCm + trailerLengthCm / 2;
+        const isCapped = !!pt.capped;
+        return (
+          <group key={`tr-${i}`}>
+            {/* Trailer-Wireframe (volumetric — wie Auflieger oben). */}
+            <mesh
+              position={scaleVec3(blockCenterX, trailerHeightCm / 2, 0)}
+            >
+              <boxGeometry
+                args={[
+                  trailerLengthCm / 100,
+                  trailerHeightCm / 100,
+                  trailerWidthCm / 100,
+                ]}
+              />
+              <meshStandardMaterial
+                color={isCapped ? '#94a3b8' : '#f59e0b'}
+                transparent
+                opacity={isCapped ? 0.03 : 0.05}
+                depthWrite={false}
+              />
+              <Edges
+                color={isCapped ? '#94a3b8' : '#b45309'}
+                threshold={1}
+              />
+            </mesh>
+            {/* Block-Boden (Auflieger-Farbton — kontrastiert vs Asphalt). */}
+            <mesh
+              position={scaleVec3(blockCenterX, 0.8, 0)}
+              rotation={[-Math.PI / 2, 0, 0]}
+              receiveShadow
+            >
+              <planeGeometry
+                args={[trailerLengthCm / 100, trailerWidthCm / 100]}
+              />
+              <meshStandardMaterial
+                color={isCapped ? '#f1f5f9' : '#fef3c7'}
+              />
+            </mesh>
+            {/* Items im Block (placedItems-Pos-Formel wie Auflieger).
+                Wenn capped: kein Item-Render. */}
+            {!isCapped &&
+              (pt.placedItems ?? []).map((p) => {
+                const lx = p.lengthCm / 100;
+                const ly = p.heightCm / 100;
+                const lz = p.widthCm / 100;
+                const cx = xOffsetCm / 100 + p.posY / 100 + lx / 2;
+                const cy = p.posZ / 100 + ly / 2;
+                const cz =
+                  p.posX / 100 - trailerWidthCm / 200 + lz / 2;
+                return (
+                  <mesh
+                    key={p.id}
+                    position={[cx, cy, cz]}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (p.shipmentId) onShipmentClick?.(p.shipmentId);
+                    }}
+                    onPointerOver={(e) => {
+                      if (!p.shipmentId) return;
+                      e.stopPropagation();
+                      document.body.style.cursor = 'pointer';
+                    }}
+                    onPointerOut={() => {
+                      document.body.style.cursor = '';
+                    }}
+                  >
+                    <boxGeometry args={[lx, ly, lz]} />
+                    <meshStandardMaterial
+                      color={p.color ?? '#3b82f6'}
+                      transparent
+                      opacity={0.85}
+                    />
+                    <Edges color="#1e3a8a" threshold={1} />
+                  </mesh>
+                );
+              })}
+          </group>
+        );
+      })}
+
+      {/* Perf-Cap-Hinweis: einmal pro Lane, ueber erstem capped Block. */}
+      {firstCappedIdx >= 0 && (
+        <Html
+          position={scaleVec3(
+            firstCappedIdx * (trailerLengthCm + TRAILER_BLOCK_GAP_CM) +
+              trailerLengthCm / 2,
+            trailerHeightCm / 2,
+            0,
+          )}
+          center
+          zIndexRange={[0, 0]}
+        >
+          <div className="text-[10px] font-medium px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap text-amber-900 bg-amber-50 border border-amber-200 pointer-events-none">
+            +{cappedCount} LKW (Pack-Cap)
+          </div>
+        </Html>
+      )}
+    </group>
+  );
+}
+
+/**
+ * Legacy / Ueberlauf-Pfad: representative-Sendungs-Boxen via shipBoxDims.
+ * Wird genutzt fuer Ueberlauf-Slot (variant='overflow') wo kein FFD-
+ * Pack laeuft — pro Sendung eine Volumen-treue Repraesentativ-Box.
+ */
+function RepresentativeLaneMesh({
   slot,
   centerZ,
   trailerLengthCm,

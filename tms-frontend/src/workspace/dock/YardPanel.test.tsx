@@ -42,6 +42,11 @@ vi.mock('./YardScene3D', () => ({
         depotLabel?: string | null;
         mode?: 'nv' | 'fv';
       }>;
+      packedTrailers?: Array<{
+        shipmentIds: string[];
+        capped?: boolean;
+        placedItems?: Array<{ id: string; shipmentId?: string | null }>;
+      }>;
     }>;
     placedInTrailer?: Array<{ id: string; shipmentId?: string | null }>;
     onShipmentClick?: (id: string) => void;
@@ -61,7 +66,17 @@ vi.mock('./YardScene3D', () => ({
         </button>
       ))}
       {slots.map((slot) => (
-        <li key={slot.id} data-slot={slot.id}>
+        <li
+          key={slot.id}
+          data-slot={slot.id}
+          data-packed-count={(slot.packedTrailers ?? []).length}
+          data-packed-items={(slot.packedTrailers ?? [])
+            .map((t) => (t.placedItems ?? []).length)
+            .join(',')}
+          data-packed-capped={(slot.packedTrailers ?? [])
+            .map((t) => (t.capped ? '1' : '0'))
+            .join(',')}
+        >
           {slot.label}
           {slot.shipments.map((s) => (
             <button
@@ -755,6 +770,134 @@ describe('YardPanel — smoke', () => {
     expect(
       await screen.findByText(/Pack-Grenze \(Reserve\)/),
     ).toBeInTheDocument();
+  });
+
+  it('S-6.3 B: Lane bekommt packedTrailers[] mit Anzahl = FFD-Trailer', async () => {
+    // 3 Sendungen à 40 m³ → 2 LKW im Slot (FFD-Standard).
+    // packedTrailers.length muss 2 sein.
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({
+          data: [
+            {
+              ...mockNearbyNv[0],
+              id: 's-p1',
+              volume_m3: 40,
+              weight_kg: 1000,
+              package_items: [
+                {
+                  id: 'i-p1',
+                  length_cm: 120,
+                  width_cm: 80,
+                  height_cm: 100,
+                  weight_kg: 500,
+                  quantity: 2,
+                  stackable: true,
+                },
+              ],
+            },
+            {
+              ...mockNearbyNv[0],
+              id: 's-p2',
+              volume_m3: 40,
+              weight_kg: 1000,
+              package_items: [
+                {
+                  id: 'i-p2',
+                  length_cm: 120,
+                  width_cm: 80,
+                  height_cm: 100,
+                  weight_kg: 500,
+                  quantity: 2,
+                  stackable: true,
+                },
+              ],
+            },
+            {
+              ...mockNearbyNv[0],
+              id: 's-p3',
+              volume_m3: 40,
+              weight_kg: 1000,
+              package_items: [
+                {
+                  id: 'i-p3',
+                  length_cm: 120,
+                  width_cm: 80,
+                  height_cm: 100,
+                  weight_kg: 500,
+                  quantity: 2,
+                  stackable: true,
+                },
+              ],
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ data: { stops: [] } });
+    });
+    // placePackages-Stub liefert pro Aufruf 1 placed-Item pro Eingang
+    // (mockt das echte Pack — Test-Fokus: Datafluss, nicht Pack-Logik).
+    placePkgSpy.mockImplementation((...args: unknown[]) => {
+      const items = args[0] as Array<{ id: string; shipmentId?: string }>;
+      return items.map((it) => ({
+        id: it.id,
+        shipmentId: it.shipmentId,
+        lengthCm: 120,
+        widthCm: 80,
+        heightCm: 100,
+        posX: 0,
+        posY: 0,
+        posZ: 0,
+        color: '#3b82f6',
+        unplaced: false,
+      }));
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    const slot = await screen.findByText(
+      /PLZ 80331 · 3 Sdg · ≈ 2 LKW/,
+    );
+    const li = slot.closest('[data-slot]')!;
+    expect(li.getAttribute('data-packed-count')).toBe('2');
+    // Jeder Trailer hat placedItems (mock-placePackages liefert items.length).
+    const itemsPerTrailer = li.getAttribute('data-packed-items')!.split(',');
+    expect(itemsPerTrailer).toHaveLength(2);
+    expect(itemsPerTrailer.every((n) => Number(n) > 0)).toBe(true);
+    // Keiner capped (3 × 2 = 6 Items, weit unter Threshold 600).
+    expect(li.getAttribute('data-packed-capped')).toBe('0,0');
+  });
+
+  it('S-6.3 B: package_items=null in nearby → packedTrailers ohne Items', async () => {
+    // Sendung ohne package_items (BE-Backwards-Compat) → FFD trotzdem
+    // OK (Volumen-basiert), aber Items-Liste pro Trailer leer.
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({
+          data: [
+            {
+              ...mockNearbyNv[0],
+              id: 's-no-items',
+              volume_m3: 20,
+              weight_kg: 500,
+              package_items: null,
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ data: { stops: [] } });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    const slot = await screen.findByText(/PLZ 80331 · 1 Sdg · ≈ 1 LKW/);
+    const li = slot.closest('[data-slot]')!;
+    expect(li.getAttribute('data-packed-count')).toBe('1');
+    expect(li.getAttribute('data-packed-items')).toBe('0');
   });
 
   it('S-6.3 Overflow-Grund "Σ Vol > Kapazität" wenn Σ Vol > Sattel-Vol', async () => {

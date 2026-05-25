@@ -37,7 +37,9 @@ import YardScene3D, {
   type YardSlot,
   type YardPlacedPackage,
 } from './YardScene3D';
-import YardShipmentDetailModal from './YardShipmentDetailModal';
+import YardShipmentDetailModal, {
+  type YardModalShipment,
+} from './YardShipmentDetailModal';
 import {
   flattenPackages as flattenNvPackages,
   type NvLoadingDetail,
@@ -744,6 +746,69 @@ export default function YardPanel() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slots, nearbyQ.data, COLORS, capacity]);
 
+  // S-6.3 D-Erweiterung: Auflieger-Items kommen aus /loading bzw
+  // /loading-tour-optimize, NICHT aus nearby. Damit Tap auf
+  // Auflieger-Box auch das Modal oeffnet (iPhone-konsistent), bauen
+  // wir eine zweite Map aus den Tour-Shipments. NV-Felder sind
+  // sparsamer (kein customer_name/Adresse) — Modal zeigt was da ist,
+  // Button "Volle Details" deckt den Rest via S-5-Panel ab.
+  const tourShipmentLookup = useMemo<Map<string, YardModalShipment>>(() => {
+    const m = new Map<string, YardModalShipment>();
+    if (mode === 'nv' && nvTourQ.data) {
+      for (const stop of nvTourQ.data.stops) {
+        const sh = stop.shipment;
+        // Vol aus Sendungs-Dims wenn nicht direkt vorhanden.
+        const cm3 =
+          Number(sh.length_cm ?? 0) *
+          Number(sh.width_cm ?? 0) *
+          Number(sh.height_cm ?? 0);
+        m.set(sh.id, {
+          id: sh.id,
+          shipment_number: sh.shipment_number ?? null,
+          customer_name: null, // NV-loading endpoint liefert customer_name nicht
+          weight_kg: sh.weight_kg ?? null,
+          volume_m3:
+            (sh as { volume_m3?: number | null }).volume_m3 ??
+            (cm3 > 0 ? cm3 / 1e6 : null),
+          effective_pallets:
+            (sh as { effective_pallets?: number | null }).effective_pallets ??
+            null,
+        });
+      }
+    } else if (mode === 'fv' && fvTourQ.data?.loadingOrder) {
+      for (const s of fvTourQ.data.loadingOrder) {
+        // FV loadingOrder hat reichere Felder via Cast (optimizer
+        // service liefert customer-name resolved + deliveryCity).
+        const cast = s as FvOptimizeShipment & {
+          customer?: string | null;
+          deliveryCity?: string | null;
+          deliveryZip?: string | null;
+          weightKg?: number | null;
+          ldm?: number | null;
+        };
+        let cm3 = 0;
+        for (const it of cast.packageItems ?? []) {
+          const qty = Math.max(1, Number(it.quantity ?? 1));
+          cm3 +=
+            Number(it.lengthCm ?? 0) *
+            Number(it.widthCm ?? 0) *
+            Number(it.heightCm ?? 0) *
+            qty;
+        }
+        m.set(cast.id, {
+          id: cast.id,
+          shipment_number: cast.shipmentNumber ?? null,
+          customer_name: cast.customer ?? null,
+          weight_kg: cast.weightKg ?? null,
+          volume_m3: cm3 > 0 ? cm3 / 1e6 : null,
+          delivery_zip: cast.deliveryZip ?? null,
+          delivery_city: cast.deliveryCity ?? null,
+        });
+      }
+    }
+    return m;
+  }, [mode, nvTourQ.data, fvTourQ.data]);
+
   if (!tourId) {
     return (
       <div className="h-full flex items-center justify-center p-6 text-xs text-gray-500 text-center">
@@ -820,14 +885,17 @@ export default function YardPanel() {
             placedInTrailer={placedInTrailer}
             frameloop={frameloop}
             onShipmentClick={(id) => {
-              // S-6.3 D: Hof-Lanes-Items haben nearby-Daten → Modal.
-              // Auflieger-Items (placedInTrailer) der aktiven Tour
-              // sind NICHT zwingend im nearby-Pool → direkt S-5-
-              // Detail-Panel (Legacy-Pfad).
+              // S-6.3 D-Erweiterung: Tap auf jede Box (Lane ODER
+              // Auflieger) → Modal. Routing:
+              //   1. nearby → Modal (volle Daten inkl Adresse)
+              //   2. tourShipmentLookup → Modal (sparser, NV ohne
+              //      customer/Adresse — Modal zeigt "Volle Details"
+              //      Button für S-5-Panel)
+              //   3. Fall-through → panel.selectShipment (defensiv)
               const inNearby = (nearbyQ.data ?? []).some(
                 (s) => s.id === id,
               );
-              if (inNearby) {
+              if (inNearby || tourShipmentLookup.has(id)) {
                 setModalShipmentId(id);
               } else {
                 panel.selectShipment(id);
@@ -836,13 +904,15 @@ export default function YardPanel() {
           />
         )}
       </div>
-      {/* S-6.3 D: Hof-Sendungs-Detail-Modal. Datenquelle = nearby-
-          Pool (KEIN Fetch). "Volle Details"-Button optional →
-          oeffnet das S-5-Detail-Panel desktop-side. */}
+      {/* S-6.3 D: Hof-Sendungs-Detail-Modal. Datenquellen-Cascade:
+          nearby zuerst (volle Daten inkl Adresse), dann
+          tourShipmentLookup (Auflieger-Items, sparser). */}
       <YardShipmentDetailModal
         shipment={
           modalShipmentId
-            ? (nearbyQ.data ?? []).find((s) => s.id === modalShipmentId) ?? null
+            ? (nearbyQ.data ?? []).find((s) => s.id === modalShipmentId) ??
+              tourShipmentLookup.get(modalShipmentId) ??
+              null
             : null
         }
         isOpen={modalShipmentId != null}

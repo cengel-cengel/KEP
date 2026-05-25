@@ -1059,6 +1059,68 @@ describe('YardPanel — smoke', () => {
     ).toBeInTheDocument();
   });
 
+  it('Auflieger-Modal: placed-pkg-Tap → Modal (statt direkt Panel) wenn Shipment im tour-Lookup ist', async () => {
+    // Auflieger-Item (sh-stop) ist NICHT in nearby, aber in
+    // nvTourQ.stops → tourShipmentLookup. Tap → Modal mit
+    // sparsen Daten (NV liefert kein customer_name) + "Volle Details"-
+    // Button.
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({ data: [] });
+      }
+      if (url.includes('/nv-touren/tour-1/loading')) {
+        return Promise.resolve({
+          data: {
+            id: 'tour-1',
+            stops: [
+              {
+                id: 'stop-1',
+                shipment: {
+                  id: 'sh-stop',
+                  shipment_number: 'AUFL-1',
+                  weight_kg: 800,
+                  length_cm: 240,
+                  width_cm: 80,
+                  height_cm: 100,
+                  volume_m3: 1.92,
+                },
+              },
+            ],
+            fahrzeug_typ: 'Sattel',
+          },
+        });
+      }
+      return Promise.resolve({ data: { stops: [] } });
+    });
+    flattenNvSpy.mockImplementation(() => [
+      {
+        id: 'pkg-auf',
+        shipmentId: 'sh-stop',
+        lengthCm: 240,
+        widthCm: 80,
+        heightCm: 100,
+        posX: 0,
+        posY: 0,
+        posZ: 0,
+        color: '#aaa',
+        unplaced: false,
+      },
+    ]);
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    const btn = await screen.findByTestId('placed-pkg-auf');
+    fireEvent.click(btn);
+    // Modal oeffnet (Schließen-Button im Header sichtbar) statt
+    // panel.selectShipment direkt zu rufen.
+    expect(await screen.findByLabelText('Schließen')).toBeInTheDocument();
+    expect(selectShipmentSpy).not.toHaveBeenCalled();
+    // "Volle Details" bleibt verfuegbar fuer Auflieger-Items.
+    expect(screen.getByText('Volle Details')).toBeInTheDocument();
+  });
+
   it('T1.6: FV-Hof zieht tour.max_ldm + tour.max_weight_kg → FFD nutzt die echte Cap', async () => {
     workspaceMock.mode = 'fv';
     apiGet.mockImplementation((url: string) => {

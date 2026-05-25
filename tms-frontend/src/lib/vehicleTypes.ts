@@ -147,8 +147,10 @@ export interface ResolvedVehicleCapacity {
  *  Quelle. Hoehe ist Tonnen-klassen-typisch:
  *    ≤ 8 ldm → 210 (7,5T-Koffer, niedriges Dach)
  *    8.1–13 → 240 (12T/18T-Koffer)
- *    > 13   → 270 (Sattel) */
-function deriveBoxFromLdm(maxLdm: number): {
+ *    > 13   → 270 (Sattel)
+ *  T1.6: jetzt exportiert — FV-Hof verwendet das direkt mit
+ *  tour.max_ldm (statt recommendedVehicle.lengthCm/widthCm/heightCm). */
+export function deriveBoxFromLdm(maxLdm: number): {
   lengthCm: number;
   widthCm: number;
   heightCm: number;

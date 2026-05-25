@@ -1058,4 +1058,68 @@ describe('YardPanel — smoke', () => {
       await screen.findByText(/Σ Vol > Kapazität/),
     ).toBeInTheDocument();
   });
+
+  it('T1.6: FV-Hof zieht tour.max_ldm + tour.max_weight_kg → FFD nutzt die echte Cap', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        // 2 Sdg je 30 m³ in Empfangs-PLZ — passt zusammen unter 88 m³
+        // (Sattel-Default), aber NICHT unter Cap die wir per Tour
+        // setzen (siehe /tours/tour-1 unten).
+        return Promise.resolve({
+          data: [
+            {
+              id: 's-a',
+              shipment_number: 'F-A',
+              weight_kg: 500,
+              ldm: 4,
+              volume_m3: 30,
+              customer_name: 'A',
+              lat: 48,
+              lng: 11,
+              zip: '80331',
+              city: 'M',
+              distance_km: 5,
+              transport_type: 'DIREKT',
+              delivery_zip: '50667',
+            },
+            {
+              id: 's-b',
+              shipment_number: 'F-B',
+              weight_kg: 500,
+              ldm: 4,
+              volume_m3: 30,
+              customer_name: 'B',
+              lat: 48,
+              lng: 11,
+              zip: '80335',
+              city: 'M',
+              distance_km: 6,
+              transport_type: 'DIREKT',
+              delivery_zip: '50667',
+            },
+          ],
+        });
+      }
+      if (url.includes('/loading/tour/tour-1/optimize')) {
+        return Promise.resolve({ data: { loadingOrder: [] } });
+      }
+      if (url === '/tours/tour-1') {
+        // Tour-Cap: max_ldm 8.7 → deriveBoxFromLdm → 870×240×240 ≈ 50 m³.
+        // 30+30=60 m³ > 50 → 2 LKW (statt 1 wenn Sattel-Default).
+        return Promise.resolve({
+          data: { max_ldm: 8.7, max_weight_kg: 6000 },
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    expect(
+      await screen.findByText(/Empfangs-PLZ 50667 · 2 Sdg · ≈ 2 LKW/),
+    ).toBeInTheDocument();
+  });
 });

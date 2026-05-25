@@ -49,6 +49,7 @@ import {
 } from '../../lib/loadingShared';
 import { ffdPackShipments } from '../../lib/yardFfd';
 import {
+  deriveBoxFromLdm,
   resolveVehicleCapacity,
   type ResolvedVehicleCapacity,
 } from '../../lib/vehicleTypes';
@@ -209,6 +210,23 @@ export default function YardPanel() {
     enabled: !!tourId && mode === 'fv',
     staleTime: 10_000,
   });
+  // T1.6: FV-Tour-Capacity-Query — tour.max_ldm + tour.max_weight_kg
+  // sind persistiert (Default 13.6/24000, vom User in Tour-UI
+  // editierbar). recommendedVehicle aus /optimize ist ein Pack-Hint,
+  // KEINE Kapazitaetsquelle. Mit dieser Query zieht der Hof die echte
+  // Cap = BE-Overload-Badge-Quelle → keine Divergenz mehr.
+  const fvTourCapQ = useQuery<{
+    max_ldm?: number | string | null;
+    max_weight_kg?: number | string | null;
+  } | null>({
+    queryKey: ['fv-tour-cap', tourId],
+    queryFn: async () =>
+      (await api.get<{ max_ldm?: number | string | null; max_weight_kg?: number | string | null }>(
+        `/tours/${tourId}`,
+      )).data,
+    enabled: !!tourId && mode === 'fv',
+    staleTime: 30_000,
+  });
 
   // T1: Trailer-Kapazitaet aus Tour aufloesen (NV: tour.fahrzeug_typ +
   // sub-Stammdaten; FV: recommendedVehicle aus optimize-Response —
@@ -223,23 +241,24 @@ export default function YardPanel() {
         nvTourQ.data.subunternehmer ?? null,
       );
     }
-    if (mode === 'fv' && fvTourQ.data?.recommendedVehicle) {
-      const v = fvTourQ.data.recommendedVehicle;
-      const L = Number(v.lengthCm) || 1360;
-      const W = Number(v.widthCm) || 240;
-      const H = Number(v.heightCm) || 270;
-      // FV gibt nur Dims — Weight aus FV-canonical Sattel-Default
-      // (24000 kg). Wenn FV-Tour-Typ-Mapping spaeter existiert, hier
-      // resolveVehicleCapacity({fahrzeug_typ: tour.fahrzeug_typ}, null)
-      // nachziehen. Heute reicht recommendedVehicle.
+    if (mode === 'fv') {
+      // T1.6: FV-Cap = tour.max_ldm + tour.max_weight_kg (persistiert,
+      // selbe Quelle wie BE-Overload-Badge). Box-Dims via
+      // deriveBoxFromLdm(maxLdm) — NICHT recommendedVehicle (das ist
+      // ein Pack-Hint, keine Cap-Quelle). Fallback Sattel-Default
+      // 13.6/24000 wenn Query noch nicht da oder Tour ohne Werte.
+      const t = fvTourCapQ.data;
+      const maxLdm = Number(t?.max_ldm) || 13.6;
+      const maxWeightKg = Number(t?.max_weight_kg) || 24000;
+      const box = deriveBoxFromLdm(maxLdm);
       return {
-        source: 'vehicle-dims',
-        maxLdm: L / 100,
-        maxWeightKg: 24000,
-        maxVolM3: (L * W * H) / 1e6,
-        lengthCm: L,
-        widthCm: W,
-        heightCm: H,
+        source: 'sub',
+        maxLdm,
+        maxWeightKg,
+        maxVolM3: (box.lengthCm * box.widthCm * box.heightCm) / 1e6,
+        lengthCm: box.lengthCm,
+        widthCm: box.widthCm,
+        heightCm: box.heightCm,
       };
     }
     // Fallback Sattel — noch keine Tour-Daten geladen.
@@ -252,7 +271,7 @@ export default function YardPanel() {
       widthCm: 240,
       heightCm: 270,
     };
-  }, [mode, nvTourQ.data, fvTourQ.data]);
+  }, [mode, nvTourQ.data, fvTourQ.data, fvTourCapQ.data]);
 
   // S-6.2: ein gemeinsames placePackages-Memo liefert sowohl die
   // Ueberlauf-Sendungs-IDs als auch die im Auflieger plazierten

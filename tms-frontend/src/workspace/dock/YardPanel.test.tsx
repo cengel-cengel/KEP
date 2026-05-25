@@ -463,7 +463,7 @@ describe('YardPanel — smoke', () => {
     expect(fvUrls.some((u: string) => u.includes('radius_km=100'))).toBe(true);
   });
 
-  it('Click auf Hof-Box → selectShipment', async () => {
+  it('S-6.3 D: Tap auf Hof-Box → Modal oeffnet (nicht direkt Panel)', async () => {
     apiGet.mockImplementation((url: string) => {
       if (url.includes('/nearby-shipments')) {
         return Promise.resolve({ data: mockNearbyNv });
@@ -477,6 +477,29 @@ describe('YardPanel — smoke', () => {
     );
     const btn = await screen.findByTestId('yard-ship-s-1');
     fireEvent.click(btn);
+    // Modal renders Dialog mit X-Button (aria-label "Schließen") +
+    // "Schließen"-Button — eindeutig dem Modal zuzuordnen.
+    expect(await screen.findByLabelText('Schließen')).toBeInTheDocument();
+    // Sendung selectShipment direkt NICHT mehr getriggert — erst nach
+    // "Volle Details"-Klick (siehe naechster Test).
+    expect(selectShipmentSpy).not.toHaveBeenCalled();
+  });
+
+  it('S-6.3 D: Modal "Volle Details" → panel.selectShipment + Modal zu', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({ data: mockNearbyNv });
+      }
+      return Promise.resolve({ data: { stops: [] } });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    fireEvent.click(await screen.findByTestId('yard-ship-s-1'));
+    await screen.findByLabelText('Schließen');
+    fireEvent.click(screen.getByText('Volle Details'));
     expect(selectShipmentSpy).toHaveBeenCalledWith('s-1');
   });
 

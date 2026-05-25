@@ -37,6 +37,7 @@ import YardScene3D, {
   type YardSlot,
   type YardPlacedPackage,
 } from './YardScene3D';
+import YardShipmentDetailModal from './YardShipmentDetailModal';
 import {
   flattenPackages as flattenNvPackages,
   type NvLoadingDetail,
@@ -154,6 +155,11 @@ export default function YardPanel() {
   const panel = usePanel();
   const dockApi = useDockPanelApi();
   const [visible, setVisible] = useState<boolean>(dockApi?.isVisible ?? true);
+  // S-6.3 D: Modal-State fuer Sendungs-Tap. Default-Use-Case ist
+  // Mobile (Carlos auf iPhone) — Tap auf Hof-Item oeffnet das Modal
+  // mit Kerninfos aus den nearby-Daten. Desktop kann zusaetzlich
+  // "Volle Details" -> S-5-Detail-Panel triggern.
+  const [modalShipmentId, setModalShipmentId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!dockApi) return;
@@ -794,10 +800,36 @@ export default function YardPanel() {
             slots={lanesWithPacks}
             placedInTrailer={placedInTrailer}
             frameloop={frameloop}
-            onShipmentClick={(id) => panel.selectShipment(id)}
+            onShipmentClick={(id) => {
+              // S-6.3 D: Hof-Lanes-Items haben nearby-Daten → Modal.
+              // Auflieger-Items (placedInTrailer) der aktiven Tour
+              // sind NICHT zwingend im nearby-Pool → direkt S-5-
+              // Detail-Panel (Legacy-Pfad).
+              const inNearby = (nearbyQ.data ?? []).some(
+                (s) => s.id === id,
+              );
+              if (inNearby) {
+                setModalShipmentId(id);
+              } else {
+                panel.selectShipment(id);
+              }
+            }}
           />
         )}
       </div>
+      {/* S-6.3 D: Hof-Sendungs-Detail-Modal. Datenquelle = nearby-
+          Pool (KEIN Fetch). "Volle Details"-Button optional →
+          oeffnet das S-5-Detail-Panel desktop-side. */}
+      <YardShipmentDetailModal
+        shipment={
+          modalShipmentId
+            ? (nearbyQ.data ?? []).find((s) => s.id === modalShipmentId) ?? null
+            : null
+        }
+        isOpen={modalShipmentId != null}
+        onClose={() => setModalShipmentId(null)}
+        onOpenFullDetail={(id) => panel.selectShipment(id)}
+      />
     </div>
   );
 }

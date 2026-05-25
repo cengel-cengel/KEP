@@ -22,8 +22,9 @@
  * representative — eine pro Sendung, nicht per package_item).
  */
 import { Canvas } from '@react-three/fiber';
+import type { ThreeEvent } from '@react-three/fiber';
 import { Edges, Html, OrbitControls } from '@react-three/drei';
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 
 export interface YardShipment {
   id: string;
@@ -223,6 +224,69 @@ function laneLengthCm(numTrailers: number, trailerLengthCm: number): number {
 }
 
 /**
+ * S-6.3 D Touch-Tap-Detection fuer R3F-Item-Meshes (NV+FV-shared).
+ *
+ * Problem: bf286a1 (Click→Detail-Fix) entfernte Hüllen aus dem
+ * Raycast, aber Carlos auf iPhone sieht Clicks IMMER NOCH tot.
+ * Wurzelursache: R3F's `onClick` ist defensiv auf Touch — feuert
+ * NUR wenn pointer-down + pointer-up auf EXAKT demselben Mesh +
+ * keine Drift. OrbitControls + 1-3 px Finger-Wackeln beim Antippen
+ * fressen den Tap regelmaessig.
+ *
+ * Fix: manueller pointerDown/Up-Threshold (8 px / 500 ms — robust
+ * gegen typisches Touch-Microdrift). pointerDown speichert (x,y,t),
+ * pointerUp prueft Delta; bei Tap → onTap(id) feuern.
+ *
+ * Verwendung
+ *   const tap = useTapHandler(onShipmentClick);
+ *   <mesh onPointerDown={(e) => tap.start(e, id)}
+ *         onPointerUp={(e) => tap.end(e, id)} />
+ */
+function useTapHandler(onTap: ((id: string) => void) | undefined): {
+  start: (
+    e: ThreeEvent<PointerEvent>,
+    id: string | null | undefined,
+  ) => void;
+  end: (
+    e: ThreeEvent<PointerEvent>,
+    id: string | null | undefined,
+  ) => void;
+} {
+  const startRef = useRef<{
+    x: number;
+    y: number;
+    t: number;
+    id: string;
+  } | null>(null);
+
+  return {
+    start(e, id) {
+      if (!id || !onTap) return;
+      e.stopPropagation();
+      startRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        t: Date.now(),
+        id,
+      };
+    },
+    end(e, id) {
+      if (!id || !onTap) return;
+      const start = startRef.current;
+      startRef.current = null;
+      if (!start || start.id !== id) return;
+      const dx = Math.abs(e.clientX - start.x);
+      const dy = Math.abs(e.clientY - start.y);
+      const dt = Date.now() - start.t;
+      if (dx < 8 && dy < 8 && dt < 500) {
+        e.stopPropagation();
+        onTap(id);
+      }
+    },
+  };
+}
+
+/**
  * S-6.1: Volumen-treue Box-Dimensionen.
  *
  * Priorisierung
@@ -304,6 +368,9 @@ export default function YardScene3D({
   onShipmentClick,
   frameloop = 'always',
 }: Props) {
+  // S-6.3 D Tap-Handler fuer Auflieger-Items (Touch-tauglich, NV+FV).
+  const tap = useTapHandler(onShipmentClick);
+
   // Layout: Trailer bei z=0; Slots rechts daneben mit gap.
   // Slot[i] center.z = +W/2 + gap + W/2 + i * (W + gap)
   const slotLayouts = useMemo(() => {
@@ -420,10 +487,8 @@ export default function YardScene3D({
           <mesh
             key={p.id}
             position={[cx, cy, cz]}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (p.shipmentId) onShipmentClick?.(p.shipmentId);
-            }}
+            onPointerDown={(e) => tap.start(e, p.shipmentId)}
+            onPointerUp={(e) => tap.end(e, p.shipmentId)}
             onPointerOver={(e) => {
               if (!p.shipmentId) return;
               e.stopPropagation();
@@ -543,6 +608,9 @@ function PackedLaneMesh({
   const firstCappedIdx = packedTrailers.findIndex((t) => t.capped);
   const cappedCount = packedTrailers.filter((t) => t.capped).length;
 
+  // S-6.3 D Touch-Tap fuer Lane-Items.
+  const tap = useTapHandler(onShipmentClick);
+
   // S-6.3 B Fix: Click-Routing-Hülle. Wireframe + Böden + Streifen
   // umschliessen die Items komplett (Box 1360×270×240 cm rund um
   // jedes Paket). In R3F sind transparent Meshes raycast-Targets;
@@ -653,10 +721,8 @@ function PackedLaneMesh({
                   <mesh
                     key={p.id}
                     position={[cx, cy, cz]}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (p.shipmentId) onShipmentClick?.(p.shipmentId);
-                    }}
+                    onPointerDown={(e) => tap.start(e, p.shipmentId)}
+                    onPointerUp={(e) => tap.end(e, p.shipmentId)}
                     onPointerOver={(e) => {
                       if (!p.shipmentId) return;
                       e.stopPropagation();
@@ -719,6 +785,9 @@ function RepresentativeLaneMesh({
   trailerWidthCm: number;
   onShipmentClick?: (id: string) => void;
 }) {
+  // S-6.3 D Touch-Tap fuer Overflow-Repraesentativ-Boxen.
+  const tap = useTapHandler(onShipmentClick);
+
   const stripeColor =
     slot.variant === 'overflow' ? '#dc2626' : '#cbd5e1';
   const floorColor =
@@ -783,10 +852,8 @@ function RepresentativeLaneMesh({
         <mesh
           key={s.id}
           position={scaleVec3(posY, dims.heightCm / 2 + 5, 0)}
-          onClick={(e) => {
-            e.stopPropagation();
-            onShipmentClick?.(s.id);
-          }}
+          onPointerDown={(e) => tap.start(e, s.id)}
+          onPointerUp={(e) => tap.end(e, s.id)}
           onPointerOver={(e) => {
             e.stopPropagation();
             document.body.style.cursor = 'pointer';

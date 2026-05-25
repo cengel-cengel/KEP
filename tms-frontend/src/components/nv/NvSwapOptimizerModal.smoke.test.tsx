@@ -27,8 +27,13 @@ vi.mock('../../lib/api', () => {
       id: 'sub-1',
       name: 'Sub Mueller',
       fahrzeug_typ: '12T',
-      max_ldm: null,
-      max_gewicht_kg: null,
+      // T1: TONNEN_CAPACITY 12T wurde auf 6000 kg / 8.7 ldm aktualisiert
+      // (Carlos-Spec). Ohne explizites sub-Override wuerde die alte
+      // Test-Tour (Σ ~4000 kg) nicht mehr overloaden → keine Ejects.
+      // sub.max_ldm/max_gewicht_kg gewinnt vor Tonnen-Fallback und haelt
+      // das alte 8 ldm / 3000 kg Szenario stabil.
+      max_ldm: 8,
+      max_gewicht_kg: 3000,
     },
     stops: [
       {

@@ -643,7 +643,11 @@ describe('YardPanel — smoke', () => {
           ],
         });
       }
-      return Promise.resolve({ data: { stops: [] } });
+      // T1: fahrzeug_typ='Sattel' → cap 88 m³. Ohne dies fiele
+      // resolveVehicleCapacity auf Koffer 7t (35.7 m³) zurueck → 3 LKW.
+      return Promise.resolve({
+        data: { stops: [], fahrzeug_typ: 'Sattel' },
+      });
     });
     render(
       <Wrapper>
@@ -772,6 +776,58 @@ describe('YardPanel — smoke', () => {
     ).toBeInTheDocument();
   });
 
+  it('T1: fahrzeug_typ=12T → FFD nutzt 50 m³ cap (3×20 m³ → 1 LKW, 12+12=24 ≤ 50)', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({
+          data: [
+            { ...mockNearbyNv[0], id: 's-t1a', volume_m3: 20, weight_kg: 500 },
+            { ...mockNearbyNv[0], id: 's-t1b', volume_m3: 20, weight_kg: 500 },
+            { ...mockNearbyNv[0], id: 's-t1c', volume_m3: 20, weight_kg: 500 },
+          ],
+        });
+      }
+      return Promise.resolve({
+        data: { stops: [], fahrzeug_typ: '12T' },
+      });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    // 12T-Cap = 50 m³ (T1). 20+20=40 fits, +20=60 ueberschreitet 50
+    // → 2 LKW (Sattel haette 1 LKW gemacht).
+    expect(
+      await screen.findByText(/PLZ 80331 · 3 Sdg · ≈ 2 LKW/),
+    ).toBeInTheDocument();
+  });
+
+  it('T1: fahrzeug_typ=7_5T → kleinere cap (40 m³) → mehr LKW als Sattel', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({
+          data: [
+            { ...mockNearbyNv[0], id: 's-t75a', volume_m3: 30, weight_kg: 500 },
+            { ...mockNearbyNv[0], id: 's-t75b', volume_m3: 30, weight_kg: 500 },
+          ],
+        });
+      }
+      return Promise.resolve({
+        data: { stops: [], fahrzeug_typ: '7_5T' },
+      });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    // 7.5T-Cap = 40 m³. 30+30=60 > 40 → 2 LKW (Sattel-88 haette 1 LKW).
+    expect(
+      await screen.findByText(/PLZ 80331 · 2 Sdg · ≈ 2 LKW/),
+    ).toBeInTheDocument();
+  });
+
   it('S-6.3 B: Lane bekommt packedTrailers[] mit Anzahl = FFD-Trailer', async () => {
     // 3 Sendungen à 40 m³ → 2 LKW im Slot (FFD-Standard).
     // packedTrailers.length muss 2 sein.
@@ -833,7 +889,12 @@ describe('YardPanel — smoke', () => {
           ],
         });
       }
-      return Promise.resolve({ data: { stops: [] } });
+      // T1: fahrzeug_typ='Sattel' → cap 88 m³ damit 40+40=80<88 fits
+      // → 2 LKW. Ohne fiel resolveVehicleCapacity auf Koffer 7t (35.7
+      // m³) zurueck → 3 LKW.
+      return Promise.resolve({
+        data: { stops: [], fahrzeug_typ: 'Sattel' },
+      });
     });
     // placePackages-Stub liefert pro Aufruf 1 placed-Item pro Eingang
     // (mockt das echte Pack — Test-Fokus: Datafluss, nicht Pack-Logik).

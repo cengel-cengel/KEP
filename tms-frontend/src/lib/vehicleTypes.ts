@@ -68,10 +68,13 @@ export function resolveFahrzeugTyp(
  * Stiller Fallback "Koffer 7t" (6 ldm) hatte Auslastungs-% von
  * ~300% zur Folge.
  *
- * Tabelle aus gepflegten Subs (Carlos-Vorgabe):
- *    7,5 t →  8.0 ldm / 3000 kg
- *   12  t →  8.0 ldm / 3000 kg   (Default; variiert in echt 8↔12)
- *   18  t → 13.6 ldm / 11000 kg
+ * T1 (S-6.3): Tabelle synchronisiert mit Carlos-Spec (Nutzlast +
+ * realistisches Cargo-Vol pro Tonnen-Klasse):
+ *    7,5 t →  8.0 ldm /  3000 kg / ≈ 40 m³ (800×240×210)
+ *   12  t →  8.7 ldm /  6000 kg / ≈ 50 m³ (870×240×240)
+ *   18  t → 10.4 ldm / 10000 kg / ≈ 60 m³ (1040×240×240)
+ *   Sattel (canonical VEHICLE_DIMS): 13.6 ldm / 24000 kg / ≈ 88 m³.
+ * ⚠ maxWeightKg = NUTZLAST, nicht zGG.
  *
  * Normalisierung: '_' → '.', Whitespaces + 'T'/'TO'/'TONNE' weg,
  * Komma/Punkt vereinheitlichen → parseFloat. Wenn das misslingt,
@@ -82,9 +85,9 @@ const TONNEN_CAPACITY: ReadonlyArray<{
   maxLdm: number;
   maxWeightKg: number;
 }> = [
-  { minTons: 7,  maxLdm: 8,    maxWeightKg: 3000 },  // 7,5 t
-  { minTons: 12, maxLdm: 8,    maxWeightKg: 3000 },  // 12 t — Default
-  { minTons: 18, maxLdm: 13.6, maxWeightKg: 11000 }, // 18 t
+  { minTons: 7,  maxLdm: 8.0,  maxWeightKg: 3000 },  //  7,5 t →  40 m³
+  { minTons: 12, maxLdm: 8.7,  maxWeightKg: 6000 },  // 12   t →  50 m³
+  { minTons: 18, maxLdm: 10.4, maxWeightKg: 10000 }, // 18   t →  60 m³
 ];
 
 function parseTonnen(raw?: string | null): number | null {
@@ -119,7 +122,13 @@ export interface ResolvedVehicleCapacity {
   /** Quelle (fuers UI-Badge / Logging). */
   source: 'sub' | 'tonnen' | 'vehicle-dims' | 'fallback-unknown';
   maxLdm: number;
+  /** T1: NUTZLAST (kg) — nicht zulaessiges Gesamtgewicht (zGG).
+   *  Sattel ≈ 24000, 18T ≈ 10000, 12T ≈ 6000, 7,5T ≈ 3000. */
   maxWeightKg: number;
+  /** T1: Cargo-Volumen-Kapazitaet (m³), abgeleitet aus innerer Box
+   *  (lengthCm × widthCm × heightCm / 1e6). Wird von Hof-FFD
+   *  (yardFfd-opts) und Overflow-Diagnose (YardPanel) konsumiert. */
+  maxVolM3: number;
   /**
    * F1.a-Fix-2: Trailer-Geometrie GEHOERT zur Kapazitaet (nicht zu
    * getVehicleDims, das matched nur canonical-Keys + faellt sonst
@@ -127,14 +136,18 @@ export interface ResolvedVehicleCapacity {
    * abgeleitet wenn keine kanonische Quelle:
    *   length_cm = maxLdm × 100 (1 ldm = 1 m bei 2.4 m Breite)
    *   width_cm  = 240 (NV-Standard)
-   *   height_cm = 240 / 270 / 300 je Tonnen-Klasse
+   *   height_cm = 210 / 240 / 270 je Tonnen-Klasse
    */
   lengthCm: number;
   widthCm: number;
   heightCm: number;
 }
 
-/** F1.a-Fix-2: Box-Ableitung wenn keine canonical VehicleDims-Quelle. */
+/** F1.a-Fix-2 + T1: Box-Ableitung wenn keine canonical VehicleDims-
+ *  Quelle. Hoehe ist Tonnen-klassen-typisch:
+ *    ≤ 8 ldm → 210 (7,5T-Koffer, niedriges Dach)
+ *    8.1–13 → 240 (12T/18T-Koffer)
+ *    > 13   → 270 (Sattel) */
 function deriveBoxFromLdm(maxLdm: number): {
   lengthCm: number;
   widthCm: number;
@@ -142,9 +155,15 @@ function deriveBoxFromLdm(maxLdm: number): {
 } {
   const lengthCm = Math.max(100, Math.round(maxLdm * 100));
   const widthCm = 240;
-  // Schwellen: Koffer-Klasse <= 8 ldm, Sattel ~13.6 (oberste Klasse).
-  const heightCm = maxLdm > 8 ? 270 : 240;
+  let heightCm = 240;
+  if (maxLdm <= 8.001) heightCm = 210;
+  else if (maxLdm > 13) heightCm = 270;
   return { lengthCm, widthCm, heightCm };
+}
+
+/** T1: Vol-Helper. Pure cm³ → m³ Umrechnung. */
+function calcVolM3(lengthCm: number, widthCm: number, heightCm: number): number {
+  return (lengthCm * widthCm * heightCm) / 1e6;
 }
 
 /**
@@ -195,6 +214,7 @@ export function resolveVehicleCapacity(
       source: 'sub',
       maxLdm: subMaxLdm,
       maxWeightKg: Number.isFinite(subMaxKg) && subMaxKg > 0 ? subMaxKg : 0,
+      maxVolM3: calcVolM3(box.lengthCm, box.widthCm, box.heightCm),
       lengthCm: box.lengthCm,
       widthCm: box.widthCm,
       heightCm: box.heightCm,
@@ -212,6 +232,7 @@ export function resolveVehicleCapacity(
           source: 'tonnen',
           maxLdm: cap.maxLdm,
           maxWeightKg: cap.maxWeightKg,
+          maxVolM3: calcVolM3(box.lengthCm, box.widthCm, box.heightCm),
           lengthCm: box.lengthCm,
           widthCm: box.widthCm,
           heightCm: box.heightCm,
@@ -226,6 +247,11 @@ export function resolveVehicleCapacity(
       source: 'vehicle-dims',
       maxLdm: canonicalDims.maxLdm,
       maxWeightKg: canonicalDims.maxWeightKg,
+      maxVolM3: calcVolM3(
+        canonicalDims.lengthCm,
+        canonicalDims.widthCm,
+        canonicalDims.heightCm,
+      ),
       lengthCm: canonicalDims.lengthCm,
       widthCm: canonicalDims.widthCm,
       heightCm: canonicalDims.heightCm,
@@ -251,6 +277,11 @@ export function resolveVehicleCapacity(
     source: 'fallback-unknown',
     maxLdm: fallback.maxLdm,
     maxWeightKg: fallback.maxWeightKg,
+    maxVolM3: calcVolM3(
+      fallback.lengthCm,
+      fallback.widthCm,
+      fallback.heightCm,
+    ),
     lengthCm: fallback.lengthCm,
     widthCm: fallback.widthCm,
     heightCm: fallback.heightCm,

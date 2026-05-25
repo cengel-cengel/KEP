@@ -47,6 +47,10 @@ import {
   type SharedPackage,
 } from '../../lib/loadingShared';
 import { ffdPackShipments } from '../../lib/yardFfd';
+import {
+  resolveVehicleCapacity,
+  type ResolvedVehicleCapacity,
+} from '../../lib/vehicleTypes';
 
 interface NearbyShipment {
   id: string;
@@ -141,7 +145,6 @@ interface FvOptimizeResponse {
   loadingOrder?: FvOptimizeShipment[];
 }
 
-const FV_DEFAULT_DIMS = { lengthCm: 1360, widthCm: 240, heightCm: 270 };
 const NV_RADIUS_KM = 20; // NV: BE-Default reicht; explizit klar fuer Konstanz.
 const FV_RADIUS_KM = 100;
 
@@ -201,6 +204,50 @@ export default function YardPanel() {
     staleTime: 10_000,
   });
 
+  // T1: Trailer-Kapazitaet aus Tour aufloesen (NV: tour.fahrzeug_typ +
+  // sub-Stammdaten; FV: recommendedVehicle aus optimize-Response —
+  // synthetisiert eine ResolvedVehicleCapacity, source 'fv-rec' nicht
+  // im Type → wir mappen auf source 'sub' bei explizit, sonst
+  // 'fallback-unknown'). Konsumenten: yardFfd-opts (vol+kg), placePackages
+  // (inner L/W/H), YardScene3D (Trailer-Box), Overflow-Diagnose.
+  const capacity = useMemo<ResolvedVehicleCapacity>(() => {
+    if (mode === 'nv' && nvTourQ.data) {
+      return resolveVehicleCapacity(
+        { fahrzeug_typ: nvTourQ.data.fahrzeug_typ ?? null },
+        nvTourQ.data.subunternehmer ?? null,
+      );
+    }
+    if (mode === 'fv' && fvTourQ.data?.recommendedVehicle) {
+      const v = fvTourQ.data.recommendedVehicle;
+      const L = Number(v.lengthCm) || 1360;
+      const W = Number(v.widthCm) || 240;
+      const H = Number(v.heightCm) || 270;
+      // FV gibt nur Dims — Weight aus FV-canonical Sattel-Default
+      // (24000 kg). Wenn FV-Tour-Typ-Mapping spaeter existiert, hier
+      // resolveVehicleCapacity({fahrzeug_typ: tour.fahrzeug_typ}, null)
+      // nachziehen. Heute reicht recommendedVehicle.
+      return {
+        source: 'vehicle-dims',
+        maxLdm: L / 100,
+        maxWeightKg: 24000,
+        maxVolM3: (L * W * H) / 1e6,
+        lengthCm: L,
+        widthCm: W,
+        heightCm: H,
+      };
+    }
+    // Fallback Sattel — noch keine Tour-Daten geladen.
+    return {
+      source: 'fallback-unknown',
+      maxLdm: 13.6,
+      maxWeightKg: 24000,
+      maxVolM3: (1360 * 240 * 270) / 1e6,
+      lengthCm: 1360,
+      widthCm: 240,
+      heightCm: 270,
+    };
+  }, [mode, nvTourQ.data, fvTourQ.data]);
+
   // S-6.2: ein gemeinsames placePackages-Memo liefert sowohl die
   // Ueberlauf-Sendungs-IDs als auch die im Auflieger plazierten
   // Pakete (placedInTrailer-Render). Regel #2: ganze Sendung —
@@ -210,9 +257,14 @@ export default function YardPanel() {
     const placedInTrailer: YardPlacedPackage[] = [];
     const overflowIds = new Set<string>();
     if (mode === 'nv' && nvTourQ.data) {
-      // flattenPackages braucht trailer-Dimensionen. Wir lassen
-      // Default fuer Sattel — passt fuer 90% NV.
-      const pkgs = flattenNvPackages(nvTourQ.data, 240, 1360, 270);
+      // T1: flattenPackages mit aufgelöster Trailer-Geometrie statt
+      // Sattel-Hardcode — passt jetzt fuer 7,5T/12T/18T/Sattel.
+      const pkgs = flattenNvPackages(
+        nvTourQ.data,
+        capacity.widthCm,
+        capacity.lengthCm,
+        capacity.heightCm,
+      );
       for (const p of pkgs) {
         if (p.unplaced) {
           if (p.shipmentId) overflowIds.add(p.shipmentId);
@@ -234,11 +286,11 @@ export default function YardPanel() {
       // Inline-Expand+Place fuer FV (expandPackagesFromOrder ist in
       // LoadingPlanPage privat). Wir packen pro Sendung Quantity-
       // Klone und reichen sie an placePackages.
+      // T1: Dims aus capacity (synthetisiert aus recommendedVehicle).
       const order = fvTourQ.data.loadingOrder ?? [];
-      const v = fvTourQ.data.recommendedVehicle ?? {};
-      const L = Number(v.lengthCm) || FV_DEFAULT_DIMS.lengthCm;
-      const W = Number(v.widthCm) || FV_DEFAULT_DIMS.widthCm;
-      const H = Number(v.heightCm) || FV_DEFAULT_DIMS.heightCm;
+      const L = capacity.lengthCm;
+      const W = capacity.widthCm;
+      const H = capacity.heightCm;
       // Color-Map pro Sendung (FV-inline expand setzt KEINE color —
       // fixer Palette-Pool reicht fuer visuelle Sendungs-Trennung).
       const FV_COLORS = [
@@ -301,9 +353,9 @@ export default function YardPanel() {
     // gegen Trailer-Vol-Kapazitaet. Wenn Σ Vol > Kapazitaet →
     // echte Ueberkapazitaet ("Σ Vol > Kapazität"). Sonst Pack-
     // Inefficiency trotz Bodenreserve ("Pack-Grenze (Reserve)").
-    // Sattel-Default (88.13 m³) — YardPanel rechnet ohne
-    // resolveVehicleCapacity-Cascade, daher konservativ-grosser Wert.
-    const TRAILER_VOL_M3 = (1360 * 240 * 270) / 1e6;
+    // T1: TRAILER_VOL_M3 jetzt aus capacity.maxVolM3 — Sattel 88,
+    // 18T 60, 12T 50, 7,5T 40 m³.
+    const TRAILER_VOL_M3 = capacity.maxVolM3;
     const totalVolM3 = (() => {
       let v = 0;
       for (const p of placedInTrailer) {
@@ -329,7 +381,7 @@ export default function YardPanel() {
       placedVolM3: totalVolM3,
       trailerVolM3: TRAILER_VOL_M3,
     };
-  }, [mode, nvTourQ.data, fvTourQ.data]);
+  }, [mode, nvTourQ.data, fvTourQ.data, capacity]);
 
   const overflowShipmentIds = packData.overflowShipmentIds;
   const placedInTrailer = packData.placedInTrailer;
@@ -482,7 +534,13 @@ export default function YardPanel() {
           weightKg: Number(s.weight_kg ?? 0),
         };
       });
-      const trailers = ffdPackShipments(ffdInput);
+      // T1: FFD-Kapazitaet aus capacity (Vol-Cap + Nutzlast). Vorher
+      // Sattel-Defaults (88.13 m³ / 24000 kg) — jetzt sub/tonnen/
+      // canonical-Match.
+      const trailers = ffdPackShipments(ffdInput, {
+        maxVolumeM3: capacity.maxVolM3,
+        maxWeightKg: capacity.maxWeightKg,
+      });
       const lkw = trailers.length;
       const sdg = g.ships.length;
       // Slot-Label: "<group> · N Sdg · ≈ K LKW"
@@ -540,7 +598,7 @@ export default function YardPanel() {
       });
     }
     return out;
-  }, [nearbyQ.data, overflowShipments, mode]);
+  }, [nearbyQ.data, overflowShipments, mode, capacity]);
 
   // S-6.3 B: Pro Lane + FFD-Trailer die package_items expand+sort+
   // placePackages-Run → echte gestackte Boxen im 3D-Block. Perf-Cap:
@@ -616,9 +674,15 @@ export default function YardPanel() {
             }
           }
         }
-        // Sort + placePackages auf Sattel-Geometrie.
+        // T1: Sort + placePackages auf aufgelöster Trailer-Geometrie
+        // (Sattel/18T/12T/7,5T) statt Sattel-Hardcode.
         const sorted = sortPackagesForOptimalPack(items);
-        const placed = placePackages(sorted, 1360, 240, 270);
+        const placed = placePackages(
+          sorted,
+          capacity.lengthCm,
+          capacity.widthCm,
+          capacity.heightCm,
+        );
         const placedItems: YardPlacedPackage[] = placed
           .filter((p) => !p.unplaced)
           .map((p) => ({
@@ -653,7 +717,7 @@ export default function YardPanel() {
       return { ...slot, packedTrailers };
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slots, nearbyQ.data, COLORS]);
+  }, [slots, nearbyQ.data, COLORS, capacity]);
 
   if (!tourId) {
     return (
@@ -724,9 +788,9 @@ export default function YardPanel() {
           </div>
         ) : (
           <YardScene3D
-            trailerLengthCm={1360}
-            trailerWidthCm={240}
-            trailerHeightCm={270}
+            trailerLengthCm={capacity.lengthCm}
+            trailerWidthCm={capacity.widthCm}
+            trailerHeightCm={capacity.heightCm}
             slots={lanesWithPacks}
             placedInTrailer={placedInTrailer}
             frameloop={frameloop}

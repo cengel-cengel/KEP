@@ -126,23 +126,33 @@ describe('capacity.lib', () => {
     });
   });
 
-  describe('deriveMaxVolM3', () => {
-    it('Sattel (13.6 ldm) → 88.128 m³', () => {
-      // length 1360, width 240, height 270 (ldm > 8)
+  describe('deriveMaxVolM3 — T1.5 height-Schwellen (210/240/270)', () => {
+    it('Sattel (13.6 ldm) → 88.128 m³ (height 270, da > 13)', () => {
       expect(deriveMaxVolM3(13.6)).toBeCloseTo(88.128, 3);
     });
 
-    it('Koffer 12t (8 ldm) → 46.08 m³ (height 240, da !> 8)', () => {
-      expect(deriveMaxVolM3(8)).toBeCloseTo(46.08, 2);
+    it('18T (10.4 ldm) → 59.9 m³ (height 240)', () => {
+      // T1.5: 1040 × 240 × 240 / 1e6 = 59.904. Carlos-Spec ≈ 60.
+      expect(deriveMaxVolM3(10.4)).toBeCloseTo(59.9, 1);
     });
 
-    it('Koffer 7t (6 ldm) → 34.56 m³', () => {
-      expect(deriveMaxVolM3(6)).toBeCloseTo(34.56, 2);
+    it('12T (8.7 ldm) → 50.1 m³ (height 240)', () => {
+      // T1.5: 870 × 240 × 240 / 1e6 = 50.112. Carlos-Spec ≈ 50.
+      expect(deriveMaxVolM3(8.7)).toBeCloseTo(50.1, 1);
     });
 
-    it('Sprinter (2 ldm) → 11.52 m³ (Mindest-length 100 greift nicht)', () => {
-      // 200 × 240 × 240 / 1e6 = 11.52
-      expect(deriveMaxVolM3(2)).toBeCloseTo(11.52, 2);
+    it('7,5T (8 ldm) → 40.3 m³ (T1.5: height 210, vorher 240→46.08)', () => {
+      // Carlos-T1: 800 × 240 × 210 / 1e6 = 40.32. ≈ 40.
+      expect(deriveMaxVolM3(8)).toBeCloseTo(40.32, 2);
+    });
+
+    it('Koffer 7t (6 ldm) → 30.24 m³ (T1.5: height 210, vorher 240→34.56)', () => {
+      expect(deriveMaxVolM3(6)).toBeCloseTo(30.24, 2);
+    });
+
+    it('Sprinter (2 ldm) → 10.08 m³ (T1.5: height 210)', () => {
+      // 200 × 240 × 210 / 1e6 = 10.08
+      expect(deriveMaxVolM3(2)).toBeCloseTo(10.08, 2);
     });
 
     it('null / undefined → null', () => {
@@ -157,8 +167,8 @@ describe('capacity.lib', () => {
 
     it('Mindest-length-Floor (sehr kleines maxLdm < 1)', () => {
       // 0.5 ldm × 100 = 50 cm — floor auf 100 cm.
-      // 100 × 240 × 240 / 1e6 = 5.76
-      expect(deriveMaxVolM3(0.5)).toBeCloseTo(5.76, 2);
+      // T1.5: 100 × 240 × 210 / 1e6 = 5.04
+      expect(deriveMaxVolM3(0.5)).toBeCloseTo(5.04, 2);
     });
   });
 });

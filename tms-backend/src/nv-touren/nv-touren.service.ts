@@ -47,6 +47,7 @@ import {
   deriveMaxVolM3,
   formatOverloadMessage,
 } from '../lib/capacity.lib';
+import { resolveNvCapacity } from '../lib/vehicleTonnen';
 import {
   detectConflictsForTour,
   type DetectInputTour,
@@ -86,6 +87,10 @@ const TOUR_INCLUDE = {
     select: {
       id: true,
       name: true,
+      // T1.5: fahrzeug_typ fuer Tonnen-Fallback in resolveNvCapacity
+      // (greift wenn sub.max_ldm NULL ist und tour.fahrzeug_typ
+      // ebenfalls leer). Vorher fehlte → BE-Overload immer cap=null.
+      fahrzeug_typ: true,
       max_ldm: true,
       max_gewicht_kg: true,
       has_adr_license: true,
@@ -401,7 +406,13 @@ export class NvTourenService {
       where: { id: tourId },
       include: {
         subunternehmer: {
-          select: { max_ldm: true, max_gewicht_kg: true },
+          // T1.5: + fahrzeug_typ fuer Tonnen-Fallback wenn sub.max_ldm
+          // NULL ist (resolveNvCapacity Cascade Step 2).
+          select: {
+            fahrzeug_typ: true,
+            max_ldm: true,
+            max_gewicht_kg: true,
+          },
         },
         stops: {
           select: {
@@ -432,18 +443,20 @@ export class NvTourenService {
       totalKg += Number(s.shipment.weight_kg ?? 0);
       totalVolM3 += Number(s.shipment.volume_m3 ?? 0);
     }
-    const sub = tour.subunternehmer;
-    const maxLdm = sub?.max_ldm != null ? Number(sub.max_ldm) : null;
+    // T1.5: Cap-Cascade mirror FE resolveVehicleCapacity (sub-Override
+    // → tour/sub fahrzeug_typ Tonnen-Fallback → null). Vorher cap=null
+    // wenn nur tour.fahrzeug_typ='12T' ohne sub-Stammdaten.
+    const cap = resolveNvCapacity(tour, tour.subunternehmer);
     return computeOverload(
       totalLdm,
       totalKg,
-      maxLdm,
-      sub?.max_gewicht_kg != null ? Number(sub.max_gewicht_kg) : null,
+      cap.maxLdm,
+      cap.maxWeightKg,
       totalVolM3,
       // O-3: maxVol immer aus max_ldm ableiten (FE-Konsistenz). NV
       // sub.max_volumen_m3 wird hier bewusst NICHT genutzt — sonst
       // divergiert BE-Overload vom FE-Optimizer (deriveBoxFromLdm).
-      deriveMaxVolM3(maxLdm),
+      deriveMaxVolM3(cap.maxLdm),
     );
   }
 
@@ -938,14 +951,16 @@ export class NvTourenService {
         totalVolM3 += Number(s.shipment?.volume_m3 ?? 0);
       }
       const sub: any = (t as any).subunternehmer;
-      const maxLdm = sub?.max_ldm != null ? Number(sub.max_ldm) : null;
+      // T1.5: Cap-Cascade via resolveNvCapacity (Sub-Override →
+      // Tonnen-Fallback aus tour/sub fahrzeug_typ → null).
+      const cap = resolveNvCapacity(t as any, sub);
       const overload = computeOverload(
         totalLdm,
         totalKg,
-        maxLdm,
-        sub?.max_gewicht_kg != null ? Number(sub.max_gewicht_kg) : null,
+        cap.maxLdm,
+        cap.maxWeightKg,
         totalVolM3,
-        deriveMaxVolM3(maxLdm),
+        deriveMaxVolM3(cap.maxLdm),
       );
       // T-3.1: tour.risk on-the-fly aus stops.risk_severity.
       let max_score = 0;
@@ -1608,6 +1623,8 @@ export class NvTourenService {
       include: {
         subunternehmer: {
           select: {
+            // T1.5: + fahrzeug_typ fuer Tonnen-Fallback.
+            fahrzeug_typ: true,
             max_paletten: true,
             max_gewicht_kg: true,
             max_volumen_m3: true,
@@ -1722,14 +1739,16 @@ export class NvTourenService {
     // B-4: Overload NICHT blockend in batch-stops. Soft-Warnung
     // im Log; assertReadyForDispatchNv (in update()) throwt
     // bei Status-Wechsel auf DISPATCHED.
-    const maxLdm = sub?.max_ldm != null ? Number(sub.max_ldm) : null;
+    // T1.5: Cap-Cascade via resolveNvCapacity (Sub-Override → Tonnen-
+    // Fallback aus tour/sub fahrzeug_typ → null).
+    const cap = resolveNvCapacity(tour, sub);
     const overload = computeOverload(
       curLdm,
       curKg,
-      maxLdm,
-      sub?.max_gewicht_kg != null ? Number(sub.max_gewicht_kg) : null,
+      cap.maxLdm,
+      cap.maxWeightKg,
       curM3,
-      deriveMaxVolM3(maxLdm),
+      deriveMaxVolM3(cap.maxLdm),
     );
     if (overload.isOverloaded) {
       this.logger.warn(

@@ -63,18 +63,23 @@ export function formatOverloadMessage(o: Overload): string {
 }
 
 /**
- * O-3: Trailer-Volumen aus max_ldm ableiten (Mirror FE
+ * O-3 + T1.5: Trailer-Volumen aus max_ldm ableiten (Mirror FE
  * lib/vehicleTypes.deriveBoxFromLdm).
  *
  *   length_cm = max(100, maxLdm × 100)
- *   width_cm  = 240             (Sattel/Koffer-Standard)
- *   height_cm = maxLdm > 8 ? 270 : 240
+ *   width_cm  = 240                  (Sattel/Koffer-Standard)
+ *   height_cm = 210 wenn maxLdm ≤ 8  (7,5T-Koffer, niedriges Dach)
+ *               270 wenn maxLdm > 13 (Sattel)
+ *               240 sonst            (12T/18T-Koffer)
  *   maxVolM3  = (l × w × h) / 1e6
  *
+ * ⚠ SYNC mit FE: vehicleTypes.ts deriveBoxFromLdm — T1.5
+ * (vorher fest 240/270 mit Knick bei 8). Bei Aenderung gemeinsam pflegen.
+ *
  * Bewusste Vereinfachung: deckt 90% der Touren (Sattel) genau ab;
- * kleinere Klassen leicht generös. Vermeidet Stammdaten-Pflicht
- * fuer max_volumen_m3 (FV-subs/tours haben das Feld nicht). Bei
- * fehlendem max_ldm → null (kein Overload-Trigger).
+ * kleinere Klassen bekommen jetzt realistische Hoehen (T1-Spec
+ * Carlos: 7,5T ≈ 40 m³, 12T ≈ 50 m³, 18T ≈ 60 m³, Sattel ≈ 88 m³).
+ * Bei fehlendem max_ldm → null (kein Overload-Trigger).
  */
 export function deriveMaxVolM3(
   maxLdm: number | null | undefined,
@@ -84,6 +89,8 @@ export function deriveMaxVolM3(
   if (!Number.isFinite(n) || n <= 0) return null;
   const lengthCm = Math.max(100, Math.round(n * 100));
   const widthCm = 240;
-  const heightCm = n > 8 ? 270 : 240;
+  let heightCm = 240;
+  if (n <= 8.001) heightCm = 210;
+  else if (n > 13) heightCm = 270;
   return (lengthCm * widthCm * heightCm) / 1e6;
 }

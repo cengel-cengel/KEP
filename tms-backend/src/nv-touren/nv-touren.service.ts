@@ -3132,6 +3132,13 @@ export class NvTourenService {
         shipment_number: true,
         weight_kg: true,
         ldm: true,
+        // S-6.1: Volumen-Box-Daten fuer Hof-Visualisierung. Add-only;
+        // bestehende Konsumenten (Map-Pin etc.) ignorieren die Felder.
+        volume_m3: true,
+        length_cm: true,
+        width_cm: true,
+        height_cm: true,
+        effective_pallets: true,
         loading_date: true,
         customers: { select: { id: true, name: true } },
         addresses_shipments_loading_address_idToaddresses: {
@@ -3146,6 +3153,11 @@ export class NvTourenService {
       shipment_number: string;
       weight_kg: number | null;
       ldm: number | null;
+      volume_m3: number | null;
+      length_cm: number | null;
+      width_cm: number | null;
+      height_cm: number | null;
+      effective_pallets: number | null;
       customer_name: string | null;
       lat: number;
       lng: number;
@@ -3169,6 +3181,12 @@ export class NvTourenService {
           shipment_number: c.shipment_number,
           weight_kg: c.weight_kg ? Number(c.weight_kg) : null,
           ldm: c.ldm ? Number(c.ldm) : null,
+          volume_m3: c.volume_m3 != null ? Number(c.volume_m3) : null,
+          length_cm: c.length_cm ?? null,
+          width_cm: c.width_cm ?? null,
+          height_cm: c.height_cm ?? null,
+          effective_pallets:
+            c.effective_pallets != null ? Number(c.effective_pallets) : null,
           customer_name: c.customers?.name ?? null,
           lat: cLat,
           lng: cLng,

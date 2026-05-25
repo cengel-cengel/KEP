@@ -15,8 +15,15 @@ import BoardPanel from '../../components/workspace/BoardPanel';
 import MapPanel from '../../components/workspace/MapPanel';
 import DetailPanel from './DetailPanel';
 import LoadingPlanPanel from './LoadingPlanPanel';
+import YardPanel from './YardPanel';
 
-export type PanelId = 'queue' | 'board' | 'map' | 'loadingPlan' | 'detail';
+export type PanelId =
+  | 'queue'
+  | 'board'
+  | 'map'
+  | 'loadingPlan'
+  | 'detail'
+  | 'yard';
 
 export interface PanelRegistryEntry {
   id: PanelId;
@@ -49,5 +56,10 @@ export const PANEL_REGISTRY: Record<PanelId, PanelRegistryEntry> = {
     id: 'detail',
     title: 'Detail',
     component: DetailPanel,
+  },
+  yard: {
+    id: 'yard',
+    title: 'Hof',
+    component: YardPanel,
   },
 };

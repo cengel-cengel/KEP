@@ -76,7 +76,11 @@ export function buildDefaultLayout(): SerializedDockview {
             type: 'leaf' as const,
             size: sizes[2],
             data: {
-              views: ['map', 'loadingPlan'],
+              // S-6: Hof als 3. Tab in group-right (neben Karte +
+              // Beladeplan). User mit altem persisted-Layout sehen
+              // den Tab nicht automatisch — Reset (TopBar) oder
+              // Backend-Default-Push aktiviert ihn.
+              views: ['map', 'loadingPlan', 'yard'],
               id: 'group-right',
               activeView: 'map',
             },
@@ -90,6 +94,7 @@ export function buildDefaultLayout(): SerializedDockview {
       board: panelState('board'),
       map: panelState('map'),
       loadingPlan: panelState('loadingPlan'),
+      yard: panelState('yard'),
     },
     activeGroup: 'group-board',
   };

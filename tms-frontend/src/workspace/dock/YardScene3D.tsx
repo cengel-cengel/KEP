@@ -543,6 +543,17 @@ function PackedLaneMesh({
   const firstCappedIdx = packedTrailers.findIndex((t) => t.capped);
   const cappedCount = packedTrailers.filter((t) => t.capped).length;
 
+  // S-6.3 B Fix: Click-Routing-Hülle. Wireframe + Böden + Streifen
+  // umschliessen die Items komplett (Box 1360×270×240 cm rund um
+  // jedes Paket). In R3F sind transparent Meshes raycast-Targets;
+  // selbst ohne onClick-Handler verschlucken sie pointer-up wenn
+  // sie näher an der Kamera sind als das Item-Mesh oder mit ihm
+  // depth-fighten (Block-Boden bei y=0.8cm schneidet Item-Boden bei
+  // y=0). Lösung: raycast={() => null} auf allen Hüllen — nur Items
+  // bleiben pointer-bare. Edges (drei) sind LineSegments mit
+  // Default-Threshold 1; praktisch nicht treffbar, kein Extra-Fix.
+  const noRaycast = (): null => null;
+
   return (
     <group position={scaleVec3(0, 0, centerZ)}>
       {/* Lane-Boden (Asphalt), erstreckt sich ueber ganze Lane. */}
@@ -550,6 +561,7 @@ function PackedLaneMesh({
         position={scaleVec3(laneLen / 2, 0.4, 0)}
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
+        raycast={noRaycast}
       >
         <planeGeometry args={[laneLen / 100, trailerWidthCm / 100]} />
         <meshStandardMaterial color="#f8fafc" />
@@ -564,6 +576,7 @@ function PackedLaneMesh({
             (trailerWidthCm / 2) * zFrac,
           )}
           rotation={[-Math.PI / 2, 0, 0]}
+          raycast={noRaycast}
         >
           <planeGeometry args={[laneLen / 100, 0.05]} />
           <meshStandardMaterial color="#cbd5e1" />
@@ -591,6 +604,7 @@ function PackedLaneMesh({
             {/* Trailer-Wireframe (volumetric — wie Auflieger oben). */}
             <mesh
               position={scaleVec3(blockCenterX, trailerHeightCm / 2, 0)}
+              raycast={noRaycast}
             >
               <boxGeometry
                 args={[
@@ -615,6 +629,7 @@ function PackedLaneMesh({
               position={scaleVec3(blockCenterX, 0.8, 0)}
               rotation={[-Math.PI / 2, 0, 0]}
               receiveShadow
+              raycast={noRaycast}
             >
               <planeGeometry
                 args={[trailerLengthCm / 100, trailerWidthCm / 100]}

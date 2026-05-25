@@ -122,7 +122,10 @@ function fvReceiverGroup(s: NearbyShipment): { key: string; label: string } {
     }
     // Kein Depot/Relation gepflegt — wie Direkt behandeln.
   }
-  const dz = s.delivery_zip ?? '—';
+  // T3: Empfangs-PLZ-Branch (DIREKT + Sammelgut-Fallback) clustert
+  // auf PLZ_CLUSTER_DIGITS. Depot-/Relation-Branch oben bleibt
+  // unangetastet (sind bereits per Hauptlauf gebuendelt).
+  const dz = plzPrefix(s.delivery_zip, PLZ_CLUSTER_DIGITS);
   return { key: `dzip-${dz}`, label: `Empfangs-PLZ ${dz}` };
 }
 
@@ -151,6 +154,39 @@ interface FvOptimizeResponse {
 
 const NV_RADIUS_KM = 20; // NV: BE-Default reicht; explizit klar fuer Konstanz.
 const FV_RADIUS_KM = 100;
+
+/**
+ * T3: PLZ-Cluster-Tiefe (1..5). Bei 5 Stellen = exakte PLZ (alt).
+ *   3 = "704xx" (~13km Radius pro Cluster, 225 Sdg → ~3-5 Lanes
+ *       statt 30+ → drastisch weniger Leer-km wenn 1 LKW pro Lane).
+ *   2 = "70xxx" (Bundesland-grob, zu wenig fuer Operations).
+ *   4 = "7041x" (Strassen-grob, mehr Lanes als 3, weniger Buendelung).
+ *
+ * Justierbar (Carlos-Spec: spaeter UI-Slider). Fuer FV-Empfangs-PLZ
+ * (DIREKT + Sammelgut-ohne-Depot-Fallback) gilt dieselbe Tiefe.
+ * Depot-/Relation-Gruppen bleiben unangetastet (sind bereits per
+ * Hauptlauf gebuendelt).
+ */
+const PLZ_CLUSTER_DIGITS = 3;
+
+/**
+ * Liefert den PLZ-Prefix als Label-String — die ersten N Ziffern,
+ * Rest mit 'x' aufgefuellt (5-Stellen-Display). z.B.:
+ *   plzPrefix("70435", 3) → "704xx"
+ *   plzPrefix("70435", 5) → "70435"
+ *   plzPrefix(null, 3)    → "—"
+ * Bei Stringlaenge < digits → return wie ist + Rest-x (defensiv).
+ */
+function plzPrefix(zip: string | null | undefined, digits: number): string {
+  if (!zip) return '—';
+  const trimmed = zip.trim();
+  if (!trimmed) return '—';
+  // Numerische PLZ erwartet (5-stellig DE / AT 4 / CH 4) — wir
+  // schneiden nach digits Zeichen und fuellen auf 5 mit 'x'.
+  const head = trimmed.slice(0, digits);
+  const padLen = Math.max(0, 5 - head.length);
+  return head + 'x'.repeat(padLen);
+}
 
 export default function YardPanel() {
   const { mode } = useWorkspace();
@@ -511,10 +547,14 @@ export default function YardPanel() {
       { label: string; ships: NearbyShipment[] }
     >();
     for (const s of nearbyQ.data ?? []) {
+      // T3: NV gruppiert nach Versender-PLZ-PRAEFIX (PLZ_CLUSTER_DIGITS).
+      // 225 Sdg ueber DE → ~3-5 Lanes statt 30+ → drastische Leer-km-
+      // Reduktion wenn 1 LKW pro Lane reicht.
+      const nvPrefix = plzPrefix(s.zip, PLZ_CLUSTER_DIGITS);
       const { key, label } =
         mode === 'fv'
           ? fvReceiverGroup(s)
-          : { key: s.zip ?? '—', label: `PLZ ${s.zip ?? '—'}` };
+          : { key: nvPrefix, label: nvPrefix };
       const g = groups.get(key) ?? { label, ships: [] };
       g.ships.push(s);
       groups.set(key, g);
@@ -766,7 +806,7 @@ export default function YardPanel() {
           id: sh.id,
           shipment_number: sh.shipment_number ?? null,
           customer_name: null, // NV-loading endpoint liefert customer_name nicht
-          weight_kg: sh.weight_kg ?? null,
+          weight_kg: sh.weight_kg != null ? Number(sh.weight_kg) : null,
           volume_m3:
             (sh as { volume_m3?: number | null }).volume_m3 ??
             (cm3 > 0 ? cm3 / 1e6 : null),

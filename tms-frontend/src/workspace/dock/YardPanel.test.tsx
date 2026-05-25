@@ -271,13 +271,10 @@ describe('YardPanel — smoke', () => {
     );
     expect(await screen.findByText(/20 km Umkreis/)).toBeInTheDocument();
     expect(await screen.findByText(/3 im Pool/)).toBeInTheDocument();
-    // NV gruppiert nach Versender-PLZ. S-6.3-Format:
-    // "<group> · N Sdg · ≈ K LKW".
+    // T3: NV gruppiert nach PLZ-PRAEFIX (3 Digits). 80331+80331+80335
+    // collapsen alle zu "803xx" → 1 Lane mit 3 Sdg.
     expect(
-      await screen.findByText(/PLZ 80331 · 2 Sdg · ≈ \d+ LKW/),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByText(/PLZ 80335 · 1 Sdg · ≈ \d+ LKW/),
+      await screen.findByText(/803xx · 3 Sdg · ≈ \d+ LKW/),
     ).toBeInTheDocument();
   });
 
@@ -395,7 +392,7 @@ describe('YardPanel — smoke', () => {
       </Wrapper>,
     );
     expect(
-      await screen.findByText(/Empfangs-PLZ 50667 · 2 Sdg · ≈ \d+ LKW/),
+      await screen.findByText(/Empfangs-PLZ 506xx · 2 Sdg · ≈ \d+ LKW/),
     ).toBeInTheDocument();
   });
 
@@ -434,7 +431,7 @@ describe('YardPanel — smoke', () => {
       </Wrapper>,
     );
     expect(
-      await screen.findByText(/Empfangs-PLZ 60311 · 1 Sdg · ≈ \d+ LKW/),
+      await screen.findByText(/Empfangs-PLZ 603xx · 1 Sdg · ≈ \d+ LKW/),
     ).toBeInTheDocument();
   });
 
@@ -536,9 +533,10 @@ describe('YardPanel — smoke', () => {
         <YardPanel />
       </Wrapper>,
     );
-    // DE wird NICHT als Prefix gerendert (Default-Land).
+    // T3+S-6.2: DE wird NICHT als Prefix gerendert (Default-Land);
+    // PLZ-Cluster "803xx" collapsed 80331+80335 → 3 Sdg.
     expect(
-      await screen.findByText(/^PLZ 80331 · 2 Sdg · ≈ \d+ LKW$/),
+      await screen.findByText(/^803xx · 3 Sdg · ≈ \d+ LKW$/),
     ).toBeInTheDocument();
   });
 
@@ -570,7 +568,8 @@ describe('YardPanel — smoke', () => {
       </Wrapper>,
     );
     expect(
-      await screen.findByText(/AT · PLZ 1010 · 2 Sdg · ≈ \d+ LKW/),
+      // T3: 4-stellige AT-PLZ "1010" → plzPrefix(3) → "101xx".
+      await screen.findByText(/AT · 101xx · 2 Sdg · ≈ \d+ LKW/),
     ).toBeInTheDocument();
   });
 
@@ -591,10 +590,10 @@ describe('YardPanel — smoke', () => {
         <YardPanel />
       </Wrapper>,
     );
-    // Beide haben PLZ 80331 → eine Gruppe mit Count 2 — KEIN Praefix
-    // (DE+AT gemischt → uniformCountry returns null).
+    // Beide haben PLZ 80331 → "803xx"-Cluster mit Count 2 — KEIN
+    // Praefix (DE+AT gemischt → uniformCountry returns null).
     expect(
-      await screen.findByText(/^PLZ 80331 · 2 Sdg · ≈ \d+ LKW$/),
+      await screen.findByText(/^803xx · 2 Sdg · ≈ \d+ LKW$/),
     ).toBeInTheDocument();
   });
 
@@ -618,8 +617,14 @@ describe('YardPanel — smoke', () => {
         <YardPanel />
       </Wrapper>,
     );
-    // Header zeigt "≈ 2 LKW".
-    expect(await screen.findByText(/≈ 2 LKW/)).toBeInTheDocument();
+    // T3: alle 3 Sdg im Cluster "803xx" — Σ Vol 25 m³ < Koffer-7t
+    // Fallback-Cap (35.7 m³) → 1 LKW (Carlos-Hebel: weniger Leer-km).
+    // Header-Span "· ≈ 1 LKW" (text-blue-700) trennt sich vom Slot-
+    // Label durch fuehrendes "·" — Helper-Regex matched beides nicht
+    // gleichzeitig.
+    expect(
+      await screen.findByText(/^· ≈ 1 LKW$/),
+    ).toBeInTheDocument();
   });
 
   it('S-6.3 C: Slot-Label enthaelt "N Sdg · ≈ K LKW"', async () => {
@@ -634,8 +639,9 @@ describe('YardPanel — smoke', () => {
         <YardPanel />
       </Wrapper>,
     );
+    // T3: 3 Sdg im "803xx"-Cluster (80331+80335), 1 LKW.
     expect(
-      await screen.findByText(/PLZ 80331 · 2 Sdg · ≈ 1 LKW/),
+      await screen.findByText(/803xx · 3 Sdg · ≈ 1 LKW/),
     ).toBeInTheDocument();
   });
 
@@ -680,7 +686,7 @@ describe('YardPanel — smoke', () => {
     // 3 Sendungen × 40 = 120 m³. 40+40=80 ≤ 88 OK, 3. Sendung neuer
     // Trailer → 2 Trailer fuer den Slot.
     expect(
-      await screen.findByText(/PLZ 80331 · 3 Sdg · ≈ 2 LKW/),
+      await screen.findByText(/803xx · 3 Sdg · ≈ 2 LKW/),
     ).toBeInTheDocument();
   });
 
@@ -822,7 +828,7 @@ describe('YardPanel — smoke', () => {
     // 12T-Cap = 50 m³ (T1). 20+20=40 fits, +20=60 ueberschreitet 50
     // → 2 LKW (Sattel haette 1 LKW gemacht).
     expect(
-      await screen.findByText(/PLZ 80331 · 3 Sdg · ≈ 2 LKW/),
+      await screen.findByText(/803xx · 3 Sdg · ≈ 2 LKW/),
     ).toBeInTheDocument();
   });
 
@@ -847,7 +853,7 @@ describe('YardPanel — smoke', () => {
     );
     // 7.5T-Cap = 40 m³. 30+30=60 > 40 → 2 LKW (Sattel-88 haette 1 LKW).
     expect(
-      await screen.findByText(/PLZ 80331 · 2 Sdg · ≈ 2 LKW/),
+      await screen.findByText(/803xx · 2 Sdg · ≈ 2 LKW/),
     ).toBeInTheDocument();
   });
 
@@ -942,7 +948,7 @@ describe('YardPanel — smoke', () => {
       </Wrapper>,
     );
     const slot = await screen.findByText(
-      /PLZ 80331 · 3 Sdg · ≈ 2 LKW/,
+      /803xx · 3 Sdg · ≈ 2 LKW/,
     );
     const li = slot.closest('[data-slot]')!;
     expect(li.getAttribute('data-packed-count')).toBe('2');
@@ -978,7 +984,7 @@ describe('YardPanel — smoke', () => {
         <YardPanel />
       </Wrapper>,
     );
-    const slot = await screen.findByText(/PLZ 80331 · 1 Sdg · ≈ 1 LKW/);
+    const slot = await screen.findByText(/803xx · 1 Sdg · ≈ 1 LKW/);
     const li = slot.closest('[data-slot]')!;
     expect(li.getAttribute('data-packed-count')).toBe('1');
     expect(li.getAttribute('data-packed-items')).toBe('0');
@@ -1121,6 +1127,107 @@ describe('YardPanel — smoke', () => {
     expect(screen.getByText('Volle Details')).toBeInTheDocument();
   });
 
+  it('T3: NV PLZ-Praefix-Cluster (3 Digits) buendelt 70435+70499+71229 zu "704xx" + "712xx"', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({
+          data: [
+            { ...mockNearbyNv[0], id: 'a1', zip: '70435' },
+            { ...mockNearbyNv[0], id: 'a2', zip: '70499' },
+            { ...mockNearbyNv[0], id: 'b1', zip: '71229' },
+          ],
+        });
+      }
+      return Promise.resolve({ data: { stops: [] } });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    // 70435+70499 → "704xx" (2 Sdg); 71229 → "712xx" (1 Sdg).
+    expect(
+      await screen.findByText(/^704xx · 2 Sdg · ≈ \d+ LKW$/),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/^712xx · 1 Sdg · ≈ \d+ LKW$/),
+    ).toBeInTheDocument();
+  });
+
+  it('T3: FV-Depot/Relation bleibt UNGECLUSTERED (Empfangs-PLZ-Branch alleine clustert)', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({
+          data: [
+            // Sammelgut mit Depot → bleibt "Depot Hub HH" unverändert
+            {
+              id: 'sg1',
+              shipment_number: 'S1',
+              weight_kg: 500,
+              ldm: 1,
+              customer_name: 'A',
+              lat: 48,
+              lng: 11,
+              zip: '80331',
+              city: 'M',
+              distance_km: 5,
+              transport_type: 'SAMMELGUT',
+              delivery_zip: '20095',
+              depot_label: 'Hub HH',
+            },
+            // DIREKT → clustert Empfangs-PLZ 50667→"506xx"
+            {
+              id: 'd1',
+              shipment_number: 'D1',
+              weight_kg: 500,
+              ldm: 1,
+              customer_name: 'B',
+              lat: 48,
+              lng: 11,
+              zip: '80335',
+              city: 'M',
+              distance_km: 6,
+              transport_type: 'DIREKT',
+              delivery_zip: '50667',
+            },
+            {
+              id: 'd2',
+              shipment_number: 'D2',
+              weight_kg: 500,
+              ldm: 1,
+              customer_name: 'C',
+              lat: 48,
+              lng: 11,
+              zip: '80337',
+              city: 'M',
+              distance_km: 7,
+              transport_type: 'DIREKT',
+              delivery_zip: '50676', // → "506xx" Cluster
+            },
+          ],
+        });
+      }
+      if (url === '/tours/tour-1') {
+        return Promise.resolve({ data: { max_ldm: 13.6, max_weight_kg: 24000 } });
+      }
+      return Promise.resolve({ data: { loadingOrder: [] } });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    // Depot bleibt unverändert (kein Praefix-Clustering).
+    expect(
+      await screen.findByText(/Depot Hub HH · 1 Sdg · ≈ \d+ LKW/),
+    ).toBeInTheDocument();
+    // DIREKT-Sendungen mit 50667+50676 → "506xx"-Cluster (2 Sdg).
+    expect(
+      await screen.findByText(/Empfangs-PLZ 506xx · 2 Sdg · ≈ \d+ LKW/),
+    ).toBeInTheDocument();
+  });
+
   it('T1.6: FV-Hof zieht tour.max_ldm + tour.max_weight_kg → FFD nutzt die echte Cap', async () => {
     workspaceMock.mode = 'fv';
     apiGet.mockImplementation((url: string) => {
@@ -1181,7 +1288,7 @@ describe('YardPanel — smoke', () => {
       </Wrapper>,
     );
     expect(
-      await screen.findByText(/Empfangs-PLZ 50667 · 2 Sdg · ≈ 2 LKW/),
+      await screen.findByText(/Empfangs-PLZ 506xx · 2 Sdg · ≈ 2 LKW/),
     ).toBeInTheDocument();
   });
 });

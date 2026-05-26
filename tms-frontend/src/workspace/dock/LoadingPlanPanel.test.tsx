@@ -255,4 +255,107 @@ describe('LoadingPlanPanel BUG-D-Fix (12T-Tour)', () => {
       await findByText(/12T · 12\.0×2\.40×2\.40 m/),
     ).toBeInTheDocument();
   });
+
+  it('kein unplaced-Banner wenn alle Pakete passen', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    const { queryByRole } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(lp3dProps).toHaveBeenCalled();
+    });
+    // role=alert nur fuer Banner; bei 0 unplaced KEIN alert-Element.
+    expect(queryByRole('alert')).toBeNull();
+  });
+});
+
+// Shipment-Aggregation-Fixture (Regel #2): EINE Sendung mit 3 Packstücken
+// (quantity-Klone), die alle unplaced bleiben → Banner muss "1 Sendung(en)"
+// zeigen, NICHT "3" (Packstück-Zahl).
+const TOUR_OVERFLOW_MULTI = {
+  ...TOUR_12T,
+  stops: [
+    {
+      // Stop 1: ein Sendung, die den Trailer komplett ausfuellt (1200x240x240).
+      id: 'stop-full',
+      position: 1,
+      shipment: {
+        id: 'ship-full',
+        shipment_number: 'FULL',
+        ldm: 12,
+        weight_kg: 1000,
+        shipment_package_items: [
+          {
+            id: 'pi-full',
+            line_index: 1,
+            quantity: 1,
+            length_cm: 1200,
+            width_cm: 240,
+            height_cm: 240,
+            weight_kg: 1000,
+            stackable: false,
+            pos_x_cm: null,
+            pos_y_cm: null,
+            pos_z_cm: null,
+            rotation_deg: 0,
+          },
+        ],
+      },
+    },
+    {
+      // Stop 2: EINE Sendung mit quantity=3 → 3 Packstücke, alle unplaced.
+      id: 'stop-multi',
+      position: 2,
+      shipment: {
+        id: 'ship-multi',
+        shipment_number: 'MULTI',
+        ldm: 3,
+        weight_kg: 300,
+        shipment_package_items: [
+          {
+            id: 'pi-multi',
+            line_index: 1,
+            quantity: 3,
+            length_cm: 100,
+            width_cm: 100,
+            height_cm: 100,
+            weight_kg: 100,
+            stackable: false,
+            pos_x_cm: null,
+            pos_y_cm: null,
+            pos_z_cm: null,
+            rotation_deg: 0,
+          },
+        ],
+      },
+    },
+  ],
+};
+
+describe('LoadingPlanPanel unplaced-Banner (Dispo-Sicherheit)', () => {
+  it('Shipment-Aggregation: 1 Sendung × 3 unplaced Packstuecke → Banner "1 Sendung(en)"', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_OVERFLOW_MULTI });
+    const { findByRole } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    // Banner-Text per Carlos-Wording: zaehlt distinct Sendung, NICHT Packstuecke.
+    const alert = await findByRole('alert');
+    expect(alert.textContent).toContain(
+      '⚠ 1 Sendung(en) passen nicht auf den Trailer',
+    );
+    expect(alert.textContent).not.toContain('3 Sendung(en)');
+    // LoadingPlan3D bekommt NUR placed-Items (unplaced gefiltert).
+    const lastCall = lp3dProps.mock.calls[lp3dProps.mock.calls.length - 1][0];
+    const renderedUnplaced = lastCall.packages.filter(
+      (p: { unplaced?: boolean }) => p.unplaced,
+    );
+    expect(renderedUnplaced.length).toBe(0);
+    // Nur ship-full (1 Package) wird gerendert; ship-multi qty=3 ist
+    // komplett unplaced + gefiltert.
+    expect(lastCall.packages.length).toBe(1);
+  });
 });

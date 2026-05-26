@@ -130,6 +130,22 @@ function NvBody({
     [packages],
   );
 
+  // Dispo-Sicherheit: unplaced-Banner. Items, die nicht in den Trailer
+  // passen, werden vom Filter (renderedPackages) unsichtbar — der Banner
+  // ist die einzige Meldung. Mirror Vollansicht (NvLoadingPlanPage +
+  // LoadingPlanPage).
+  // Regel #2: betroffen = Sendung mit MIND. 1 unplaced Packstück.
+  // Aggregation auf shipmentId statt Packstück-Zaehlung.
+  const unplacedShipmentCount = useMemo(
+    () =>
+      new Set(
+        packages
+          .filter((p) => p.unplaced)
+          .map((p) => (p as { shipmentId?: string }).shipmentId ?? ''),
+      ).size,
+    [packages],
+  );
+
   const code = tourQ.data?.nv_stamm_tour?.code ?? '—';
   // Display-Label: fahrzeug_typ aus Tour/Sub bevorzugt (zeigt z.B.
   // "12T"); Fallback auf maxLdm-Approximation wenn keine Beschriftung.
@@ -143,6 +159,7 @@ function NvBody({
       title={`NV-Beladeplan · ${code}`}
       vehicleInfo={`${typLabel} · ${(capacity.lengthCm / 100).toFixed(1)}×${(capacity.widthCm / 100).toFixed(2)}×${(capacity.heightCm / 100).toFixed(2)} m`}
       pkgCount={packages.length}
+      unplacedShipmentCount={unplacedShipmentCount}
       fullViewHref={`/nv-loading/${tourId}`}
       isLoading={tourQ.isLoading}
       hasData={!!tourQ.data}
@@ -247,6 +264,7 @@ function FvBody({
       title={`FV-Beladeplan`}
       vehicleInfo={`${vehicleType} · ${(vehicleDims.lengthCm / 100).toFixed(1)}×${(vehicleDims.widthCm / 100).toFixed(2)}×${(vehicleDims.heightCm / 100).toFixed(2)} m`}
       pkgCount={packages.length}
+      unplacedShipmentCount={0}
       fullViewHref={`/loading/${tourId}`}
       isLoading={tourQ.isLoading}
       hasData={!!tourQ.data}
@@ -267,6 +285,7 @@ function PanelShell({
   title,
   vehicleInfo,
   pkgCount,
+  unplacedShipmentCount,
   fullViewHref,
   isLoading,
   hasData,
@@ -275,6 +294,7 @@ function PanelShell({
   title: string;
   vehicleInfo: string;
   pkgCount: number;
+  unplacedShipmentCount: number;
   fullViewHref: string;
   isLoading: boolean;
   hasData: boolean;
@@ -295,6 +315,14 @@ function PanelShell({
           Vollansicht
         </Link>
       </div>
+      {hasData && unplacedShipmentCount > 0 && (
+        <div
+          role="alert"
+          className="px-3 py-1.5 border-b border-amber-300 bg-amber-50 text-amber-800 text-xs font-medium"
+        >
+          ⚠ {unplacedShipmentCount} Sendung(en) passen nicht auf den Trailer
+        </div>
+      )}
       <div className="flex-1 min-h-0 relative">
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-400">

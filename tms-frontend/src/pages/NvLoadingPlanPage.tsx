@@ -266,8 +266,14 @@ export default function NvLoadingPlanPage() {
     () => packages.filter((p) => !p.unplaced),
     [packages],
   );
-  const unplacedCount = useMemo(
-    () => packages.filter((p) => p.unplaced).length,
+  // Regel #2: betroffen = Sendung mit MIND. 1 unplaced Packstück.
+  // Aggregation auf shipmentId — sonst meldet der Banner Packstücke
+  // (was bei q>1-Klonen die echte Sendungs-Zahl ueberzaehlt).
+  const unplacedShipmentCount = useMemo(
+    () =>
+      new Set(
+        packages.filter((p) => p.unplaced).map((p) => p.shipmentId),
+      ).size,
     [packages],
   );
 
@@ -714,15 +720,20 @@ export default function NvLoadingPlanPage() {
               </div>
             )}
 
-            {/* BUG-F-PACK Banner — N Pakete physisch nicht plazierbar. */}
-            {unplacedCount > 0 && (
-              <div className="text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded p-2">
+            {/* Dispo-Sicherheit Banner — N Sendung(en) nicht plazierbar.
+                Einheitliche Wording-Konvention (Vollansicht + Dock-Panel).
+                Zaehlung: distinct shipmentId, NICHT Packstuecke. */}
+            {unplacedShipmentCount > 0 && (
+              <div
+                role="alert"
+                className="text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded p-2"
+              >
                 <div className="font-medium">
-                  ⚠ {unplacedCount} {unplacedCount === 1 ? 'Palette passt' : 'Paletten passen'} physisch nicht in den Trailer
+                  ⚠ {unplacedShipmentCount} Sendung(en) passen nicht auf den Trailer
                 </div>
                 <div className="text-xs">
-                  Größeres Fahrzeug wählen oder Tour verkleinern. Die nicht
-                  plazierbaren Pakete werden im 3D-Layout nicht angezeigt.
+                  Größeres Fahrzeug wählen oder Tour verkleinern. Nicht
+                  plazierbare Pakete werden im 3D-Layout ausgeblendet.
                 </div>
               </div>
             )}

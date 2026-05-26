@@ -1,5 +1,5 @@
 /**
- * NV-Beladeplan Sandbox-Fundament (Schritt 2).
+ * NV-Beladeplan Sandbox-Fundament (Schritt 2 + Schritt 3).
  *
  * Carlos-Spec: alle Aenderungen sind EPHEMER bis "Übernehmen". Reset
  * bei Component-Unmount (React drop). Kein Auto-PATCH waehrend
@@ -11,25 +11,24 @@
  *     BE-Pos zurueck).
  *   · ejectedShipmentIds: per-Sendung (shipmentId) "aus Tour
  *     entfernen". Übernehmen → BE-DELETE des zugehoerigen Stops.
- *
- * Was NICHT im Sandbox-State
- *   · Inserted-Sendungen (Drag aus Hof IN den Auflieger) — Schritt 3.
- *   · BE-seitige Position-Resets ("Repack-Optimal") — out of Scope
- *     (rare meta-Operation; spaeter via explicit BE-Action).
+ *   · insertedShipmentIds (Schritt 3): per-Sendung (shipmentId) "in
+ *     Tour einfuegen". Patched-Tour-Memo zieht package_items aus dem
+ *     nearby-Pool (Page-seitige Lookup). Übernehmen → BE-POST eines
+ *     Stops pro inserted shipmentId.
  *
  * Render-Anwendung
- *   adjustedPackages = packages
- *     .filter(p => !ejectedShipmentIds.has(p.shipmentId))
- *     .map(p => positionOverrides.has(p.dbItemId)
- *       ? { ...p, posX/Y/Z aus override }
- *       : p)
+ *   patchedTour = tour
+ *     mit Stops gefiltert (ejected raus)
+ *     + Position-Overrides auf shipment_package_items
+ *     + synthetische Stops fuer inserted (package_items aus nearby-Pool)
  *
- * Übernehmen-Reihenfolge
+ * Übernehmen-Reihenfolge (Schritt 3 erweitert)
  *   1. Position-Overrides: api.patch /loading/package-item/:id/position
- *   2. Ejected Stops:      api.delete /nv-touren/:id/stops/:stopId
- *   (Reihenfolge stabil: erst Positionen sichern, dann Stops loeschen
- *    — wenn Eject erst, koennten zwischenzeitliche Position-Patches
- *    fuer Items des geloeschten Stops 404-en.)
+ *   2. Inserted Shipments:  api.post /nv-touren/:id/stops { shipment_id }
+ *   3. Ejected Stops:       api.delete /nv-touren/:id/stops/:stopId
+ *   (Inserts vor Ejects: falls eine Tour-Re-Plan beide hat, will man
+ *    den Insert zuerst — sonst koennte BE-Capacity-Check nach Eject
+ *    zu eng werden.)
  */
 
 export interface SandboxPositionOverride {
@@ -44,6 +43,10 @@ export interface SandboxState {
   positionOverrides: Map<string, SandboxPositionOverride>;
   /** Set von shipmentIds die aus der Tour ausgeworfen wurden. */
   ejectedShipmentIds: Set<string>;
+  /** Schritt 3: Set von shipmentIds aus dem nearby-Pool, die in die
+   *  Tour gedraggt wurden. Page-seitiger Lookup baut den synthetischen
+   *  Stop aus nearbyQ-Daten. */
+  insertedShipmentIds: Set<string>;
 }
 
 export type SandboxAction =
@@ -51,11 +54,14 @@ export type SandboxAction =
   | { type: 'clearPosition'; dbItemId: string }
   | { type: 'eject'; shipmentId: string }
   | { type: 'restore'; shipmentId: string }
+  | { type: 'insert'; shipmentId: string }
+  | { type: 'removeInsert'; shipmentId: string }
   | { type: 'clearAll' };
 
 export const initialSandboxState: SandboxState = {
   positionOverrides: new Map(),
   ejectedShipmentIds: new Set(),
+  insertedShipmentIds: new Set(),
 };
 
 export function sandboxReducer(
@@ -86,6 +92,34 @@ export function sandboxReducer(
       s.delete(action.shipmentId);
       return { ...state, ejectedShipmentIds: s };
     }
+    case 'insert': {
+      // Insert + Eject derselben Sendung sind exklusiv. Falls die
+      // Sendung in ejectedSet ist (Bug-Repro: Drag-Hof-IN auf eine
+      // gerade ge-eject-te Sendung) → eject zuerst zuruecknehmen.
+      const eSet = state.ejectedShipmentIds.has(action.shipmentId)
+        ? (() => {
+            const s = new Set(state.ejectedShipmentIds);
+            s.delete(action.shipmentId);
+            return s;
+          })()
+        : state.ejectedShipmentIds;
+      if (state.insertedShipmentIds.has(action.shipmentId) && eSet === state.ejectedShipmentIds) {
+        return state;
+      }
+      const ins = new Set(state.insertedShipmentIds);
+      ins.add(action.shipmentId);
+      return {
+        ...state,
+        insertedShipmentIds: ins,
+        ejectedShipmentIds: eSet,
+      };
+    }
+    case 'removeInsert': {
+      if (!state.insertedShipmentIds.has(action.shipmentId)) return state;
+      const ins = new Set(state.insertedShipmentIds);
+      ins.delete(action.shipmentId);
+      return { ...state, insertedShipmentIds: ins };
+    }
     case 'clearAll':
       return initialSandboxState;
   }
@@ -93,7 +127,11 @@ export function sandboxReducer(
 
 /** Gibt Anzahl der offenen Sandbox-Aenderungen (fuer Badge/Disable). */
 export function sandboxChangeCount(state: SandboxState): number {
-  return state.positionOverrides.size + state.ejectedShipmentIds.size;
+  return (
+    state.positionOverrides.size +
+    state.ejectedShipmentIds.size +
+    state.insertedShipmentIds.size
+  );
 }
 
 /** Hat der Sandbox gar keine Aenderungen (Übernehmen disabled)? */

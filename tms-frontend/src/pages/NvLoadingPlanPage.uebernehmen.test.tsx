@@ -76,6 +76,7 @@ vi.mock('../components/AxleLoadPanel', () => ({
 
 vi.mock('./NvLoadingPlanHofPanel', () => ({
   default: () => <div data-testid="hof-stub" />,
+  NV_DRAG_SHIPMENT_MIME: 'application/x-nv-shipment-id',
 }));
 
 // confirm-Dialog auto-accept (Eject braucht es).
@@ -85,11 +86,23 @@ beforeEach(() => {
 
 const apiGet = vi.fn();
 const apiPatch = vi.fn().mockResolvedValue({ data: {} });
+const apiPost = vi.fn().mockResolvedValue({ data: {} });
 const apiDelete = vi.fn().mockResolvedValue({ data: {} });
+// Schritt 3: per-Test ueberschreibbarer nearby-Pool (default leer).
+let nearbyMock: unknown = [];
 vi.mock('../lib/api', () => ({
   api: {
-    get: (url: string) => apiGet(url),
+    // Schritt 3: nearby-shipments getrennt mocken — der nearbyQ
+    // (Page-seitiger Lookup fuer Drag-IN) wuerde sonst TOUR_FIXTURE
+    // bekommen und .map crashen.
+    get: (url: string) => {
+      if (url.includes('/nearby-shipments')) {
+        return Promise.resolve({ data: nearbyMock });
+      }
+      return apiGet(url);
+    },
     patch: (url: string, body: unknown) => apiPatch(url, body),
+    post: (url: string, body: unknown) => apiPost(url, body),
     delete: (url: string) => apiDelete(url),
   },
   AUTH_TOKEN_KEY: 'tms_token',
@@ -104,7 +117,9 @@ import NvLoadingPlanPage from './NvLoadingPlanPage';
 afterEach(() => {
   apiGet.mockReset();
   apiPatch.mockReset().mockResolvedValue({ data: {} });
+  apiPost.mockReset().mockResolvedValue({ data: {} });
   apiDelete.mockReset().mockResolvedValue({ data: {} });
+  nearbyMock = [];
 });
 
 const TOUR_FIXTURE = {
@@ -447,5 +462,153 @@ describe('NvLoadingPlanPage Übernehmen-Mutation (Schritt 2)', () => {
     });
     expect(apiPatch).not.toHaveBeenCalled();
     expect(apiDelete).not.toHaveBeenCalled();
+  });
+});
+
+/* ─── Schritt 3: Drag IN (Hof → Auflieger) ──────────────────── */
+
+describe('NvLoadingPlanPage Drag-IN (Schritt 3)', () => {
+  it('Drop auf 3D-Wrapper → Sandbox-Insert + Übernehmen POSTet /nv-touren/:id/stops', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_FIXTURE });
+    // nearby-Pool enthaelt die zu inserting Sendung mit package_items.
+    nearbyMock = [
+      {
+        id: 'sh-new',
+        shipment_number: 'NEW-1',
+        weight_kg: 200,
+        ldm: 1.2,
+        length_cm: 120,
+        width_cm: 80,
+        height_cm: 110,
+        package_items: [
+          {
+            id: 'pi-new',
+            length_cm: 120,
+            width_cm: 80,
+            height_cm: 110,
+            weight_kg: 200,
+            quantity: 1,
+            stackable: true,
+          },
+        ],
+      },
+    ];
+    render(
+      <Wrapper>
+        <NvLoadingPlanPage />
+      </Wrapper>,
+    );
+    // Übernehmen anfangs disabled (Sandbox leer).
+    const uebernehmen = await screen.findByRole('button', {
+      name: /Übernehmen/,
+    });
+    expect(uebernehmen).toBeDisabled();
+    // Drop simulieren: dataTransfer mit shipmentId via fake DataTransfer-Stub.
+    const dropzone = await screen.findByTestId('nv-3d-dropzone');
+    const dataTransfer = {
+      types: ['application/x-nv-shipment-id'],
+      getData: (mime: string) =>
+        mime === 'application/x-nv-shipment-id' ? 'sh-new' : '',
+      setData: () => {},
+      effectAllowed: 'copy' as const,
+      dropEffect: 'copy' as const,
+    };
+    fireEvent.dragOver(dropzone, { dataTransfer });
+    fireEvent.drop(dropzone, { dataTransfer });
+    // Sandbox-Badge zeigt 1 Aenderung.
+    await waitFor(() => {
+      expect(screen.getByText(/Sandbox: 1 Änderung/)).toBeInTheDocument();
+    });
+    // Übernehmen jetzt enabled.
+    expect(
+      screen.getByRole('button', { name: /Übernehmen/ }),
+    ).not.toBeDisabled();
+    // Übernehmen klicken → apiPost wurde mit shipment_id aufgerufen.
+    fireEvent.click(screen.getByRole('button', { name: /Übernehmen/ }));
+    await waitFor(() => {
+      expect(apiPost).toHaveBeenCalledWith('/nv-touren/tour-1/stops', {
+        shipment_id: 'sh-new',
+      });
+    });
+    // Sandbox geleert nach Erfolg.
+    await waitFor(() => {
+      expect(screen.queryByText(/Sandbox: /)).toBeNull();
+    });
+  });
+
+  it('Übernehmen-Reihenfolge: Position → Insert → Eject', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_FIXTURE });
+    nearbyMock = [
+      {
+        id: 'sh-new',
+        shipment_number: 'NEW-1',
+        weight_kg: 100,
+        ldm: 1,
+        length_cm: 100,
+        width_cm: 80,
+        height_cm: 100,
+        package_items: [
+          {
+            id: 'pi-new',
+            length_cm: 100,
+            width_cm: 80,
+            height_cm: 100,
+            weight_kg: 100,
+            quantity: 1,
+            stackable: true,
+          },
+        ],
+      },
+    ];
+    // Call-Tracking ueber alle API-Mocks fuer Reihenfolge-Pruefung.
+    const callOrder: string[] = [];
+    apiPatch.mockImplementation(async () => {
+      callOrder.push('PATCH');
+      return { data: {} };
+    });
+    apiPost.mockImplementation(async () => {
+      callOrder.push('POST');
+      return { data: {} };
+    });
+    apiDelete.mockImplementation(async () => {
+      callOrder.push('DELETE');
+      return { data: {} };
+    });
+    render(
+      <Wrapper>
+        <NvLoadingPlanPage />
+      </Wrapper>,
+    );
+    // 1) Position-Drag (PATCH)
+    const drag1 = await screen.findByTestId('drag-pi-1');
+    fireEvent.click(drag1);
+    // 2) Eject sh-2 via Context-Menu
+    fireEvent.click(screen.getByTestId('ctxmenu-pi-2'));
+    fireEvent.click(
+      await screen.findByText(/Sendung aus Tour entfernen \(Sandbox\)/),
+    );
+    // 3) Drop Insert sh-new
+    const dropzone = screen.getByTestId('nv-3d-dropzone');
+    const dataTransfer = {
+      types: ['application/x-nv-shipment-id'],
+      getData: (mime: string) =>
+        mime === 'application/x-nv-shipment-id' ? 'sh-new' : '',
+      setData: () => {},
+      effectAllowed: 'copy' as const,
+      dropEffect: 'copy' as const,
+    };
+    fireEvent.dragOver(dropzone, { dataTransfer });
+    fireEvent.drop(dropzone, { dataTransfer });
+    // Übernehmen
+    fireEvent.click(screen.getByRole('button', { name: /Übernehmen/ }));
+    await waitFor(() => {
+      expect(callOrder).toContain('POST');
+      expect(callOrder).toContain('DELETE');
+    });
+    // Reihenfolge: PATCH (Position) zuerst, dann POST (Insert), dann DELETE.
+    expect(callOrder.indexOf('PATCH')).toBeLessThan(callOrder.indexOf('POST'));
+    expect(callOrder.indexOf('POST')).toBeLessThan(
+      callOrder.indexOf('DELETE'),
+    );
   });
 });

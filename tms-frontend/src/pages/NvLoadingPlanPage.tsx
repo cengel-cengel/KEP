@@ -16,7 +16,9 @@ import { computeStackingLdmMetrics } from '../lib/loadingLdm';
 import { placePackages, sortPackagesForOptimalPack, type SharedPlacedPackage } from '../lib/loadingShared';
 import { nvExpandPackages, type NvExpandedPackage } from '../lib/nvExpand';
 // Beladeplan/Hof-Verschmelzung Schritt 1: Hof-Liste rechts.
-import NvLoadingPlanHofPanel from './NvLoadingPlanHofPanel';
+import NvLoadingPlanHofPanel, {
+  NV_DRAG_SHIPMENT_MIME,
+} from './NvLoadingPlanHofPanel';
 // Beladeplan/Hof-Verschmelzung Schritt 2: Sandbox-Fundament.
 import {
   initialSandboxState,
@@ -64,6 +66,30 @@ export interface NvShipment {
   has_active_lock?: boolean | null;
   is_hazmat?: boolean | null;
   customers?: { priority_tier?: string | null } | null;
+}
+
+/**
+ * Schritt 3: minimaler Pool-Sendung-Typ fuer Drag-IN.
+ * Subset von /nv-touren/:id/nearby-shipments — nur Felder, die fuer
+ * den synthetischen Stop in patchedTour gebraucht werden.
+ */
+interface NearbyShipmentLite {
+  id: string;
+  shipment_number: string;
+  weight_kg: number | null;
+  ldm: number | null;
+  length_cm: number | null;
+  width_cm: number | null;
+  height_cm: number | null;
+  package_items: Array<{
+    id: string;
+    length_cm: number | null;
+    width_cm: number | null;
+    height_cm: number | null;
+    weight_kg: number | null;
+    quantity: number | null;
+    stackable: boolean;
+  }>;
 }
 
 export interface NvLoadingDetail {
@@ -169,6 +195,22 @@ export default function NvLoadingPlanPage() {
     staleTime: 10_000,
   });
 
+  // Schritt 3: nearby-Pool (gleicher Query-Key wie HofPanel → dedupe
+  // via tanstack-query). Wird gebraucht damit patchedTour fuer
+  // inserted-Sendungen die package_items aus dem Pool ziehen kann.
+  const nearbyQ = useQuery<NearbyShipmentLite[]>({
+    queryKey: ['yard-nv', tourId, 20],
+    queryFn: async () => {
+      if (!tourId) return [];
+      const { data } = await api.get<NearbyShipmentLite[]>(
+        `/nv-touren/${tourId}/nearby-shipments`,
+      );
+      return data;
+    },
+    enabled: !!tourId,
+    staleTime: 30_000,
+  });
+
   // F1.a-Fix + BUG-V-Fix: Kapazitaet ist die EINZIGE Dim-Quelle —
   // resolveVehicleCapacity handhabt Sub-Stammdaten + Tonnen-Parsing
   // konsistent (vehicle = getVehicleDims wurde entfernt; faellt sonst
@@ -208,38 +250,87 @@ export default function NvLoadingPlanPage() {
     if (!tourQ.data) return null;
     if (
       sandbox.positionOverrides.size === 0 &&
-      sandbox.ejectedShipmentIds.size === 0
+      sandbox.ejectedShipmentIds.size === 0 &&
+      sandbox.insertedShipmentIds.size === 0
     ) {
       return tourQ.data;
     }
+    const baseStops = tourQ.data.stops
+      .filter((s) => !sandbox.ejectedShipmentIds.has(s.shipment.id))
+      .map((s) => ({
+        ...s,
+        shipment: {
+          ...s.shipment,
+          shipment_package_items: (
+            s.shipment.shipment_package_items ?? []
+          ).map((it) => {
+            const override = sandbox.positionOverrides.get(it.id);
+            if (!override) return it;
+            return {
+              ...it,
+              pos_x_cm: Math.round(override.posXCm),
+              pos_y_cm: Math.round(override.posYCm),
+              pos_z_cm: Math.round(override.posZCm),
+              rotation_deg:
+                override.rotationDeg !== undefined
+                  ? Math.round(override.rotationDeg)
+                  : (it.rotation_deg ?? null),
+            };
+          }),
+        },
+      }));
+    // Schritt 3: synthetische Stops fuer inserted-Sendungen.
+    // package_items aus nearbyPool ziehen. Stop-IDs mit "sandbox-insert-"
+    // praefixiert — niemals ans BE gesendet (Übernehmen-Mut ruft
+    // POST /stops mit shipment_id, BE erzeugt echten Stop).
+    // Regel #2: GANZE Sendung (alle package_items zusammen) einfügen.
+    const nearbyById = new Map(
+      (nearbyQ.data ?? []).map((n) => [n.id, n]),
+    );
+    const insertedStops: NvLoadingDetail['stops'] = [];
+    const startPos =
+      baseStops.reduce((m, s) => Math.max(m, s.position), 0) + 1;
+    let posOffset = 0;
+    for (const shipmentId of sandbox.insertedShipmentIds) {
+      const lite = nearbyById.get(shipmentId);
+      if (!lite) continue;
+      const items: NvPackageItem[] = lite.package_items.map((it, idx) => ({
+        id: it.id,
+        line_index: idx + 1,
+        quantity: it.quantity ?? 1,
+        // 0-Fallback bei fehlenden Dims → placePackages dropt sie
+        // mit pw/pl/ph<=0 (gleicher Effekt wie unplaced).
+        length_cm: Number(it.length_cm ?? 0),
+        width_cm: Number(it.width_cm ?? 0),
+        height_cm: Number(it.height_cm ?? 0),
+        weight_kg: Number(it.weight_kg ?? 0),
+        stackable: it.stackable !== false,
+        pos_x_cm: null,
+        pos_y_cm: null,
+        pos_z_cm: null,
+        rotation_deg: 0,
+      }));
+      insertedStops.push({
+        id: `sandbox-insert-${shipmentId}`,
+        position: startPos + posOffset,
+        shipment: {
+          id: shipmentId,
+          shipment_number: lite.shipment_number,
+          weight_kg: lite.weight_kg ?? null,
+          ldm: lite.ldm ?? null,
+          length_cm: lite.length_cm ?? null,
+          width_cm: lite.width_cm ?? null,
+          height_cm: lite.height_cm ?? null,
+          shipment_package_items: items,
+        },
+      });
+      posOffset += 1;
+    }
     return {
       ...tourQ.data,
-      stops: tourQ.data.stops
-        .filter((s) => !sandbox.ejectedShipmentIds.has(s.shipment.id))
-        .map((s) => ({
-          ...s,
-          shipment: {
-            ...s.shipment,
-            shipment_package_items: (
-              s.shipment.shipment_package_items ?? []
-            ).map((it) => {
-              const override = sandbox.positionOverrides.get(it.id);
-              if (!override) return it;
-              return {
-                ...it,
-                pos_x_cm: Math.round(override.posXCm),
-                pos_y_cm: Math.round(override.posYCm),
-                pos_z_cm: Math.round(override.posZCm),
-                rotation_deg:
-                  override.rotationDeg !== undefined
-                    ? Math.round(override.rotationDeg)
-                    : (it.rotation_deg ?? null),
-              };
-            }),
-          },
-        })),
+      stops: [...baseStops, ...insertedStops],
     };
-  }, [tourQ.data, sandbox]);
+  }, [tourQ.data, sandbox, nearbyQ.data]);
 
   const packages = useMemo(
     () =>
@@ -340,11 +431,17 @@ export default function NvLoadingPlanPage() {
     window.setTimeout(() => setToast(null), 2500);
   }
 
-  // Schritt 2: Übernehmen-Mutation — einziger DB-Write-Pfad.
-  // Reihenfolge stabil: erst Position-Patches, dann Stop-Deletes
-  // (Eject zuerst koennte Position-Patches fuer ge-loeschte Items
-  // 404-en). Sammelt Fehler, throwt am Ende; Sandbox wird NUR bei
-  // vollstaendigem Erfolg geleert.
+  // Schritt 2+3: Übernehmen-Mutation — einziger DB-Write-Pfad.
+  // Reihenfolge stabil:
+  //   1. Position-Overrides (PATCH) — vor Eject, sonst 404 auf ge-
+  //      loeschten Items.
+  //   2. Inserted Stops (POST)      — vor Eject, damit eine Re-Plan-
+  //      Tour beide hat, der Insert nicht durch BE-Capacity-Check
+  //      blockiert wird (Eject macht erst danach Platz im Plan,
+  //      aber BE-Capacity ist je nach Tour-State eh nur Hinweis).
+  //   3. Ejected Stops (DELETE)      — last, da destruktiv.
+  // Sammelt Fehler, throwt am Ende; Sandbox NUR bei voll-Erfolg
+  // geleert.
   const uebernehmenMut = useMutation({
     mutationFn: async () => {
       const errors: string[] = [];
@@ -369,7 +466,21 @@ export default function NvLoadingPlanPage() {
           errors.push(`Position ${dbItemId}: ${status}`);
         }
       }
-      // 2. Ejected Stops
+      // 2. Inserted Shipments — POST /nv-touren/:id/stops {shipment_id}.
+      // BE-Endpoint (CreateNvTourStopDto) erzeugt einen Stop am Ende
+      // der Tour (position wird automatisch vergeben).
+      for (const shipmentId of sandbox.insertedShipmentIds) {
+        try {
+          await api.post(`/nv-touren/${tourId}/stops`, {
+            shipment_id: shipmentId,
+          });
+        } catch (e: unknown) {
+          const status =
+            (e as { response?: { status?: number } })?.response?.status ?? '?';
+          errors.push(`Insert ${shipmentId}: ${status}`);
+        }
+      }
+      // 3. Ejected Stops — DELETE.
       for (const shipmentId of sandbox.ejectedShipmentIds) {
         const stop = tourQ.data?.stops.find(
           (s) => s.shipment.id === shipmentId,
@@ -392,6 +503,9 @@ export default function NvLoadingPlanPage() {
       sandboxDispatch({ type: 'clearAll' });
       qc.invalidateQueries({ queryKey: ['nv-loading', tourId] });
       qc.invalidateQueries({ queryKey: ['nv-tour-detail', tourId] });
+      // nearby-Pool refreshen: inserted Sendungen koennten nicht mehr
+      // in der Liste auftauchen (tour_id != null nach POST).
+      qc.invalidateQueries({ queryKey: ['yard-nv', tourId, 20] });
       showToast('Sandbox übernommen — gespeichert.');
     },
     onError: (e: Error) => {
@@ -739,7 +853,28 @@ export default function NvLoadingPlanPage() {
             )}
 
             {/* 3D-Canvas — F1.a-Fix-2: Trailer-Box aus capacity (echte
-                Geometrie), nicht aus getVehicleDims-Koffer-7t-Fallback. */}
+                Geometrie), nicht aus getVehicleDims-Koffer-7t-Fallback.
+                Schritt 3: Drop-Zone-Wrapper fuer Drag-IN aus Hof.
+                onDragOver muss preventDefault aufrufen sonst feuert
+                onDrop nicht (HTML5-Spec). */}
+            <div
+              data-testid="nv-3d-dropzone"
+              onDragOver={(e) => {
+                if (e.dataTransfer.types.includes(NV_DRAG_SHIPMENT_MIME)) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'copy';
+                }
+              }}
+              onDrop={(e) => {
+                const shipmentId = e.dataTransfer.getData(
+                  NV_DRAG_SHIPMENT_MIME,
+                );
+                if (!shipmentId) return;
+                e.preventDefault();
+                sandboxDispatch({ type: 'insert', shipmentId });
+                showToast(`Sendung in Sandbox eingefügt — übernehmen?`);
+              }}
+            >
             <LoadingPlan3D
               vehicle={{
                 lengthCm: capacity.lengthCm,
@@ -764,6 +899,7 @@ export default function NvLoadingPlanPage() {
                 });
               }}
             />
+            </div>
 
             {/* F1.a/O Achslast — trailerLength_m aus capacity (echte
                 Box-Laenge, sonst falsche Schwerpunkt-Berechnung).
@@ -793,10 +929,14 @@ export default function NvLoadingPlanPage() {
           </div>
         )}
       </div>
-        {/* RIGHT: Hof-Liste (PLZ-Cluster, Sendung-Cards). Phase 1
-            ohne Drag — Phase 2 ergänzt HTML5-Drag-Source. */}
+        {/* RIGHT: Hof-Liste (PLZ-Cluster, Sendung-Cards). Schritt 3:
+            Cards sind HTML5-Drag-Source — Drop-Zone ist <div> um
+            LoadingPlan3D oben. */}
         <aside className="w-80 lg:w-96 flex-shrink-0 border-l bg-white flex flex-col overflow-hidden">
-          <NvLoadingPlanHofPanel tourId={tourId ?? null} />
+          <NvLoadingPlanHofPanel
+            tourId={tourId ?? null}
+            insertedShipmentIds={sandbox.insertedShipmentIds}
+          />
         </aside>
       </div>
       {ctxMenu &&

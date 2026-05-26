@@ -1,5 +1,5 @@
 /**
- * NV-Beladeplan/Hof-Verschmelzung Schritt 1: rechts-Spalte Hof-Liste.
+ * NV-Beladeplan/Hof-Verschmelzung Schritt 1 + 3: rechts-Spalte Hof-Liste.
  *
  * Datenquelle wie YardPanel: GET /nv-touren/:tourId/nearby-shipments
  * → nearby-Pool (default 20 km).
@@ -13,11 +13,17 @@
  *   N-001 · Kunde A
  *   12.5 m³ · 1500 kg · 5 Pal · 18.7 km
  *
+ * Schritt 3 (Drag IN): Cards sind HTML5-Drag-Source.
+ *   · draggable=true + onDragStart setzt dataTransfer-Typ
+ *     'application/x-nv-shipment-id' = shipment.id.
+ *   · Drop-Target ist der 3D-Canvas-Wrapper in NvLoadingPlanPage
+ *     (onDrop dispatcht Sandbox-'insert'-Action).
+ *   · Sendungen die bereits inserted sind, werden gehighlightet
+ *     (badge "✓ in Tour (Sandbox)"). Click + Drag bleiben funktional —
+ *     repeated Insert ist idempotent (Set-Dedup).
+ *
  * Tap auf Card → YardShipmentDetailModal (selbes Modal wie Hof-Tab,
  * mobile-tauglich, ESC/X/Backdrop close).
- *
- * Phase 1: KEIN Drag. Phase 2 (separater Sprint) ergänzt HTML5-
- * Drag-Source mit draggable=true + onDragStart.
  */
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -51,14 +57,22 @@ interface NearbyShipment {
   distance_km: number;
 }
 
+/** Schritt 3 Drag-Source DataTransfer-MIME (intern). */
+export const NV_DRAG_SHIPMENT_MIME = 'application/x-nv-shipment-id';
+
 interface Props {
   /** NV-Tour-ID. Wenn null/undefined → Hinweis-Text statt Liste. */
   tourId: string | null | undefined;
+  /** Schritt 3: Sandbox-inserted shipmentIds — Cards werden gehighlightet. */
+  insertedShipmentIds?: Set<string>;
 }
 
 const NV_RADIUS_KM = 20;
 
-export default function NvLoadingPlanHofPanel({ tourId }: Props) {
+export default function NvLoadingPlanHofPanel({
+  tourId,
+  insertedShipmentIds,
+}: Props) {
   const panel = usePanel();
   const [modalShipmentId, setModalShipmentId] = useState<string | null>(null);
 
@@ -168,32 +182,61 @@ export default function NvLoadingPlanHofPanel({ tourId }: Props) {
               {c.key} · {c.sdgCount} Sdg · ≈ {c.lkwCount} LKW
             </div>
             <ul className="space-y-1.5">
-              {c.ships.map((s) => (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    onClick={() => setModalShipmentId(s.id)}
-                    className="w-full text-left p-2 rounded border border-gray-200 bg-white hover:bg-blue-50 active:bg-blue-100 text-xs leading-snug min-h-[44px]"
-                    data-testid={`hof-card-${s.id}`}
-                  >
-                    <div className="font-mono font-semibold text-gray-900 truncate">
-                      {s.shipment_number}
-                      {s.customer_name && (
-                        <span className="font-normal text-gray-600">
-                          {' · '}
-                          {s.customer_name}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-gray-500 mt-0.5">
-                      {fmtNum(s.volume_m3, 'm³', 1)} ·{' '}
-                      {fmtInt(s.weight_kg, 'kg')} ·{' '}
-                      {fmtInt(s.effective_pallets, 'Pal')} ·{' '}
-                      {fmtNum(s.distance_km, 'km', 1)}
-                    </div>
-                  </button>
-                </li>
-              ))}
+              {c.ships.map((s) => {
+                const isInserted = insertedShipmentIds?.has(s.id) ?? false;
+                return (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      draggable
+                      onDragStart={(e) => {
+                        // Schritt 3: shipmentId via dataTransfer ans
+                        // Page-Drop-Handler. effectAllowed=copy weil
+                        // wir die Sendung "kopieren" (Insert macht den
+                        // Hof-Eintrag NICHT obsolete — BE entscheidet
+                        // erst bei Übernehmen).
+                        e.dataTransfer.setData(NV_DRAG_SHIPMENT_MIME, s.id);
+                        e.dataTransfer.effectAllowed = 'copy';
+                      }}
+                      onClick={() => setModalShipmentId(s.id)}
+                      className={
+                        'w-full text-left p-2 rounded border text-xs leading-snug min-h-[44px] ' +
+                        (isInserted
+                          ? 'border-emerald-400 bg-emerald-50 cursor-grab opacity-80'
+                          : 'border-gray-200 bg-white hover:bg-blue-50 active:bg-blue-100 cursor-grab')
+                      }
+                      data-testid={`hof-card-${s.id}`}
+                      data-inserted={isInserted ? '1' : '0'}
+                      title={
+                        isInserted
+                          ? 'Bereits in Sandbox eingefügt — bei Übernehmen wird ein Stop angelegt.'
+                          : 'Klick: Detail · Drag: in Auflieger einfügen'
+                      }
+                    >
+                      <div className="font-mono font-semibold text-gray-900 truncate flex items-center gap-1">
+                        <span>{s.shipment_number}</span>
+                        {s.customer_name && (
+                          <span className="font-normal text-gray-600 truncate">
+                            {' · '}
+                            {s.customer_name}
+                          </span>
+                        )}
+                        {isInserted && (
+                          <span className="ml-auto text-[10px] font-medium text-emerald-700 bg-emerald-100 border border-emerald-300 rounded px-1 py-px">
+                            ✓ in Tour
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-gray-500 mt-0.5">
+                        {fmtNum(s.volume_m3, 'm³', 1)} ·{' '}
+                        {fmtInt(s.weight_kg, 'kg')} ·{' '}
+                        {fmtInt(s.effective_pallets, 'Pal')} ·{' '}
+                        {fmtNum(s.distance_km, 'km', 1)}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ))}

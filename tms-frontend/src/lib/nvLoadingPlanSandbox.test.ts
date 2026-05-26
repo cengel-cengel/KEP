@@ -25,6 +25,7 @@ describe('sandboxReducer', () => {
   it('Initial-State ist leer', () => {
     expect(initialSandboxState.positionOverrides.size).toBe(0);
     expect(initialSandboxState.ejectedShipmentIds.size).toBe(0);
+    expect(initialSandboxState.insertedShipmentIds.size).toBe(0);
     expect(isSandboxEmpty(initialSandboxState)).toBe(true);
     expect(sandboxChangeCount(initialSandboxState)).toBe(0);
   });
@@ -150,8 +151,61 @@ describe('sandboxReducer', () => {
     });
   });
 
+  describe('insert (Schritt 3 — Drag IN)', () => {
+    it('fuegt shipmentId in inserted hinzu', () => {
+      const s = sandboxReducer(initialSandboxState, {
+        type: 'insert',
+        shipmentId: 'sh-new',
+      });
+      expect(s.insertedShipmentIds.has('sh-new')).toBe(true);
+      expect(s.insertedShipmentIds.size).toBe(1);
+      expect(sandboxChangeCount(s)).toBe(1);
+    });
+
+    it('no-op wenn schon inserted (identische Reference)', () => {
+      const s1 = sandboxReducer(initialSandboxState, {
+        type: 'insert',
+        shipmentId: 'sh-1',
+      });
+      const s2 = sandboxReducer(s1, {
+        type: 'insert',
+        shipmentId: 'sh-1',
+      });
+      expect(s2).toBe(s1);
+    });
+
+    it('insert auf zuvor ejected → eject zurueckgenommen + insert gesetzt', () => {
+      let s = sandboxReducer(initialSandboxState, {
+        type: 'eject',
+        shipmentId: 'sh-X',
+      });
+      s = sandboxReducer(s, { type: 'insert', shipmentId: 'sh-X' });
+      expect(s.ejectedShipmentIds.has('sh-X')).toBe(false);
+      expect(s.insertedShipmentIds.has('sh-X')).toBe(true);
+      // changeCount = 1 (nur Insert), nicht 2 (Eject + Insert).
+      expect(sandboxChangeCount(s)).toBe(1);
+    });
+
+    it('removeInsert entfernt aus inserted', () => {
+      let s = sandboxReducer(initialSandboxState, {
+        type: 'insert',
+        shipmentId: 'sh-A',
+      });
+      s = sandboxReducer(s, { type: 'removeInsert', shipmentId: 'sh-A' });
+      expect(s.insertedShipmentIds.size).toBe(0);
+    });
+
+    it('removeInsert no-op wenn nicht inserted', () => {
+      const s = sandboxReducer(initialSandboxState, {
+        type: 'removeInsert',
+        shipmentId: 'never',
+      });
+      expect(s).toBe(initialSandboxState);
+    });
+  });
+
   describe('clearAll', () => {
-    it('setzt State zurueck (positions + ejected)', () => {
+    it('setzt State zurueck (positions + ejected + inserted)', () => {
       let s = sandboxReducer(initialSandboxState, {
         type: 'setPosition',
         dbItemId: 'i-1',
@@ -159,9 +213,11 @@ describe('sandboxReducer', () => {
       });
       s = sandboxReducer(s, { type: 'eject', shipmentId: 'sh-1' });
       s = sandboxReducer(s, { type: 'setPosition', dbItemId: 'i-2', pos });
-      expect(sandboxChangeCount(s)).toBe(3);
+      s = sandboxReducer(s, { type: 'insert', shipmentId: 'sh-new' });
+      expect(sandboxChangeCount(s)).toBe(4);
       const cleared = sandboxReducer(s, { type: 'clearAll' });
       expect(isSandboxEmpty(cleared)).toBe(true);
+      expect(cleared.insertedShipmentIds.size).toBe(0);
     });
   });
 

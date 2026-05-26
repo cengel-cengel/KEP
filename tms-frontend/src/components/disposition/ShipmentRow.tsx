@@ -11,12 +11,11 @@
  *   Callback ersetzt. Selection-Toggle re-rendert jetzt NUR die EINE
  *   betroffene Row (statt aller ~600).
  *
- * DIAGNOSE (temporaer): Custom-areEqual mit console.log. Verhalten
- * identisch zu default-shallow (return false bei Diff = re-render).
- * Logs zeigen WELCHE Prop bei den 599 Non-Toggled-Rows ungleich ist.
- * Wird nach Befund entfernt.
+ * Phase-D (Diag-Code raus, Cause-2-fix lebt in DispositionMap-
+ *   handler-useCallback): Default-shallow memo wieder aktiv. Kein
+ *   areEqual + console.log, kein Mount/Unmount-useEffect mehr.
  */
-import { memo, useEffect } from 'react';
+import { memo } from 'react';
 import ShipmentCard from '../ShipmentCard';
 import type { Shipment } from '../../types/shipment';
 
@@ -59,20 +58,6 @@ function ShipmentRowImpl({
   isBulkSelected,
   getBulkIds,
 }: ShipmentRowProps) {
-  // DIAGNOSE (temporaer): Mount/Unmount-Log um zu bestaetigen ob
-  // Rows wirklich remountet werden (Hypothese: ja, ~600× pro Toggle).
-  // useEffect mit deps=[] feuert NUR bei Mount + Unmount, nicht bei
-  // Re-Renders.
-  useEffect(() => {
-    const sid = shipment.id?.slice(0, 8) ?? '?';
-    // eslint-disable-next-line no-console
-    console.log('ROW-MOUNT', sid);
-    return () => {
-      // eslint-disable-next-line no-console
-      console.log('ROW-UNMOUNT', sid);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   const className = `flex items-start gap-2 rounded-lg border transition-colors ${
     isHighlighted
       ? 'border-yellow-500 ring-2 ring-yellow-300 bg-yellow-50 animate-pulse'
@@ -111,37 +96,5 @@ function ShipmentRowImpl({
   );
 }
 
-/**
- * DIAGNOSE-areEqual (temporaer): identisches Verhalten wie
- * default-shallow (return false bei Diff = re-render, return true
- * = skip). Zusaetzlich console.log bei Diff mit dem brechenden
- * Prop-Namen + Typ-Info. Wird entfernt sobald Memo-Breaker
- * identifiziert.
- */
-function areEqual(
-  prev: Readonly<ShipmentRowProps>,
-  next: Readonly<ShipmentRowProps>,
-): boolean {
-  const keys = Object.keys(next) as Array<keyof ShipmentRowProps>;
-  for (const k of keys) {
-    if (prev[k] !== next[k]) {
-      const sid = next.shipment?.id?.slice(0, 8) ?? '?';
-      // eslint-disable-next-line no-console
-      console.log(
-        'ROW-RERENDER',
-        sid,
-        'breaking-prop:',
-        k,
-        'prevType:',
-        typeof prev[k],
-        'nextType:',
-        typeof next[k],
-      );
-      return false;
-    }
-  }
-  return true;
-}
-
-const ShipmentRow = memo(ShipmentRowImpl, areEqual);
+const ShipmentRow = memo(ShipmentRowImpl);
 export default ShipmentRow;

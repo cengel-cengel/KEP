@@ -342,6 +342,25 @@ export default function DispositionPage() {
     setDetailNavSource('undispatched');
     setDetailViewShipmentId(id);
   }, []);
+  // Phase-C/D: stabile Refs fuer DispositionMap-Handler. Vorher
+  // brachen inline-Arrows onSelect/onTourRouteDistances die
+  // DispositionMap-useEffect-Stabilitaet → 600 Leaflet-Marker-
+  // Rebuilds bei jedem selectedIds-Toggle (Carlos: 773 SVG-paths).
+  // useCallback deps=[] reicht — alle State-Setter sind stabil.
+  const handleMapSelect = useCallback(
+    (id: string | null) => setSelectedShipmentId(id),
+    [],
+  );
+  const handleTourRouteDistances = useCallback(
+    (data: {
+      totalDistanceKm: number | null;
+      shipmentDistancesKmById: Record<string, number | null>;
+    }) => {
+      setTourTotalDistanceKm(data.totalDistanceKm);
+      setTourShipmentDistancesKmById(data.shipmentDistancesKmById);
+    },
+    [],
+  );
   // Phase-C: Bulk-IDs werden NICHT als Prop gepusht (Memo-Breaker).
   // Stattdessen: Ref-mirror + stabiler useCallback-Getter, der zur
   // Mutation-Zeit (Bulk-Stackable/Transport in ShipmentCard) die
@@ -778,14 +797,19 @@ export default function DispositionPage() {
               }
             }}
           >
-            <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+            {/* Phase-C/D: stabile Keys auf den 3 Geschwistern damit
+                der bulk-bar-Conditional bei 0↔1 die Liste NICHT
+                positional verdraengt. Defensiv — DispositionMap-Fix
+                A ist die Hauptursache, aber Keys haerten den Reconciler
+                gegen unkeyed-Sibling-Edge-Cases. */}
+            <div key="header" className="bg-gray-50 px-4 py-3 border-b border-gray-200">
               <h2 className="font-medium text-gray-900">Nicht disponiert</h2>
               <p className="text-sm text-gray-500">
                 Sendungen ohne Tour ({undispatched.length}) – per Drag auf eine Tour ziehen
               </p>
             </div>
             {selectedIds.size > 0 && (
-              <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between text-sm">
+              <div key="bulk" className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between text-sm">
                 <span className="font-medium text-blue-900">
                   {selectedIds.size} Sendung{selectedIds.size === 1 ? '' : 'en'} markiert
                 </span>
@@ -798,7 +822,7 @@ export default function DispositionPage() {
                 </button>
               </div>
             )}
-            <div className="p-4 flex-1 min-h-0 overflow-y-auto space-y-2">
+            <div key="list" className="p-4 flex-1 min-h-0 overflow-y-auto space-y-2">
               {loadingShipments ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="animate-spin h-8 w-8 border-2 border-[#1e40af] border-t-transparent rounded-full" />
@@ -1349,11 +1373,8 @@ export default function DispositionPage() {
                   selectedId={selectedShipmentId}
                   tours={tours}
                   selectedTourId={selectedTourId}
-                  onSelect={(id) => setSelectedShipmentId(id)}
-                    onTourRouteDistances={(data) => {
-                      setTourTotalDistanceKm(data.totalDistanceKm);
-                      setTourShipmentDistancesKmById(data.shipmentDistancesKmById);
-                    }}
+                  onSelect={handleMapSelect}
+                    onTourRouteDistances={handleTourRouteDistances}
                     tourRouteRefreshKey={tourRouteRefreshKey}
                 />
               )}

@@ -36,6 +36,12 @@ export interface SharedPackage {
   storedPosX?: number | null;
   storedPosY?: number | null;
   storedPosZ?: number | null;
+  /** Rotation-aware-Pack (LP-1): 0 oder 90 (Y-Achsen-Rotation, swap
+   *  L↔W). placePackages packt jetzt mit effektiven Dims, damit der
+   *  Pack-Footprint exakt dem Mesh-Render-Footprint (LoadingPlan3D
+   *  effPkg) entspricht — sonst Render-Box ragt ueber Pack-Slot
+   *  hinaus → visuell verschachtelt. */
+  rotationDeg?: number;
 }
 
 /** Pos-Ergaenzung nach Auto-Placement. Pass-Through-Felder von P
@@ -57,6 +63,23 @@ export interface SharedPlacedPackage {
 
 /* ─── interne Bin-Pack-Helfer (file-scope) ─────────────────────── */
 
+/**
+ * Rotation-aware effektive Dimensionen.
+ *   rot=90 → swap L↔W (footprint rotiert in der XY-Ebene).
+ *   rot=0  → unchanged.
+ * Wird vom Pack-Algo intern fuer ALLE Footprint-Vergleiche genutzt
+ * (Phase-1 clamp, Phase-2 row-bin, Stack-Slot-Suche, getStackHeight).
+ * Output-widthCm/lengthCm bleiben ORIGINAL (clipped) — der LoadingPlan3D-
+ * effPkg-Swap dreht beim Render → konsistent.
+ */
+function effDims(pkg: SharedPackage): { effW: number; effL: number } {
+  const rot = pkg.rotationDeg ?? 0;
+  if (rot === 90) {
+    return { effW: pkg.lengthCm, effL: pkg.widthCm };
+  }
+  return { effW: pkg.widthCm, effL: pkg.lengthCm };
+}
+
 function rectsOverlap2D(
   ax: number,
   ay: number,
@@ -77,10 +100,14 @@ function getStackHeight(
   footprintW: number,
   footprintL: number,
 ): number {
+  // footprintW/L sind bereits effektiv (rotation-aware) vom Caller.
+  // Fuer placed[i] muessen wir effDims selbst berechnen — sonst
+  // ueberlaeppt rotation=90-Box nicht korrekt mit der Stack-Anfrage.
   let maxTop = 0;
   for (const p of placed) {
+    const pEff = effDims(p);
     if (
-      rectsOverlap2D(x, y, footprintW, footprintL, p.posX, p.posY, p.widthCm, p.lengthCm)
+      rectsOverlap2D(x, y, footprintW, footprintL, p.posX, p.posY, pEff.effW, pEff.effL)
     ) {
       maxTop = Math.max(maxTop, p.posZ + p.heightCm);
     }
@@ -106,8 +133,12 @@ function findPreferredStackSlot(
     // oberes Gewicht <= unteres Gewicht (schwer-unten-leicht-oben).
     // (Vorher: exakte Footprint-Gleichheit — Mischpaletten landeten
     // unnoetig auf Boden, Trailer ueberlief.)
-    if (pw > p.widthCm + 1e-6) continue;
-    if (pl > p.lengthCm + 1e-6) continue;
+    // Rotation-aware (LP-1): Footprint-Vergleich nutzt effDims von
+    // beiden — pw/pl sind bereits effektiv (Caller), p braucht effDims-
+    // Berechnung.
+    const pEff = effDims(p);
+    if (pw > pEff.effW + 1e-6) continue;
+    if (pl > pEff.effL + 1e-6) continue;
     if ((pkg.weightKg ?? 0) > (p.weightKg ?? 0) + 1e-6) continue;
     // Basis muss stapelbar sein (Carlos-Regel via canStackOn)
     if (!canStackOn(p, pkg).allowed) continue;
@@ -180,6 +211,9 @@ export function placePackages<P extends SharedPackage>(
 
   // Phase 1: Pakete mit gespeicherter Position direkt setzen.
   // Diese wirken im Anschluss als "Hindernisse" fuer Auto-Placer.
+  // Rotation-aware: pw/pl sind effektiv (rotation=90 swap), aber das
+  // OUTPUT widthCm/lengthCm bleibt ORIGINAL (clipped) — sonst dreht
+  // LoadingPlan3D's effPkg-Swap die Render-Box zurueck → falsch.
   const remaining: P[] = [];
   for (const pkg of packages) {
     if (
@@ -187,13 +221,13 @@ export function placePackages<P extends SharedPackage>(
       pkg.storedPosY != null &&
       pkg.storedPosZ != null
     ) {
-      const pw = Math.min(pkg.widthCm, trailerW);
-      const pl = Math.min(pkg.lengthCm, trailerL);
       const ph = Math.min(pkg.heightCm, trailerH);
+      const outW = Math.min(pkg.widthCm, trailerW);
+      const outL = Math.min(pkg.lengthCm, trailerL);
       placed.push({
         ...pkg,
-        widthCm: pw,
-        lengthCm: pl,
+        widthCm: outW,
+        lengthCm: outL,
         heightCm: ph,
         posX: pkg.storedPosX,
         posY: pkg.storedPosY,
@@ -209,17 +243,23 @@ export function placePackages<P extends SharedPackage>(
   let rowMaxLength = 0;
 
   for (const pkg of remaining) {
-    const pw = Math.min(pkg.widthCm, trailerW);
-    const pl = Math.min(pkg.lengthCm, trailerL);
+    // Rotation-aware: pw/pl effektiv fuer Pack-Decisions. ph unverändert.
+    // Output-widthCm/lengthCm = ORIGINAL (clipped) damit LoadingPlan3D
+    // effPkg-Swap die Render-Geo korrekt aus den ORIGINAL-Dims aufbaut.
+    const eff = effDims(pkg);
+    const pw = Math.min(eff.effW, trailerW);
+    const pl = Math.min(eff.effL, trailerL);
     const ph = Math.min(pkg.heightCm, trailerH);
+    const outW = Math.min(pkg.widthCm, trailerW);
+    const outL = Math.min(pkg.lengthCm, trailerL);
     if (pw <= 0 || pl <= 0 || ph <= 0) continue;
 
     const stackSlot = findPreferredStackSlot(pkg, placed, pw, pl, ph, trailerH);
     if (stackSlot) {
       placed.push({
         ...pkg,
-        widthCm: pw,
-        lengthCm: pl,
+        widthCm: outW,
+        lengthCm: outL,
         heightCm: ph,
         posX: stackSlot.posX,
         posY: stackSlot.posY,
@@ -248,8 +288,8 @@ export function placePackages<P extends SharedPackage>(
         // Banner.
         placed.push({
           ...pkg,
-          widthCm: pw,
-          lengthCm: pl,
+          widthCm: outW,
+          lengthCm: outL,
           heightCm: ph,
           posX: 0,
           posY: 0,
@@ -274,8 +314,8 @@ export function placePackages<P extends SharedPackage>(
       }
       placed.push({
         ...pkg,
-        widthCm: pw,
-        lengthCm: pl,
+        widthCm: outW,
+        lengthCm: outL,
         heightCm: ph,
         posX: cx,
         posY: cy,
@@ -293,8 +333,8 @@ export function placePackages<P extends SharedPackage>(
       // cy-Overflow-Zweig oben.
       placed.push({
         ...pkg,
-        widthCm: pw,
-        lengthCm: pl,
+        widthCm: outW,
+        lengthCm: outL,
         heightCm: ph,
         posX: 0,
         posY: 0,

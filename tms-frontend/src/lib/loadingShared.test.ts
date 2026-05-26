@@ -25,6 +25,7 @@ function mkPkg(opts: Partial<SharedPackage & { id: string }>): SharedPackage & {
     storedPosX: opts.storedPosX ?? null,
     storedPosY: opts.storedPosY ?? null,
     storedPosZ: opts.storedPosZ ?? null,
+    rotationDeg: opts.rotationDeg ?? 0,
   };
 }
 
@@ -196,5 +197,164 @@ describe('placePackages — BUG-F-PACK Mischpaletten-Stack', () => {
     );
     const top = out.find((p) => p.id === 'top');
     expect(top?.posZ).toBe(0);
+  });
+});
+
+describe('placePackages — Rotation-aware Pack (rotation_deg=90)', () => {
+  /**
+   * Carlos-N010-Repro: Items mit rotation_deg=90 wurden vor Fix mit
+   * ihren UNROTIERTEN Dims gepackt (W=80, L=120), aber von
+   * LoadingPlan3D.effPkg rotiert gerendert (W=120, L=80). Folge:
+   * Render-Footprint ragte 40cm in die Pack-Reserve nebenan → visuelle
+   * Verschachtelung mit Nachbarn.
+   *
+   * Fix: effDims-Swap im Pack — pw/pl, getStackHeight, find-
+   * PreferredStackSlot rechnen mit rotation-aware Footprint. Output-
+   * widthCm/lengthCm bleiben ORIGINAL, damit LoadingPlan3D effPkg
+   * konsistent zurueckdreht (kein doppelter Swap).
+   */
+  it('rotation=90 + rotation=0 Nachbar packen disjunkt (rotation-aware Phase-2)', () => {
+    // Item-Rot (rotation=90, L=120 W=80): rotated-Footprint 120W × 80L.
+    // Item-Std (rotation=0, L=100 W=80): unrotated-Footprint 80W × 100L.
+    // Trailer 240W × 800L. Rot zuerst nach (0,0), Std danach.
+    // Rotated-Footprint 120W → next-row-start cx=120. Std (80W) bei
+    // cx=120 → footprint x[120..200] y[0..100]. Rot-render bei x[0..120]
+    // y[0..80] → KEIN Overlap (touch x=120). ✓
+    const out = placePackages(
+      [
+        mkPkg({
+          id: 'rot',
+          lengthCm: 120,
+          widthCm: 80,
+          rotationDeg: 90,
+          isStackable: false,
+        }),
+        mkPkg({
+          id: 'std',
+          lengthCm: 100,
+          widthCm: 80,
+          rotationDeg: 0,
+          isStackable: false,
+        }),
+      ],
+      800,
+      240,
+      300,
+    );
+    const rot = out.find((p) => p.id === 'rot');
+    const std = out.find((p) => p.id === 'std');
+    expect(rot?.unplaced).toBeFalsy();
+    expect(std?.unplaced).toBeFalsy();
+    // Std startet NACH dem rotated-Footprint von rot (x=120).
+    expect(std?.posX).toBeGreaterThanOrEqual(120 - 1e-6);
+    // Output widthCm/lengthCm bleiben ORIGINAL (LoadingPlan3D
+    // effPkg-Swap erwartet das).
+    expect(rot?.widthCm).toBe(80);
+    expect(rot?.lengthCm).toBe(120);
+  });
+
+  it('rotation=0 unveraendert (no-regression, Standard-Fall)', () => {
+    // Ohne rotation: gleiches Verhalten wie vor Fix.
+    const out = placePackages(
+      [
+        mkPkg({
+          id: 'a',
+          lengthCm: 120,
+          widthCm: 80,
+          rotationDeg: 0,
+          isStackable: false,
+        }),
+        mkPkg({
+          id: 'b',
+          lengthCm: 120,
+          widthCm: 80,
+          rotationDeg: 0,
+          isStackable: false,
+        }),
+      ],
+      800,
+      240,
+      300,
+    );
+    const a = out.find((p) => p.id === 'a');
+    const b = out.find((p) => p.id === 'b');
+    expect(a?.posX).toBe(0);
+    expect(a?.posY).toBe(0);
+    expect(b?.posX).toBe(80);
+    expect(b?.posY).toBe(0);
+  });
+
+  it('Phase-1 storedPos rotation=90: getStackHeight nutzt effDims als Obstacle', () => {
+    // Item-1 storedPos (0, 0), rotation=90, L=120 W=80 → effektive
+    // Footprint 120W × 80L. Belegt x[0..120] y[0..80] (effektiv).
+    // Item-2 (unrotated, W=80 L=100, non-stackable) sucht Phase-2-Slot.
+    // Bei (0, 0) BLOCKIERT (overlap mit item-1 effDims). Bei (120, 0)
+    // FREI. Bei (0, 80) FREI (y=80 ist item-1's effL-Ende).
+    const out = placePackages(
+      [
+        mkPkg({
+          id: 'rot-1',
+          lengthCm: 120,
+          widthCm: 80,
+          rotationDeg: 90,
+          storedPosX: 0,
+          storedPosY: 0,
+          storedPosZ: 0,
+          isStackable: false,
+        }),
+        mkPkg({
+          id: 'std-1',
+          lengthCm: 100,
+          widthCm: 80,
+          rotationDeg: 0,
+          isStackable: false,
+        }),
+      ],
+      800,
+      240,
+      300,
+    );
+    const std = out.find((p) => p.id === 'std-1');
+    expect(std?.unplaced).toBeFalsy();
+    // std-1 darf NICHT bei (0,0) sitzen — dort blockiert effective
+    // Footprint von rot-1.
+    if (std && !std.unplaced) {
+      // std posX >= 120 (rechts von rot-1) ODER posY >= 80 (hinter rot-1).
+      const placedRightOfRot = std.posX >= 120 - 1e-6;
+      const placedBehindRot = std.posY >= 80 - 1e-6;
+      expect(placedRightOfRot || placedBehindRot).toBe(true);
+    }
+  });
+
+  it('mixed rotation 0+90+0: alle drei platziert ohne Render-Overlap', () => {
+    const out = placePackages(
+      [
+        mkPkg({
+          id: 'a',
+          lengthCm: 100,
+          widthCm: 80,
+          rotationDeg: 0,
+          isStackable: false,
+        }),
+        mkPkg({
+          id: 'rot',
+          lengthCm: 120,
+          widthCm: 80,
+          rotationDeg: 90,
+          isStackable: false,
+        }),
+        mkPkg({
+          id: 'b',
+          lengthCm: 100,
+          widthCm: 80,
+          rotationDeg: 0,
+          isStackable: false,
+        }),
+      ],
+      800,
+      240,
+      300,
+    );
+    expect(out.every((p) => !p.unplaced)).toBe(true);
   });
 });

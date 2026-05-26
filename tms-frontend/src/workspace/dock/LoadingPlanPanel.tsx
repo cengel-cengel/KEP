@@ -34,7 +34,7 @@ import {
   flattenPackages as flattenNvPackages,
   type NvLoadingDetail,
 } from '../../pages/NvLoadingPlanPage';
-import { getVehicleDims, resolveFahrzeugTyp } from '../../lib/vehicleTypes';
+import { resolveVehicleCapacity } from '../../lib/vehicleTypes';
 
 /** Fallback wenn FV-recommendedVehicle fehlt. */
 const FV_DEFAULT_DIMS = { lengthCm: 1360, widthCm: 240, heightCm: 270 };
@@ -91,31 +91,57 @@ function NvBody({
     staleTime: 10_000,
   });
 
-  const vehicle = useMemo(() => {
-    const fz = resolveFahrzeugTyp(
+  // BUG-D-Fix: resolveVehicleCapacity statt getVehicleDims —
+  // Tonnen-Notation ("12T") wird korrekt aufgeloest (8.7-13 ldm)
+  // statt auf Koffer-7t (6 ldm) zurueckzufallen. Mirror der
+  // Vollansicht-Pattern (NvLoadingPlanPage L177-189).
+  const capacity = useMemo(
+    () =>
+      resolveVehicleCapacity(
+        tourQ.data ? { fahrzeug_typ: tourQ.data.fahrzeug_typ ?? null } : null,
+        tourQ.data?.subunternehmer ?? null,
+      ),
+    [
       tourQ.data?.fahrzeug_typ,
       tourQ.data?.subunternehmer?.fahrzeug_typ,
-    );
-    return getVehicleDims(fz);
-  }, [tourQ.data?.fahrzeug_typ, tourQ.data?.subunternehmer?.fahrzeug_typ]);
+      tourQ.data?.subunternehmer?.max_ldm,
+      tourQ.data?.subunternehmer?.max_gewicht_kg,
+    ],
+  );
 
   const packages = useMemo(
     () =>
       flattenNvPackages(
         tourQ.data ?? null,
-        vehicle.widthCm,
-        vehicle.lengthCm,
-        vehicle.heightCm,
+        capacity.widthCm,
+        capacity.lengthCm,
+        capacity.heightCm,
       ),
-    [tourQ.data, vehicle.widthCm, vehicle.lengthCm, vehicle.heightCm],
+    [tourQ.data, capacity.widthCm, capacity.lengthCm, capacity.heightCm],
+  );
+
+  // BUG-D-Fix KRITISCH: unplaced-Items vor LoadingPlan3D filtern.
+  // placePackages markiert Overflow als {unplaced: true, posX:0,
+  // posY:0, posZ:0}. Ohne Filter stapeln alle unplaced am Trailer-
+  // Ursprung → DAS war die sichtbare Verschachtelung.
+  // Mirror NvLoadingPlanPage L279-282.
+  const renderedPackages = useMemo(
+    () => packages.filter((p) => !p.unplaced),
+    [packages],
   );
 
   const code = tourQ.data?.nv_stamm_tour?.code ?? '—';
+  // Display-Label: fahrzeug_typ aus Tour/Sub bevorzugt (zeigt z.B.
+  // "12T"); Fallback auf maxLdm-Approximation wenn keine Beschriftung.
+  const typLabel =
+    (tourQ.data?.fahrzeug_typ ?? '').trim() ||
+    (tourQ.data?.subunternehmer?.fahrzeug_typ ?? '').trim() ||
+    `${capacity.maxLdm.toFixed(1)} ldm`;
 
   return (
     <PanelShell
       title={`NV-Beladeplan · ${code}`}
-      vehicleInfo={`${vehicle.type} · ${(vehicle.lengthCm / 100).toFixed(1)}×${(vehicle.widthCm / 100).toFixed(2)}×${(vehicle.heightCm / 100).toFixed(2)} m`}
+      vehicleInfo={`${typLabel} · ${(capacity.lengthCm / 100).toFixed(1)}×${(capacity.widthCm / 100).toFixed(2)}×${(capacity.heightCm / 100).toFixed(2)} m`}
       pkgCount={packages.length}
       fullViewHref={`/nv-loading/${tourId}`}
       isLoading={tourQ.isLoading}
@@ -123,11 +149,11 @@ function NvBody({
     >
       <LoadingPlan3D
         vehicle={{
-          lengthCm: vehicle.lengthCm,
-          widthCm: vehicle.widthCm,
-          heightCm: vehicle.heightCm,
+          lengthCm: capacity.lengthCm,
+          widthCm: capacity.widthCm,
+          heightCm: capacity.heightCm,
         }}
-        packages={packages}
+        packages={renderedPackages}
         frameloop={frameloop}
         readOnly
       />

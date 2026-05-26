@@ -11,11 +11,7 @@ import ContextMenu, {
 import { planNvInsertShift } from '../lib/nvRepack';
 import LoadingPlan3D from '../components/LoadingPlan3D';
 import AxleLoadPanel from '../components/AxleLoadPanel';
-import {
-  getVehicleDims,
-  resolveFahrzeugTyp,
-  resolveVehicleCapacity,
-} from '../lib/vehicleTypes';
+import { resolveVehicleCapacity } from '../lib/vehicleTypes';
 import { computeStackingLdmMetrics } from '../lib/loadingLdm';
 import { placePackages, sortPackagesForOptimalPack, type SharedPlacedPackage } from '../lib/loadingShared';
 import { nvExpandPackages, type NvExpandedPackage } from '../lib/nvExpand';
@@ -173,20 +169,10 @@ export default function NvLoadingPlanPage() {
     staleTime: 10_000,
   });
 
-  const vehicle = useMemo(() => {
-    const fz = resolveFahrzeugTyp(
-      tourQ.data?.fahrzeug_typ,
-      tourQ.data?.subunternehmer?.fahrzeug_typ,
-    );
-    return getVehicleDims(fz);
-  }, [tourQ.data?.fahrzeug_typ, tourQ.data?.subunternehmer?.fahrzeug_typ]);
-
-  // F1.a-Fix: Kapazitaet (maxLdm/maxWeightKg) separat aufloesen —
-  // Sub-Stammdaten gewinnen vor Tonnen-Parsing aus fahrzeug_typ
-  // ("7_5T"/"12T"/"18T" sind in VEHICLE_DIMS NICHT canonical, stiller
-  // Fallback "Koffer 7t" hatte ~300% Auslastung verursacht).
-  // Trailer-Dimensionen (lengthCm/widthCm/heightCm) bleiben aus
-  // getVehicleDims — separater Bug, nicht in dieser Card.
+  // F1.a-Fix + BUG-V-Fix: Kapazitaet ist die EINZIGE Dim-Quelle —
+  // resolveVehicleCapacity handhabt Sub-Stammdaten + Tonnen-Parsing
+  // konsistent (vehicle = getVehicleDims wurde entfernt; faellt sonst
+  // fuer "12T"/"18T"/"7_5T" auf Koffer 7t/6.2m zurueck → Falsch-Dims).
   const capacity = useMemo(
     () =>
       resolveVehicleCapacity(
@@ -480,8 +466,11 @@ export default function NvLoadingPlanPage() {
         })),
       draggedId,
       targetId: t.id,
-      trailerLengthCm: vehicle.lengthCm,
-      trailerWidthCm: vehicle.widthCm,
+      // BUG-V-Fix: capacity statt vehicle (getVehicleDims fiel auf
+      // Koffer 7t/6.2m fuer Tonnen-Typen zurueck — Cascade-Drift
+      // beim Insert-Mode-Drag in zu kleinem Trailer).
+      trailerLengthCm: capacity.lengthCm,
+      trailerWidthCm: capacity.widthCm,
     });
     // Schritt 2: Cascade-Aktionen → Sandbox-Reducer (batch dispatch).
     // BE-Persist erst via "Übernehmen". planNvInsertShift liefert
@@ -533,9 +522,12 @@ export default function NvLoadingPlanPage() {
         </div>
         <span className="text-xs text-gray-500">
           ·{' '}
+          {/* BUG-V-Fix: Fallback aus capacity.maxLdm statt
+              vehicle.type, damit Tonnen-Typen ohne fahrzeug_typ-
+              Beschriftung nicht "Koffer 7t" zeigen. */}
           {(tourQ.data?.fahrzeug_typ ?? '').trim() ||
             (tourQ.data?.subunternehmer?.fahrzeug_typ ?? '').trim() ||
-            vehicle.type}
+            `${capacity.maxLdm.toFixed(1)} ldm`}
           {' '}({(capacity.lengthCm / 100).toFixed(1)}×
           {(capacity.widthCm / 100).toFixed(2)}×
           {(capacity.heightCm / 100).toFixed(2)} m)
@@ -771,7 +763,18 @@ export default function NvLoadingPlanPage() {
                 posY: p.posY,
                 weightKg: Number(p.weightKg) || 0,
               }))}
-              vehicleType={vehicle.type}
+              vehicleType={
+                // BUG-V-Fix: AxleLoad-Config aus capacity ableiten —
+                // vehicle.type (getVehicleDims) faellt fuer Tonnen-Typen
+                // auf "Koffer 7t" zurueck und liefert falsche Achs-
+                // konfiguration. Heuristik: maxLdm → naechstes
+                // canonical VEHICLE_AXLES-Bucket.
+                capacity.maxLdm <= 8
+                  ? 'Koffer 7t'
+                  : capacity.maxLdm <= 13
+                    ? 'Koffer 12t'
+                    : 'Sattel'
+              }
               trailerLength_m={capacity.lengthCm / 100}
               groundedCount={renderedPackages.filter((p) => p.posZ < 1e-6).length}
               totalCount={renderedPackages.length}

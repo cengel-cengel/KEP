@@ -16,7 +16,7 @@
  * Logs zeigen WELCHE Prop bei den 599 Non-Toggled-Rows ungleich ist.
  * Wird nach Befund entfernt.
  */
-import { memo } from 'react';
+import { memo, useEffect } from 'react';
 import ShipmentCard from '../ShipmentCard';
 import type { Shipment } from '../../types/shipment';
 
@@ -59,6 +59,20 @@ function ShipmentRowImpl({
   isBulkSelected,
   getBulkIds,
 }: ShipmentRowProps) {
+  // DIAGNOSE (temporaer): Mount/Unmount-Log um zu bestaetigen ob
+  // Rows wirklich remountet werden (Hypothese: ja, ~600× pro Toggle).
+  // useEffect mit deps=[] feuert NUR bei Mount + Unmount, nicht bei
+  // Re-Renders.
+  useEffect(() => {
+    const sid = shipment.id?.slice(0, 8) ?? '?';
+    // eslint-disable-next-line no-console
+    console.log('ROW-MOUNT', sid);
+    return () => {
+      // eslint-disable-next-line no-console
+      console.log('ROW-UNMOUNT', sid);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const className = `flex items-start gap-2 rounded-lg border transition-colors ${
     isHighlighted
       ? 'border-yellow-500 ring-2 ring-yellow-300 bg-yellow-50 animate-pulse'

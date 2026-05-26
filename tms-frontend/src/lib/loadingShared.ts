@@ -276,7 +276,17 @@ export function placePackages<P extends SharedPackage>(
     for (let guard = 0; guard < 200000; guard++) {
       if (placedOne) break;
       if (cx + pw > trailerW + 1e-6) {
-        cy += localRowMax;
+        // Row-Bin-Progress-Fix: wenn localRowMax===0 wurde kein Item
+        // in dieser Y-Zeile platziert (z.B. weil alle X-Positionen durch
+        // Phase-1-Obstacles blockiert sind). Vorher: cy += 0 → cy bleibt
+        // → infinite loop bis guard 200000 → unplaced. Selbst Items, die
+        // hinter den Obstacles freien Platz finden würden, wurden so
+        // faelschlich als unplaced markiert (Carlos-N010-Repro:
+        // 29/31 unplaced trotz ~25 freier Volumen).
+        // Fix: cy += pl (item-Laenge) als Mindest-Advance. Cruder Fall-
+        // back, aber korrekt — Phase-2 ueberspringt das blockierte
+        // Y-Band und sucht in der naechsten Zeile.
+        cy += localRowMax > 0 ? localRowMax : pl;
         cx = 0;
         localRowMax = 0;
       }

@@ -358,3 +358,89 @@ describe('placePackages — Rotation-aware Pack (rotation_deg=90)', () => {
     expect(out.every((p) => !p.unplaced)).toBe(true);
   });
 });
+
+describe('placePackages — Row-Bin-Progress-Fix (Carlos-N010-Repro)', () => {
+  /**
+   * Carlos-N010-Repro: Wenn Phase-1-Obstacles die initiale Y-Zeile
+   * vollstaendig blockieren, blieb cy=0 stehen (localRowMax=0, cy += 0)
+   * → infinite Loop bis guard 200000 → 29/31 Items unplaced trotz freier
+   * Volumen hinter dem Obstacle.
+   *
+   * Fix: cy += pl (item-Laenge) als Mindest-Advance wenn localRowMax===0.
+   * Erlaubt Phase-2, das blockierte Y-Band zu ueberspringen und in der
+   * naechsten Zeile weiterzusuchen.
+   */
+  it('Phase-1-Obstacle blockiert initial-Row → Phase-2-Item ruckt in naechste Row vor (kein guard-exhaust)', () => {
+    // Phase-1 storedPos: non-stackable Obstacle 240W × 200L bei (0,0).
+    // Phase-2 Item: 80W × 100L, non-stackable. Sucht Slot.
+    //
+    // Vor Fix: cx-cycle wraps → cy += localRowMax (=0) → cy bleibt 0
+    //   → 200000 guard iterations → unplaced=true.
+    // Nach Fix: cy += pl (=100) auf wrap → cy=100 (noch overlap) →
+    //   cx-cycle → cy=200 (frei) → placed bei (0, 200, 0).
+    const out = placePackages(
+      [
+        mkPkg({
+          id: 'obs',
+          lengthCm: 200,
+          widthCm: 240,
+          heightCm: 100,
+          storedPosX: 0,
+          storedPosY: 0,
+          storedPosZ: 0,
+          isStackable: false,
+        }),
+        mkPkg({
+          id: 'p2',
+          lengthCm: 100,
+          widthCm: 80,
+          heightCm: 100,
+          isStackable: false,
+        }),
+      ],
+      800,
+      240,
+      300,
+    );
+    const p2 = out.find((p) => p.id === 'p2');
+    expect(p2).toBeDefined();
+    expect(p2!.unplaced).toBeFalsy();
+    // p2 sitzt hinter dem Obstacle (posY >= 200).
+    expect(p2!.posY).toBeGreaterThanOrEqual(200 - 1e-6);
+  });
+
+  it('echter Overflow: nicht-passende Items bleiben korrekt unplaced (cy-Overflow-Pfad)', () => {
+    // Trailer 240W × 200L. Phase-1 belegt komplett: 240W × 200L bei (0,0).
+    // Phase-2 Item: 80W × 100L non-stackable hat KEINEN freien Slot.
+    // Nach Fix: cy += pl=100 → cy=100 (overlap) → wrap → cy=200 → cy+pl=300
+    //   > trailerL=200 → unplaced=true (cy-Overflow-Pfad, NICHT
+    //   guard-exhaust).
+    const out = placePackages(
+      [
+        mkPkg({
+          id: 'obs',
+          lengthCm: 200,
+          widthCm: 240,
+          heightCm: 100,
+          storedPosX: 0,
+          storedPosY: 0,
+          storedPosZ: 0,
+          isStackable: false,
+        }),
+        mkPkg({
+          id: 'p2',
+          lengthCm: 100,
+          widthCm: 80,
+          heightCm: 100,
+          isStackable: false,
+        }),
+      ],
+      200,
+      240,
+      300,
+    );
+    const p2 = out.find((p) => p.id === 'p2');
+    expect(p2).toBeDefined();
+    expect(p2!.unplaced).toBe(true);
+  });
+});

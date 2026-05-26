@@ -631,7 +631,16 @@ export default function LoadingPlan3D({
           </div>
         </div>
       )}
-      <Canvas camera={{ position: cameraPos, fov: 45 }} shadows frameloop={frameloop}>
+      {/* Fix-A: dpr={[1,2]} → R3F clampt zwischen 1 und 2x. Auf Retina-
+          Displays (Mac, iPhone) wird 2x gerendert (scharf), auf
+          non-retina 1x. Verhindert blurry-Upscaling auf 27"-Desktops
+          mit OS-Scaling > 100%. */}
+      <Canvas
+        camera={{ position: cameraPos, fov: 45 }}
+        shadows
+        frameloop={frameloop}
+        dpr={[1, 2]}
+      >
         <ambientLight intensity={0.5} />
         <directionalLight position={[8, 10, 5]} intensity={0.9} castShadow />
         <directionalLight position={[-5, 4, -3]} intensity={0.3} />

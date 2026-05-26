@@ -421,6 +421,9 @@ export default function YardScene3D({
       camera={{ position: cameraPos, fov: 45 }}
       frameloop={frameloop}
       shadows
+      // Fix-A: dpr={[1,2]} — siehe LoadingPlan3D. Verhindert blurry
+      // Hof-Render auf 27"-Desktops mit OS-Scaling > 100%.
+      dpr={[1, 2]}
     >
       <ambientLight intensity={0.5} />
       <directionalLight position={[8, 10, 5]} intensity={0.9} castShadow />

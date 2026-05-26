@@ -24,7 +24,7 @@
 import { Canvas } from '@react-three/fiber';
 import type { ThreeEvent } from '@react-three/fiber';
 import { Edges, Html, OrbitControls } from '@react-three/drei';
-import { useMemo, useRef } from 'react';
+import { memo, useMemo, useRef } from 'react';
 
 export interface YardShipment {
   id: string;
@@ -359,7 +359,14 @@ function scaleVec3(x: number, y: number, z: number): [number, number, number] {
   return [x / 100, y / 100, z / 100];
 }
 
-export default function YardScene3D({
+/**
+ * PERF (Carlos-Diagnose 1046ms/Klick): React.memo verhindert Re-Render
+ * der gesamten 3D-Scene wenn Eltern-Re-Render keine echten Props-
+ * Aenderungen mitschickt. YardPanel garantiert stabile Refs aller
+ * Props (slots/placedInTrailer via useMemo, onShipmentClick via
+ * useCallback). Shallow-Compare reicht — KEIN custom areEqual noetig.
+ */
+function YardScene3DImpl({
   trailerLengthCm,
   trailerWidthCm,
   trailerHeightCm,
@@ -529,6 +536,9 @@ export default function YardScene3D({
     </Canvas>
   );
 }
+
+const YardScene3D = memo(YardScene3DImpl);
+export default YardScene3D;
 
 function SlotMesh({
   slot,

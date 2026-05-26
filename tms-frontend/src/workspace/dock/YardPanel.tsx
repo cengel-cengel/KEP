@@ -25,14 +25,13 @@
  *     Detail-Panel oeffnet sich.
  *   · KEIN Drag (=Phase 2).
  */
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { useWorkspace } from '../../state/workspace';
 import { useWorkspaceRuntime } from '../runtime/WorkspaceRuntimeContext';
 import { usePanel } from '../../state/panel';
 import { useDockPanelApi } from './DockPanelContext';
-import { useEffect, useState } from 'react';
 import YardScene3D, {
   type YardSlot,
   type YardPlacedPackage,
@@ -818,6 +817,60 @@ export default function YardPanel() {
     return m;
   }, [mode, nvTourQ.data, fvTourQ.data]);
 
+  // PERF (Carlos-Diagnose 1046ms/Klick): stabile Refs fuer YardScene3D-
+  // Props + Modal. Vor Fix triggerte ein simpler Modal-Open (setState)
+  // einen vollen 3D-Scene-Rebuild via instabilem onShipmentClick.
+  //
+  // Set-Lookup: nearbyQ.data.some(...) im Click-Handler war O(N) bei
+  // bis zu 600 Sendungen → vorberechnet als Set → O(1).
+  const nearbyIdSet = useMemo(
+    () => new Set((nearbyQ.data ?? []).map((s) => s.id)),
+    [nearbyQ.data],
+  );
+
+  // selectShipment ist in PanelContext useCallback'd mit deps=[] —
+  // Ref ist stabil ueber Re-Renders. Destructure damit useCallback-
+  // dep ein stabiler Function-Ref ist (statt `panel`, das sich bei
+  // Selection-Changes neu identifiziert).
+  const { selectShipment } = panel;
+
+  const handleShipmentClick = useCallback(
+    (id: string) => {
+      // S-6.3 D-Erweiterung (unveraendertes Verhalten):
+      //   1. nearby → Modal (volle Daten inkl Adresse)
+      //   2. tourShipmentLookup → Modal (sparser, NV ohne customer/
+      //      Adresse — Modal zeigt "Volle Details" Button für S-5-Panel)
+      //   3. Fall-through → panel.selectShipment (defensiv)
+      if (nearbyIdSet.has(id) || tourShipmentLookup.has(id)) {
+        setModalShipmentId(id);
+      } else {
+        selectShipment(id);
+      }
+    },
+    [nearbyIdSet, tourShipmentLookup, selectShipment],
+  );
+
+  const modalShipment = useMemo<YardModalShipment | null>(() => {
+    if (!modalShipmentId) return null;
+    // Mirror NvLoadingPlanHofPanel.modalShipment-Pattern.
+    const fromNearby = (nearbyQ.data ?? []).find(
+      (s) => s.id === modalShipmentId,
+    );
+    if (fromNearby) {
+      // NearbyShipment hat extra Felder (lat/lng/distance_km) die
+      // YardModalShipment nicht kennt — Typ-Pruefung lockern via
+      // structural-cast.
+      return fromNearby as unknown as YardModalShipment;
+    }
+    return tourShipmentLookup.get(modalShipmentId) ?? null;
+  }, [modalShipmentId, nearbyQ.data, tourShipmentLookup]);
+
+  const closeModal = useCallback(() => setModalShipmentId(null), []);
+  const openFullDetail = useCallback(
+    (id: string) => selectShipment(id),
+    [selectShipment],
+  );
+
   if (!tourId) {
     return (
       <div className="h-full flex items-center justify-center p-6 text-xs text-gray-500 text-center">
@@ -893,23 +946,7 @@ export default function YardPanel() {
             slots={lanesWithPacks}
             placedInTrailer={placedInTrailer}
             frameloop={frameloop}
-            onShipmentClick={(id) => {
-              // S-6.3 D-Erweiterung: Tap auf jede Box (Lane ODER
-              // Auflieger) → Modal. Routing:
-              //   1. nearby → Modal (volle Daten inkl Adresse)
-              //   2. tourShipmentLookup → Modal (sparser, NV ohne
-              //      customer/Adresse — Modal zeigt "Volle Details"
-              //      Button für S-5-Panel)
-              //   3. Fall-through → panel.selectShipment (defensiv)
-              const inNearby = (nearbyQ.data ?? []).some(
-                (s) => s.id === id,
-              );
-              if (inNearby || tourShipmentLookup.has(id)) {
-                setModalShipmentId(id);
-              } else {
-                panel.selectShipment(id);
-              }
-            }}
+            onShipmentClick={handleShipmentClick}
           />
         )}
       </div>
@@ -917,16 +954,10 @@ export default function YardPanel() {
           nearby zuerst (volle Daten inkl Adresse), dann
           tourShipmentLookup (Auflieger-Items, sparser). */}
       <YardShipmentDetailModal
-        shipment={
-          modalShipmentId
-            ? (nearbyQ.data ?? []).find((s) => s.id === modalShipmentId) ??
-              tourShipmentLookup.get(modalShipmentId) ??
-              null
-            : null
-        }
+        shipment={modalShipment}
         isOpen={modalShipmentId != null}
-        onClose={() => setModalShipmentId(null)}
-        onOpenFullDetail={(id) => panel.selectShipment(id)}
+        onClose={closeModal}
+        onOpenFullDetail={openFullDetail}
       />
     </div>
   );

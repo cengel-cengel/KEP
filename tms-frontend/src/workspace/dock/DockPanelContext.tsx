@@ -13,7 +13,7 @@
  *   bei diesem Pattern statt jedes Panel auf IDockviewPanelProps zu
  *   refactoren.
  */
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import type { DockviewPanelApi } from 'dockview';
 
 interface DockPanelCtx {
@@ -43,8 +43,12 @@ export function DockPanelProvider({
   params: Record<string, unknown>;
   children: ReactNode;
 }) {
+  // PERF: memoize damit value-Identitaet stabil bleibt — sonst feuert
+  // jeder Re-Render des DockPanelWrappers ein neues {api,params}-Objekt
+  // → alle Panel-Konsumenten (useDockPanelApi/Params) re-rendern.
+  const value = useMemo(() => ({ api, params }), [api, params]);
   return (
-    <DockPanelContext.Provider value={{ api, params }}>
+    <DockPanelContext.Provider value={value}>
       {children}
     </DockPanelContext.Provider>
   );

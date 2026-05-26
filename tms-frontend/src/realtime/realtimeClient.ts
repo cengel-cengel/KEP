@@ -108,10 +108,20 @@ export function onRealtimeStatus(
 /**
  * Connect (idempotent). Wird beim Auth-State 'authenticated'
  * aus AuthProvider gerufen.
+ *
+ * PERF: Guard prueft jetzt sowohl `connected` als auch das nicht-
+ * disconnected-Flag, damit zwei Caller waehrend der Handshake-Phase
+ * NICHT zwei parallele Sockets erzeugen (alter Guard `socket?.connected`
+ * traf nicht waehrend `connecting`). Transports auf `['websocket']`
+ * festgenagelt — kein HTTP-poll-Handshake mehr, der DevTools-Network
+ * als zweite Verbindung anzeigt (Railway-BE unterstuetzt WS first-class).
  */
 export function connectRealtime(): void {
   if (typeof window === 'undefined') return;
-  if (socket?.connected) return;
+  // PERF-Fix: socket existiert + ist nicht disconnected → schon ein
+  // Connect-Versuch laeuft (connecting ODER connected). Zweiter Caller
+  // wird komplett ignoriert.
+  if (socket && !socket.disconnected) return;
   const token = localStorage.getItem(TOKEN_KEY);
   if (!token) return;
   setStatus('connecting');
@@ -123,7 +133,10 @@ export function connectRealtime(): void {
   const wsUrl = base || window.location.origin;
   socket = io(wsUrl, {
     path: '/ws/realtime',
-    transports: ['websocket', 'polling'],
+    // PERF-Fix: nur websocket — kein polling-Fallback. Polling+upgrade
+    // erscheinen im DevTools-Network als zweite Verbindung (XHR-Handshake
+    // + WS-Upgrade). Railway/Vercel haben durchgaengig WS-Support.
+    transports: ['websocket'],
     auth: { token },
     reconnection: true,
     reconnectionDelay: 1000,

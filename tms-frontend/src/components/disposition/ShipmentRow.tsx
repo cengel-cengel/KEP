@@ -10,6 +10,11 @@
  *   selectedIds: Set wurde durch scalar isBulkSelected + getBulkIds-
  *   Callback ersetzt. Selection-Toggle re-rendert jetzt NUR die EINE
  *   betroffene Row (statt aller ~600).
+ *
+ * DIAGNOSE (temporaer): Custom-areEqual mit console.log. Verhalten
+ * identisch zu default-shallow (return false bei Diff = re-render).
+ * Logs zeigen WELCHE Prop bei den 599 Non-Toggled-Rows ungleich ist.
+ * Wird nach Befund entfernt.
  */
 import { memo } from 'react';
 import ShipmentCard from '../ShipmentCard';
@@ -92,5 +97,37 @@ function ShipmentRowImpl({
   );
 }
 
-const ShipmentRow = memo(ShipmentRowImpl);
+/**
+ * DIAGNOSE-areEqual (temporaer): identisches Verhalten wie
+ * default-shallow (return false bei Diff = re-render, return true
+ * = skip). Zusaetzlich console.log bei Diff mit dem brechenden
+ * Prop-Namen + Typ-Info. Wird entfernt sobald Memo-Breaker
+ * identifiziert.
+ */
+function areEqual(
+  prev: Readonly<ShipmentRowProps>,
+  next: Readonly<ShipmentRowProps>,
+): boolean {
+  const keys = Object.keys(next) as Array<keyof ShipmentRowProps>;
+  for (const k of keys) {
+    if (prev[k] !== next[k]) {
+      const sid = next.shipment?.id?.slice(0, 8) ?? '?';
+      // eslint-disable-next-line no-console
+      console.log(
+        'ROW-RERENDER',
+        sid,
+        'breaking-prop:',
+        k,
+        'prevType:',
+        typeof prev[k],
+        'nextType:',
+        typeof next[k],
+      );
+      return false;
+    }
+  }
+  return true;
+}
+
+const ShipmentRow = memo(ShipmentRowImpl, areEqual);
 export default ShipmentRow;

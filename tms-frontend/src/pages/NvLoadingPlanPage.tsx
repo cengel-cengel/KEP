@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useReducer, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Trash2, RotateCcw, X } from 'lucide-react';
@@ -21,6 +21,13 @@ import { placePackages, sortPackagesForOptimalPack, type SharedPlacedPackage } f
 import { nvExpandPackages, type NvExpandedPackage } from '../lib/nvExpand';
 // Beladeplan/Hof-Verschmelzung Schritt 1: Hof-Liste rechts.
 import NvLoadingPlanHofPanel from './NvLoadingPlanHofPanel';
+// Beladeplan/Hof-Verschmelzung Schritt 2: Sandbox-Fundament.
+import {
+  initialSandboxState,
+  sandboxReducer,
+  sandboxChangeCount,
+  isSandboxEmpty,
+} from '../lib/nvLoadingPlanSandbox';
 
 /**
  * NV-Pack-Output. Plan3DPackage-kompatibel (struktureller Superset)
@@ -144,6 +151,10 @@ export default function NvLoadingPlanPage() {
   // NV-RC: Right-Click ContextMenu state (Symmetrie zu FV).
   const [ctxMenu, setCtxMenu] = useState<{
     pkgId: string;
+    /** dbItemId = persist-fähige Package-ID. Bei Quantity-Klonen
+     *  (q>0) leer → ContextMenu-Actions disabled. Schritt 2:
+     *  Sandbox-Reducer indexiert by dbItemId. */
+    dbItemId?: string;
     shipmentId: string;
     x: number;
     y: number;
@@ -206,11 +217,40 @@ export default function NvLoadingPlanPage() {
     ],
   );
 
+  // Schritt 2: Sandbox-Reducer. Alle Drag/Eject-Aktionen schreiben
+  // hier rein, NICHT direkt ans BE. "Übernehmen"-Button persistiert
+  // den State. Bei Unmount → React droppt State (Reset by design).
+  const [sandbox, sandboxDispatch] = useReducer(
+    sandboxReducer,
+    initialSandboxState,
+  );
+
   // BUG-F-PACK: Render/Drag-Target = nur platzierte Pakete; unplaced
   // werden im Banner gezaehlt, aber nicht ins 3D-Mesh gereicht.
+  // Schritt 2: + Sandbox-Filter (ejected raus) + Sandbox-Position-
+  // Overrides anwenden.
   const renderedPackages = useMemo(
-    () => packages.filter((p) => !p.unplaced),
-    [packages],
+    () =>
+      packages
+        .filter((p) => !p.unplaced)
+        .filter((p) => {
+          const sid = (p as { shipmentId?: string }).shipmentId;
+          return !sid || !sandbox.ejectedShipmentIds.has(sid);
+        })
+        .map((p) => {
+          const dbId = (p as { dbItemId?: string }).dbItemId;
+          const override = dbId
+            ? sandbox.positionOverrides.get(dbId)
+            : undefined;
+          if (!override) return p;
+          return {
+            ...p,
+            posX: override.posXCm,
+            posY: override.posYCm,
+            posZ: override.posZCm,
+          };
+        }),
+    [packages, sandbox],
   );
   const unplacedCount = useMemo(
     () => packages.filter((p) => p.unplaced).length,
@@ -280,35 +320,69 @@ export default function NvLoadingPlanPage() {
     window.setTimeout(() => setToast(null), 2500);
   }
 
-  const persistMut = useMutation({
-    mutationFn: async (vars: {
-      itemId: string;
-      posXCm: number;
-      posYCm: number;
-      posZCm: number;
-      rotationDeg?: number;
-    }) => {
-      const body: Record<string, number> = {
-        posXCm: Math.round(vars.posXCm),
-        posYCm: Math.round(vars.posYCm),
-        posZCm: Math.round(vars.posZCm),
-      };
-      if (vars.rotationDeg !== undefined)
-        body.rotationDeg = Math.round(vars.rotationDeg);
-      await api.patch(
-        `/loading/package-item/${vars.itemId}/position`,
-        body,
-      );
+  // Schritt 2: Übernehmen-Mutation — einziger DB-Write-Pfad.
+  // Reihenfolge stabil: erst Position-Patches, dann Stop-Deletes
+  // (Eject zuerst koennte Position-Patches fuer ge-loeschte Items
+  // 404-en). Sammelt Fehler, throwt am Ende; Sandbox wird NUR bei
+  // vollstaendigem Erfolg geleert.
+  const uebernehmenMut = useMutation({
+    mutationFn: async () => {
+      const errors: string[] = [];
+      // 1. Position-Overrides
+      for (const [dbItemId, posOv] of sandbox.positionOverrides) {
+        const body: Record<string, number> = {
+          posXCm: Math.round(posOv.posXCm),
+          posYCm: Math.round(posOv.posYCm),
+          posZCm: Math.round(posOv.posZCm),
+        };
+        if (posOv.rotationDeg !== undefined) {
+          body.rotationDeg = Math.round(posOv.rotationDeg);
+        }
+        try {
+          await api.patch(
+            `/loading/package-item/${dbItemId}/position`,
+            body,
+          );
+        } catch (e: unknown) {
+          const status =
+            (e as { response?: { status?: number } })?.response?.status ?? '?';
+          errors.push(`Position ${dbItemId}: ${status}`);
+        }
+      }
+      // 2. Ejected Stops
+      for (const shipmentId of sandbox.ejectedShipmentIds) {
+        const stop = tourQ.data?.stops.find(
+          (s) => s.shipment.id === shipmentId,
+        );
+        if (!stop) {
+          errors.push(`Sendung ${shipmentId}: Stop nicht gefunden`);
+          continue;
+        }
+        try {
+          await api.delete(`/nv-touren/${tourId}/stops/${stop.id}`);
+        } catch (e: unknown) {
+          const status =
+            (e as { response?: { status?: number } })?.response?.status ?? '?';
+          errors.push(`Eject ${shipmentId}: ${status}`);
+        }
+      }
+      if (errors.length) throw new Error(errors.join('; '));
     },
     onSuccess: () => {
+      sandboxDispatch({ type: 'clearAll' });
       qc.invalidateQueries({ queryKey: ['nv-loading', tourId] });
-      showToast('Position gespeichert');
+      qc.invalidateQueries({ queryKey: ['nv-tour-detail', tourId] });
+      showToast('Sandbox übernommen — gespeichert.');
     },
-    onError: () => {
-      showToast('Speichern fehlgeschlagen', 'err');
+    onError: (e: Error) => {
+      // Sandbox bleibt erhalten — User kann erneut versuchen oder
+      // verwerfen.
+      showToast(`Übernehmen-Fehler: ${e.message}`, 'err');
     },
   });
 
+  // Schritt 2: handlePosition leitet jetzt in den Sandbox-Reducer um —
+  // KEIN direkter BE-Write. Persistenz erst via "Übernehmen".
   const handlePosition = (
     id: string,
     posXCm: number,
@@ -321,12 +395,10 @@ export default function NvLoadingPlanPage() {
     // BE-seitig nicht persistierbar (1 Row pro line_index).
     const pkg = packages.find((p) => p.id === id);
     if (!pkg || !pkg.dbItemId) return;
-    persistMut.mutate({
-      itemId: pkg.dbItemId,
-      posXCm,
-      posYCm,
-      posZCm,
-      rotationDeg,
+    sandboxDispatch({
+      type: 'setPosition',
+      dbItemId: pkg.dbItemId,
+      pos: { posXCm, posYCm, posZCm, rotationDeg },
     });
   };
 
@@ -383,21 +455,21 @@ export default function NvLoadingPlanPage() {
       trailerLengthCm: vehicle.lengthCm,
       trailerWidthCm: vehicle.widthCm,
     });
-    void (async () => {
-      try {
-        for (const a of actions) {
-          await api.patch(`/loading/package-item/${a.itemId}/position`, {
-            posXCm: a.posXCm,
-            posYCm: a.posYCm,
-            posZCm: a.posZCm,
-          });
-        }
-        await qc.invalidateQueries({ queryKey: ['nv-loading', tourId] });
-      } catch {
-        /* silent — invalidate korrigiert UI bei Error */
-      }
-      insertMode.cancel();
-    })();
+    // Schritt 2: Cascade-Aktionen → Sandbox-Reducer (batch dispatch).
+    // BE-Persist erst via "Übernehmen". planNvInsertShift liefert
+    // itemId = dbItemId (Persist-fähig), also direkt verwendbar.
+    for (const a of actions) {
+      sandboxDispatch({
+        type: 'setPosition',
+        dbItemId: a.itemId,
+        pos: {
+          posXCm: a.posXCm,
+          posYCm: a.posYCm,
+          posZCm: a.posZCm,
+        },
+      });
+    }
+    insertMode.cancel();
   };
 
   const code = tourQ.data?.nv_stamm_tour?.code ?? '—';
@@ -443,9 +515,39 @@ export default function NvLoadingPlanPage() {
         <span className="ml-auto text-xs text-gray-400">
           {packages.length} Packstücke
         </span>
+        {/* Schritt 2: Sandbox-Indikator + Übernehmen/Verwerfen.
+            Badge sichtbar wenn Aenderungen offen. Übernehmen ist
+            disabled wenn nichts zu speichern oder Mutation laeuft. */}
+        {!isSandboxEmpty(sandbox) && (
+          <span
+            className="ml-2 px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-xs font-medium border border-amber-300"
+            title="Aenderungen sind ephemer bis 'Übernehmen' geklickt wird."
+          >
+            🧪 Sandbox: {sandboxChangeCount(sandbox)} Änderung
+            {sandboxChangeCount(sandbox) === 1 ? '' : 'en'}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => uebernehmenMut.mutate()}
+          disabled={isSandboxEmpty(sandbox) || uebernehmenMut.isPending}
+          className="ml-2 text-xs px-2.5 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed min-h-[28px]"
+          title="Alle Sandbox-Aenderungen ans BE persistieren."
+        >
+          {uebernehmenMut.isPending ? 'Speichert…' : 'Übernehmen'}
+        </button>
+        <button
+          type="button"
+          onClick={() => sandboxDispatch({ type: 'clearAll' })}
+          disabled={isSandboxEmpty(sandbox) || uebernehmenMut.isPending}
+          className="text-xs px-2 py-1 rounded border bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed min-h-[28px]"
+          title="Alle Sandbox-Aenderungen verwerfen (KEIN BE-Write)."
+        >
+          Verwerfen
+        </button>
         <button
           onClick={() => window.close()}
-          className="text-gray-500 hover:text-gray-800"
+          className="text-gray-500 hover:text-gray-800 ml-1"
           title="Schließen"
         >
           <X size={18} />
@@ -622,6 +724,8 @@ export default function NvLoadingPlanPage() {
                 if (!pkg) return;
                 setCtxMenu({
                   pkgId,
+                  // Schritt 2: dbItemId fuer Sandbox-Reducer-Lookup.
+                  dbItemId: (pkg as { dbItemId?: string }).dbItemId,
                   shipmentId:
                     (pkg as { shipmentId?: string }).shipmentId ?? '',
                   x,
@@ -655,85 +759,47 @@ export default function NvLoadingPlanPage() {
       </div>
       {ctxMenu &&
         (() => {
+          // Schritt 2: ContextMenu schreibt in den Sandbox-Reducer.
+          // Position-Reset = Sandbox-Override entfernen (faellt auf BE-
+          // Pos zurueck — kein BE-Write). Repack-Optimal entfaellt
+          // (BE-Reset out-of-Scope; in Sandbox kein Sinn).
           const items: ContextMenuItem[] = [
             {
-              label: 'Position zurücksetzen',
+              label: 'Position zurücksetzen (Sandbox)',
               icon: <RotateCcw size={12} />,
+              disabled:
+                !ctxMenu.dbItemId ||
+                !sandbox.positionOverrides.has(ctxMenu.dbItemId),
               onClick: () => {
-                void api
-                  .patch(`/loading/package-item/${ctxMenu.pkgId}/position`, {
-                    posXCm: null,
-                    posYCm: null,
-                    posZCm: null,
-                  })
-                  .then(() =>
-                    qc.invalidateQueries({ queryKey: ['nv-loading', tourId] }),
-                  );
-              },
-            },
-            {
-              label: 'Repack-Optimal',
-              icon: <RotateCcw size={12} />,
-              onClick: () => {
-                if (
-                  !window.confirm(
-                    'Alle Positionen zurücksetzen + Auto-Placement?',
-                  )
-                )
-                  return;
-                void (async () => {
-                  for (const p of packages) {
-                    if (!p.dbItemId) continue;
-                    await api.patch(
-                      `/loading/package-item/${p.dbItemId}/position`,
-                      { posXCm: null, posYCm: null, posZCm: null },
-                    );
-                  }
-                  await qc.invalidateQueries({
-                    queryKey: ['nv-loading', tourId],
-                  });
-                })();
+                if (!ctxMenu.dbItemId) return;
+                sandboxDispatch({
+                  type: 'clearPosition',
+                  dbItemId: ctxMenu.dbItemId,
+                });
               },
               separator: true,
             },
             {
-              label: 'Sendung aus Tour entfernen',
+              label: 'Sendung aus Tour entfernen (Sandbox)',
               icon: <Trash2 size={12} />,
               danger: true,
               disabled: !ctxMenu.shipmentId,
               onClick: () => {
-                // NV-RC.1: shipment-id → stop-id lookup via tour.stops.
-                const stop = tourQ.data?.stops.find(
-                  (s) => s.shipment.id === ctxMenu.shipmentId,
-                );
-                if (!stop) {
-                  window.alert('Stop nicht gefunden — kann nicht entfernen.');
-                  return;
-                }
-                const shipmentNr = stop.shipment.shipment_number ?? '';
+                if (!ctxMenu.shipmentId) return;
+                const shipmentNr =
+                  tourQ.data?.stops.find(
+                    (s) => s.shipment.id === ctxMenu.shipmentId,
+                  )?.shipment.shipment_number ?? '';
                 if (
                   !window.confirm(
-                    `Sendung ${shipmentNr} komplett aus der Tour entfernen?`,
+                    `Sendung ${shipmentNr} in Sandbox auswerfen? (Wird erst beim "Übernehmen" gespeichert.)`,
                   )
                 )
                   return;
-                void (async () => {
-                  try {
-                    await api.delete(
-                      `/nv-touren/${tourId}/stops/${stop.id}`,
-                    );
-                    await qc.invalidateQueries({
-                      queryKey: ['nv-loading', tourId],
-                    });
-                    await qc.invalidateQueries({
-                      queryKey: ['nv-tour-detail', tourId],
-                    });
-                  } catch (e: any) {
-                    window.alert(
-                      `Entfernen fehlgeschlagen (${e?.response?.status ?? '?'}).`,
-                    );
-                  }
-                })();
+                sandboxDispatch({
+                  type: 'eject',
+                  shipmentId: ctxMenu.shipmentId,
+                });
               },
             },
           ];

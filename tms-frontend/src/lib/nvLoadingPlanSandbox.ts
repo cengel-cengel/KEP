@@ -81,6 +81,17 @@ export function sandboxReducer(
       return { ...state, positionOverrides: m };
     }
     case 'eject': {
+      // Schritt 4 Symmetrie zu 'insert' (Schritt 3): wenn die Sendung
+      // in insertedShipmentIds steht (User hat sie gerade per Drag-IN
+      // hinzugefuegt und will sie nun losschicken/Parkplatz), nicht
+      // ejecten sondern Insert zuruecknehmen. Andernfalls wuerde
+      // Uebernehmen-Mut erst POST /stops + dann fuer nicht-existierende
+      // Stop-ID DELETE'n versuchen (404).
+      if (state.insertedShipmentIds.has(action.shipmentId)) {
+        const ins = new Set(state.insertedShipmentIds);
+        ins.delete(action.shipmentId);
+        return { ...state, insertedShipmentIds: ins };
+      }
       if (state.ejectedShipmentIds.has(action.shipmentId)) return state;
       const s = new Set(state.ejectedShipmentIds);
       s.add(action.shipmentId);

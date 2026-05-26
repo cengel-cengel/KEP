@@ -129,6 +129,36 @@ describe('sandboxReducer', () => {
     });
   });
 
+  describe('eject auf inserted (Schritt 4 — Drag OnTour→Parkplatz)', () => {
+    it('eject auf zuvor inserted → removeInsert + KEIN eject-Eintrag', () => {
+      // Symmetrie zu 'insert' (Schritt 3): eject auf eine Sendung,
+      // die nur via Sandbox-Insert auf der Tour sitzt, MUSS den
+      // Insert zuruecknehmen statt einen Eject-Eintrag anzulegen —
+      // sonst wuerde Uebernehmen-Mut erst POST + dann DELETE fuer
+      // nicht-existierenden Stop versuchen.
+      let s = sandboxReducer(initialSandboxState, {
+        type: 'insert',
+        shipmentId: 'sh-new',
+      });
+      expect(s.insertedShipmentIds.has('sh-new')).toBe(true);
+      s = sandboxReducer(s, { type: 'eject', shipmentId: 'sh-new' });
+      // Insert zurueckgenommen
+      expect(s.insertedShipmentIds.has('sh-new')).toBe(false);
+      // KEIN eject-Eintrag entstanden
+      expect(s.ejectedShipmentIds.has('sh-new')).toBe(false);
+      expect(sandboxChangeCount(s)).toBe(0);
+    });
+
+    it('eject auf normale Tour-Sendung (NICHT inserted) → klassisches eject', () => {
+      const s = sandboxReducer(initialSandboxState, {
+        type: 'eject',
+        shipmentId: 'sh-existing',
+      });
+      expect(s.ejectedShipmentIds.has('sh-existing')).toBe(true);
+      expect(s.insertedShipmentIds.size).toBe(0);
+    });
+  });
+
   describe('restore', () => {
     it('entfernt aus ejected', () => {
       const s1 = sandboxReducer(initialSandboxState, {

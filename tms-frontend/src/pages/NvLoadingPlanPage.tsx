@@ -16,9 +16,9 @@ import { computeStackingLdmMetrics } from '../lib/loadingLdm';
 import { placePackages, sortPackagesForOptimalPack, type SharedPlacedPackage } from '../lib/loadingShared';
 import { nvExpandPackages, type NvExpandedPackage } from '../lib/nvExpand';
 // Beladeplan/Hof-Verschmelzung Schritt 1: Hof-Liste rechts.
-import NvLoadingPlanHofPanel, {
-  NV_DRAG_SHIPMENT_MIME,
-} from './NvLoadingPlanHofPanel';
+import { NV_DRAG_SHIPMENT_MIME } from './NvLoadingPlanHofPanel';
+// Schritt 4: rechte Spalte mit 3 Sektionen (Auf Tour + Parkplatz + Hof).
+import NvLoadingPlanRightPanel from './NvLoadingPlanRightPanel';
 // Beladeplan/Hof-Verschmelzung Schritt 2: Sandbox-Fundament.
 import {
   initialSandboxState,
@@ -929,13 +929,18 @@ export default function NvLoadingPlanPage() {
           </div>
         )}
       </div>
-        {/* RIGHT: Hof-Liste (PLZ-Cluster, Sendung-Cards). Schritt 3:
-            Cards sind HTML5-Drag-Source — Drop-Zone ist <div> um
-            LoadingPlan3D oben. */}
+        {/* RIGHT: 3-Sektion Panel (Auf Tour / Parkplatz / Hof).
+            Schritt 4: Auf-Tour-Cards draggable → Parkplatz (eject);
+            Parkplatz-Cards Restore-Button (restore).
+            Schritt 3: Hof-Cards draggable → 3D-Wrapper (insert). */}
         <aside className="w-80 lg:w-96 flex-shrink-0 border-l bg-white flex flex-col overflow-hidden">
-          <NvLoadingPlanHofPanel
+          <NvLoadingPlanRightPanel
             tourId={tourId ?? null}
+            patchedStops={patchedTour?.stops ?? []}
+            tourStops={tourQ.data?.stops ?? []}
+            ejectedShipmentIds={sandbox.ejectedShipmentIds}
             insertedShipmentIds={sandbox.insertedShipmentIds}
+            dispatch={sandboxDispatch}
           />
         </aside>
       </div>

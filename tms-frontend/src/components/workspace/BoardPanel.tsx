@@ -516,6 +516,15 @@ export default function BoardPanel() {
                   removes: [shipmentId],
                 })
               }
+              // Bug-Fix: FV-Tour-Klick wird activeTourViewId setzen —
+              // damit Beladeplan-Panel den 3D-Plan dieser Tour zeigt
+              // (Spiegelung NV-Wiring L472-477).
+              onToggleTourView={() =>
+                setActiveTourViewId(
+                  activeTourViewId === t.id ? null : t.id,
+                )
+              }
+              isActive={activeTourViewId === t.id}
             />
           ))}
       </div>

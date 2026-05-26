@@ -72,6 +72,8 @@ export default function FvTourCard({
   autoConsolidated,
   onDropShipment,
   onRemoveStop,
+  onToggleTourView,
+  isActive,
 }: {
   tourId: string;
   tourNumber?: string | null;
@@ -81,6 +83,15 @@ export default function FvTourCard({
   autoConsolidated?: boolean;
   onDropShipment: (tourId: string, shipmentId: string) => void;
   onRemoveStop: (tourId: string, shipmentId: string) => void;
+  /**
+   * Bug-Fix: FV-Tour-Klick → activeTourViewId setzen. Vorher fehlte
+   * diese Verdrahtung komplett — Klick öffnete nur Detail-Panel (S-5),
+   * aber Beladeplan-Panel (LoadingPlanPanel) zeigte weiterhin
+   * "Keine Tour ausgewählt" weil activeTourViewId nie gesetzt wurde.
+   * Spiegelung des NV-Patterns (TourCard.tsx L39-40, L200).
+   */
+  onToggleTourView?: () => void;
+  isActive?: boolean;
 }) {
   const [dragOver, setDragOver] = useState(false);
   // F2.3.a: Read-Only Swap-Optimizer-Vorschau (FV-Pendant zu NV).
@@ -179,7 +190,11 @@ export default function FvTourCard({
       onDrop={handleDrop}
       {...hoverHandlers}
       className={`bg-white border rounded-md shadow-sm transition-colors ${
-        dragOver ? 'border-blue-500 bg-blue-50/40' : 'border-gray-200'
+        dragOver
+          ? 'border-blue-500 bg-blue-50/40'
+          : isActive
+            ? 'border-2 border-blue-600'
+            : 'border-gray-200'
       }`}
     >
       <div
@@ -192,7 +207,15 @@ export default function FvTourCard({
           if (tag) return;
           const multi = e.metaKey || e.ctrlKey;
           selectTour(tourId, { multi });
+          // Bug-Fix: Plain-Klick zusätzlich activeTourViewId-Toggle
+          // (Spiegelung NV TourCard L200). Damit zeigt das Beladeplan-
+          // Panel den 3D-Plan dieser Tour. Multi (Cmd) bleibt ohne
+          // Toggle — nur Detail-Tab dazu.
+          if (!multi) onToggleTourView?.();
         }}
+        title={
+          isActive ? 'Tour-Karte schließen' : 'Tour-Karte / Beladeplan anzeigen'
+        }
       >
         {maxAxisRatio >= 0.7 ? (
           <OverloadBar overload={tour?.overload} className="mb-1" />

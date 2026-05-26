@@ -282,10 +282,11 @@ export default function DispositionPage() {
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Phase-1 Perf-Refactor: Handler in useCallback damit ShipmentRow.memo
-  // greift (zumindest fuer Non-Selection-Re-Renders — Selection-Toggle
-  // bleibt durch selectedIds-Set-Identitaet betroffen, bis Phase-C
-  // ShipmentCard auf scalar Bulk-Props refactort).
+  // Phase-1 + Phase-C Perf-Refactor: Handler in useCallback damit
+  // ShipmentRow.memo greift. Phase-C schliesst die Memo-Luecke beim
+  // Selection-Toggle: selectedIds wird durch scalar isBulkSelected +
+  // getBulkIds-Closure ersetzt (siehe selectedIdsRef + getBulkIds
+  // unten).
   const toggleId = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const n = new Set(prev);
@@ -341,6 +342,18 @@ export default function DispositionPage() {
     setDetailNavSource('undispatched');
     setDetailViewShipmentId(id);
   }, []);
+  // Phase-C: Bulk-IDs werden NICHT als Prop gepusht (Memo-Breaker).
+  // Stattdessen: Ref-mirror + stabiler useCallback-Getter, der zur
+  // Mutation-Zeit (Bulk-Stackable/Transport in ShipmentCard) die
+  // aktuelle Auswahl JIT liest.
+  const selectedIdsRef = useRef(selectedIds);
+  useEffect(() => {
+    selectedIdsRef.current = selectedIds;
+  }, [selectedIds]);
+  const getBulkIds = useCallback(
+    () => Array.from(selectedIdsRef.current),
+    [],
+  );
   const col1Width = 25;
   const col2Width = 25;
 
@@ -882,6 +895,12 @@ export default function DispositionPage() {
                                     // DetailFocused werden per-Row im
                                     // Parent abgeleitet; Memo greift fuer
                                     // alle Non-Selection-Re-Renders.
+                                    // Phase-C: isBulkSelected ist scalar
+                                    // (true wenn diese Sendung Teil einer
+                                    // Multi-Selection ist). getBulkIds
+                                    // liest JIT — kein Set als Prop.
+                                    const isMultiSelection =
+                                      selectedIds.size > 1;
                                     const renderItem = (s: Shipment) => (
                                       <ShipmentRow
                                         key={s.id}
@@ -895,7 +914,11 @@ export default function DispositionPage() {
                                         onRowClick={handleRowClick}
                                         onCardClick={handleCardClick}
                                         registerRef={registerCardRef}
-                                        selectedIds={selectedIds}
+                                        isBulkSelected={
+                                          isMultiSelection &&
+                                          selectedIds.has(s.id)
+                                        }
+                                        getBulkIds={getBulkIds}
                                       />
                                     );
                                     if (rg.kind === 'relation') {

@@ -1,17 +1,15 @@
 /**
- * Phase-1 Perf-Refactor: Row der Sendungs-Liste in DispositionPage.
+ * Phase-1 + Phase-C Perf-Refactor: Row der Sendungs-Liste in
+ * DispositionPage.
  *
- * Extrahiert aus DispositionPage.tsx renderItem (L824-866 vor Refactor)
- * + in React.memo gewrappt. Default-shallow-Compare reicht — Eltern
- * uebergibt scalar/boolean props + useCallback-stabilisierte Handler.
+ * Extrahiert aus DispositionPage.tsx renderItem + in React.memo
+ * gewrappt. Default-shallow-Compare reicht — Eltern uebergibt
+ * scalar/boolean props + useCallback-stabilisierte Handler.
  *
- * Hot-Path-Hinweis (Phase 1 Limit):
- *   selectedIds: Set wird weiterhin durchgereicht (ShipmentCard nutzt
- *   es fuer Bulk-Stackable/Transport-Toggle). Set-Identitaet aendert
- *   sich bei jedem Toggle → Memo greift NICHT bei Selection-Toggles.
- *   Memo schuetzt aber gegen die anderen Re-Render-Triggers (Highlight,
- *   Expand-Toggle, Tour-Klick, Modal-Open). Phase-C-Commit refactort
- *   ShipmentCard auf scalar Bulk-Props → dann greift Memo komplett.
+ * Phase-C (Memo-Luecke geschlossen):
+ *   selectedIds: Set wurde durch scalar isBulkSelected + getBulkIds-
+ *   Callback ersetzt. Selection-Toggle re-rendert jetzt NUR die EINE
+ *   betroffene Row (statt aller ~600).
  */
 import { memo } from 'react';
 import ShipmentCard from '../ShipmentCard';
@@ -35,10 +33,13 @@ export interface ShipmentRowProps {
   onCardClick: (id: string) => void;
   /** Ref-Registrierung fuer Scroll-To-Focus (cardRefs.current.set). */
   registerRef: (id: string, el: HTMLDivElement | null) => void;
-  /** Phase-1 Durchreich-Prop: ShipmentCard nutzt es fuer Bulk-Toggles.
-   *  Phase-C wird das durch scalar Bulk-Props ersetzt — bis dahin
-   *  bricht Memo bei Selection-Toggles (gewuenscht & dokumentiert). */
-  selectedIds: Set<string>;
+  /** Phase-C: scalar Bulk-Flag — true wenn diese Sendung Teil einer
+   *  Multi-Selection (>1) ist. Steuert Stackable/Transport-Toggle in
+   *  ShipmentCard auf Bulk-Modus um. */
+  isBulkSelected: boolean;
+  /** Phase-C: Closure-getter fuer Bulk-IDs — JIT-Read aus Parent-Ref.
+   *  Stabiler useCallback-Ref damit Memo nicht bricht. */
+  getBulkIds: () => string[];
 }
 
 function ShipmentRowImpl({
@@ -50,7 +51,8 @@ function ShipmentRowImpl({
   onRowClick,
   onCardClick,
   registerRef,
-  selectedIds,
+  isBulkSelected,
+  getBulkIds,
 }: ShipmentRowProps) {
   const className = `flex items-start gap-2 rounded-lg border transition-colors ${
     isHighlighted
@@ -81,7 +83,8 @@ function ShipmentRowImpl({
         <ShipmentCard
           shipment={shipment}
           draggable
-          selectedIds={selectedIds}
+          isBulkSelected={isBulkSelected}
+          getBulkIds={getBulkIds}
           onCardClick={() => onCardClick(shipment.id)}
         />
       </div>

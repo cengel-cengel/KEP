@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Pencil } from 'lucide-react';
 import { api } from '../lib/api';
 import type { Shipment } from '../types/shipment';
@@ -73,22 +73,39 @@ export interface ShipmentCardProps {
   shipment: Shipment;
   draggable?: boolean;
   onLockBadgeClick?: () => void;
-  /** Bulk-Aktionen-Awareness: wenn shipment.id in selectedIds + size>1,
-   *  wirken Stackable/Verkehrsart-Toggle auf alle markierten. */
-  selectedIds?: Set<string>;
+  /** Phase-C: scalar boolean statt Set<string>. true wenn diese
+   *  Sendung Teil einer Multi-Selection ist (>1 markiert). Wirkt auf
+   *  Stackable + Verkehrsart-Toggle (Bulk-Mode). */
+  isBulkSelected?: boolean;
+  /** Phase-C: Bulk-IDs werden NICHT als Prop durchgereicht (Memo-
+   *  Breaker bei jeder Selection-Aenderung). Stattdessen: Closure
+   *  ueber stabilen useCallback im Parent, der zur Mutation-Zeit
+   *  die aktuelle Auswahl aus einem Ref liest. Wenn null/undefined
+   *  → Single-Mode (nicht-bulk). */
+  getBulkIds?: () => string[];
   /** Klick auf Card-Body (außerhalb von interaktiven Elementen) */
   onCardClick?: () => void;
 }
 
-export default function ShipmentCard({
+function ShipmentCardImpl({
   shipment,
   draggable = false,
   onLockBadgeClick,
-  selectedIds,
+  isBulkSelected,
+  getBulkIds,
   onCardClick,
 }: ShipmentCardProps) {
-  const useBulk = !!selectedIds && selectedIds.has(shipment.id) && selectedIds.size > 1;
-  const bulkIds = useBulk ? Array.from(selectedIds!) : null;
+  // Bulk-Body-Helfer: liest die aktuelle Auswahl-IDs JIT (zur
+  // Mutation-Zeit) statt sie als Prop zu cachen — damit kein
+  // Memo-Breaker bei Selection-Toggles.
+  const buildBulkBody = (
+    patch: Record<string, unknown>,
+  ): { ids: string[]; patch: Record<string, unknown> } | null => {
+    if (!isBulkSelected || !getBulkIds) return null;
+    const ids = getBulkIds();
+    if (ids.length <= 1) return null;
+    return { ids, patch };
+  };
   const row = shipment as {
     customers?: { name: string };
     business_partner?: { name?: string; partner_number?: string };
@@ -126,11 +143,9 @@ export default function ShipmentCard({
   const queryClient = useQueryClient();
   const stackableMutation = useMutation({
     mutationFn: async (next: boolean) => {
-      if (bulkIds) {
-        await api.post(`/shipments/bulk-patch`, {
-          ids: bulkIds,
-          patch: { stackable: next },
-        });
+      const bulk = buildBulkBody({ stackable: next });
+      if (bulk) {
+        await api.post(`/shipments/bulk-patch`, bulk);
       } else {
         await api.patch(`/shipments/${shipment.id}/stackable`, { stackable: next });
       }
@@ -154,11 +169,9 @@ export default function ShipmentCard({
   const currentTransportType = optimisticTransportType ?? persistedTransportType ?? '';
   const transportMutation = useMutation({
     mutationFn: async (next: string) => {
-      if (bulkIds) {
-        await api.post(`/shipments/bulk-patch`, {
-          ids: bulkIds,
-          patch: { transportType: next },
-        });
+      const bulk = buildBulkBody({ transportType: next });
+      if (bulk) {
+        await api.post(`/shipments/bulk-patch`, bulk);
       } else {
         await api.patch(`/shipments/${shipment.id}`, { transportType: next });
       }
@@ -354,3 +367,14 @@ export default function ShipmentCard({
     </div>
   );
 }
+
+/**
+ * Phase-C: React.memo + scalar Bulk-Props. Vorher war `selectedIds:
+ * Set<string>` ein Memo-Breaker — Set-Identitaet aenderte sich bei
+ * jedem Toggle, alle ~600 Cards re-renderten. Jetzt:
+ *   · isBulkSelected: boolean — wechselt nur fuer betroffene Rows.
+ *   · getBulkIds: useCallback im Parent — Function-Ref stabil.
+ * Default-shallow-Compare reicht.
+ */
+const ShipmentCard = memo(ShipmentCardImpl);
+export default ShipmentCard;

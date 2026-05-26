@@ -4,17 +4,18 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 /**
- * Perf-3: Vendor-Chunk-Aufteilung fuer Browser-Cache.
+ * Perf-3 + Perf-4: Vendor-Chunk-Aufteilung fuer Browser-Cache.
  *
  * Ziel: vendor-Code (three/leaflet/dockview/react/radix) selten
  * geaendert → eigener Chunk → Browser-Cache-Hit-Rate steigt ueber
- * App-Deploys. App-Bundle ist nicht spürbar kleiner, aber jeder
- * weitere Visit lädt nur das ~150 kB App-Delta statt der vendor-
- * Riesen.
+ * App-Deploys.
  *
- * Reihenfolge nach Frequenz: react/radix in jeder Page; three/leaflet
- * nur in den lazy-Panels/-Pages (laden also nur einmal pro User-
- * Lifetime ueber Deploys hinweg, falls Cache stabil).
+ * Reihenfolge im if-Block ist relevant:
+ *   1. react/jsx-runtime + react-dom MUSS zuerst matched werden,
+ *      sonst gruppiert rolldown sie mit dem ersten Vendor (z.B.
+ *      dockview), der sie konsumiert → vendor-dockview wird damit
+ *      ungewollt in den Initial-Graph gezogen.
+ *   2. Danach große Libraries (three/leaflet/dockview/radix).
  */
 function manualChunks(id: string): string | undefined {
   if (!id.includes('node_modules')) return undefined;
@@ -30,9 +31,11 @@ function manualChunks(id: string): string | undefined {
   ) {
     return 'vendor-leaflet';
   }
-  if (id.includes('node_modules/dockview')) {
-    return 'vendor-dockview';
-  }
+  // dockview NICHT manuell chunken — rolldown bundelt es dann
+  // direkt in den WorkspacePage-Chunk (oder verwandte lazy Chunks),
+  // statt ein vendor-dockview-Chunk zu erstellen, das ungewollt
+  // react-jsx-runtime-Helfer mitnimmt und damit ins initial-Graph
+  // gezogen wird.
   if (id.includes('node_modules/@radix-ui/')) {
     return 'vendor-radix';
   }

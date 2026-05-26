@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './store/auth';
 import LoginPage from './pages/LoginPage';
@@ -6,8 +6,6 @@ import DashboardPage from './pages/DashboardPage';
 import ShipmentsPage from './pages/ShipmentsPage';
 import NewShipmentPage from './pages/NewShipmentPage';
 import BeladeplanPage from './pages/BeladeplanPage';
-import DispositionPage from './pages/DispositionPage';
-import WorkspacePage from './pages/WorkspacePage';
 import ClearancePage from './pages/ClearancePage';
 import InvoicesPage from './pages/InvoicesPage';
 import HallPage from './pages/HallPage';
@@ -23,12 +21,18 @@ import PricingHubPage from './pages/PricingHubPage';
 import MasterDataLayout from './layouts/MasterDataLayout';
 import AppLayout from './components/layout/AppLayout';
 import HotkeyCheatSheet from './components/help/HotkeyCheatSheet';
+import { preloadDockPanels } from './workspace/dock/panelRegistry';
 
 /**
- * Perf-2: schwere / selten besuchte Routen lazy. Three.js (~150 kB)
- * + Leaflet (~140 kB) + ihre Drei/MarkerCluster-Deps werden NUR
- * geladen wenn der User tatsaechlich auf eine dieser Routen navigiert.
- * Login → Dashboard-Pfad bekommt sie nicht mehr.
+ * Perf-2 + Perf-4: schwere Routen lazy.
+ *   Perf-2 (Commit 822ffbf): 3D + Leaflet-Pages.
+ *   Perf-4 (this commit): WorkspacePage (dockview ~315 kB) +
+ *     DispositionPage (Legacy-Leaflet via DispositionMap).
+ *
+ * Three.js (~150 kB) + Leaflet (~140 kB) + dockview (~315 kB) +
+ * @react-three/* (~80 kB) werden NUR geladen wenn der User
+ * tatsaechlich auf eine dieser Routen navigiert. Login → Dashboard-
+ * Pfad bekommt sie nicht mehr.
  */
 const LoadingPlanPage = lazy(() => import('./pages/LoadingPlanPage'));
 const NvLoadingPlanPage = lazy(() => import('./pages/NvLoadingPlanPage'));
@@ -38,6 +42,47 @@ const NvDispoMapPopupPage = lazy(() => import('./pages/NvDispoMapPopupPage'));
 const FvDispoMapPopupPage = lazy(() => import('./pages/FvDispoMapPopupPage'));
 const CharterPreviewPage = lazy(() => import('./pages/CharterPreviewPage'));
 const RoutingPage = lazy(() => import('./pages/RoutingPage'));
+const WorkspacePage = lazy(() => import('./pages/WorkspacePage'));
+const DispositionPage = lazy(() => import('./pages/DispositionPage'));
+
+/**
+ * Perf-4: Idle-Preload nach Login.
+ *
+ * Der typische User landet nach Login auf /dashboard und navigiert
+ * direkt zu /workspace (dockview + alle Panels). Ohne Preload waere
+ * der Klick auf "Workspace" ein 600-1500ms-Spinner (dockview chunk +
+ * vendor-dockview chunk + workspace-Code).
+ *
+ * requestIdleCallback (Fallback setTimeout 600ms) startet im
+ * Hintergrund nach Initial-Paint:
+ *   1. WorkspacePage  → zieht dockview-Vendor + DockRuntime
+ *   2. DispositionPage → zieht leaflet-Vendor (DispositionMap)
+ *   3. preloadDockPanels() → MapPanel/YardPanel/LoadingPlanPanel
+ *      (delegiert; preload-Logik bereits in panelRegistry.ts).
+ *
+ * Parallele HTTP-Fetches (HTTP/2-Multiplex), kein Wasserfall.
+ */
+function preloadHeavyPages(): void {
+  if (typeof window === 'undefined') return;
+  const trigger = () => {
+    void import('./pages/WorkspacePage');
+    void import('./pages/DispositionPage');
+    preloadDockPanels();
+  };
+  const ric = (
+    window as Window & {
+      requestIdleCallback?: (
+        cb: () => void,
+        opts?: { timeout: number },
+      ) => number;
+    }
+  ).requestIdleCallback;
+  if (typeof ric === 'function') {
+    ric(trigger, { timeout: 3000 });
+  } else {
+    window.setTimeout(trigger, 600);
+  }
+}
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -73,6 +118,18 @@ function PageLoading() {
 }
 
 export default function App() {
+  const { isAuthenticated } = useAuth();
+  // Perf-4: nach Login einmalig Hintergrund-Preload starten. useRef-
+  // Guard verhindert Doppel-Trigger bei Re-Renders. Browser-Cache
+  // uebernimmt subsequente Nav-Klicks → /workspace fühlt sich instant
+  // an (chunk-cache-hit, kein Spinner).
+  const preloadedRef = useRef(false);
+  useEffect(() => {
+    if (!isAuthenticated || preloadedRef.current) return;
+    preloadedRef.current = true;
+    preloadHeavyPages();
+  }, [isAuthenticated]);
+
   return (
     <>
       <HotkeyCheatSheet />

@@ -1,13 +1,14 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useCallback, useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Pencil } from 'lucide-react';
-import ShipmentCard from '../components/ShipmentCard';
 import ShipmentEditModal from '../components/ShipmentEditModal';
 import ShipmentDetailModal from '../components/ShipmentDetailModal';
 import TourCard from '../components/TourCard';
 import DispositionMap from '../components/DispositionMap';
 import type { SubcontractorOption } from '../components/TourCard';
+// Phase-1 Perf-Refactor: Row-Komponente extrahiert + React.memo.
+import ShipmentRow from '../components/disposition/ShipmentRow';
 
 type PricingSubConditionRow = {
   id: string;
@@ -281,26 +282,36 @@ export default function DispositionPage() {
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [searchParams, setSearchParams] = useSearchParams();
 
-  function toggleId(id: string) {
+  // Phase-1 Perf-Refactor: Handler in useCallback damit ShipmentRow.memo
+  // greift (zumindest fuer Non-Selection-Re-Renders — Selection-Toggle
+  // bleibt durch selectedIds-Set-Identitaet betroffen, bis Phase-C
+  // ShipmentCard auf scalar Bulk-Props refactort).
+  const toggleId = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const n = new Set(prev);
       n.has(id) ? n.delete(id) : n.add(id);
       return n;
     });
-  }
-  function setGroupSelected(items: Shipment[], select: boolean) {
-    setSelectedIds((prev) => {
-      const n = new Set(prev);
-      for (const s of items) {
-        if (select) n.add(s.id);
-        else n.delete(s.id);
-      }
-      return n;
-    });
-  }
-  function clearSelection() {
+  }, []);
+  const setGroupSelected = useCallback(
+    (items: Shipment[], select: boolean) => {
+      setSelectedIds((prev) => {
+        const n = new Set(prev);
+        for (const s of items) {
+          if (select) n.add(s.id);
+          else n.delete(s.id);
+        }
+        return n;
+      });
+    },
+    [],
+  );
+  const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
-  }
+  }, []);
+  // groupSelectionState bleibt eine pure Funktion — laeuft pro Group-
+  // Header (~16 Calls). Kein useCallback noetig: kein Memo-Boundary
+  // dazwischen, Closure-Identitaet wird nicht weiterverlinkt.
   function groupSelectionState(items: Shipment[]): 'none' | 'some' | 'all' {
     if (items.length === 0) return 'none';
     let n = 0;
@@ -309,6 +320,27 @@ export default function DispositionPage() {
     if (n === items.length) return 'all';
     return 'some';
   }
+  // Ref-Callback fuer ShipmentRow: stabil ueber Re-Renders damit memo
+  // nicht bricht.
+  const registerCardRef = useCallback(
+    (id: string, el: HTMLDivElement | null) => {
+      if (el) cardRefs.current.set(id, el);
+      else cardRefs.current.delete(id);
+    },
+    [],
+  );
+  // Row-Body-Click → setSelectedShipmentId. Stabiler useCallback-Ref
+  // damit ShipmentRow.onRowClick zwischen Re-Renders identisch ist.
+  const handleRowClick = useCallback(
+    (id: string) => setSelectedShipmentId(id),
+    [],
+  );
+  // Card-Body-Click → Detail-Modal-Open. 3 setStates kombiniert.
+  const handleCardClick = useCallback((id: string) => {
+    setSelectedShipmentId(id);
+    setDetailNavSource('undispatched');
+    setDetailViewShipmentId(id);
+  }, []);
   const col1Width = 25;
   const col2Width = 25;
 
@@ -330,6 +362,27 @@ export default function DispositionPage() {
       return data;
     },
   });
+
+  // Phase-1 Perf-Refactor: groupShipments aus dem Render-Pfad. Vorher
+  // lief der O(N) Country/Relation-Aggregator 2× pro Render (Liste
+  // L745 + Detail-Modal-IIFE L1331). Jetzt 1× pro Daten-Aenderung.
+  const undispatchedGroups = useMemo(
+    () => groupShipments(undispatched),
+    [undispatched],
+  );
+  // Flat-Liste fuer Detail-Modal ◀/▶ Navigation. ORIGINAL-Referenzen
+  // bleiben (kein re-map) — Identitaet der Shipment-Objekte stabil.
+  const undispatchedFlat = useMemo<Shipment[]>(
+    () =>
+      undispatchedGroups.flatMap((cg) =>
+        cg.relations.flatMap((rg) =>
+          rg.kind === 'relation'
+            ? rg.items
+            : rg.subAxes.flatMap((a) => a.items),
+        ),
+      ),
+    [undispatchedGroups],
+  );
 
   // Focus-Logik aus URL-Param ?focus=<id> (von Karten-Disposition)
   useEffect(() => {
@@ -564,9 +617,8 @@ export default function DispositionPage() {
     assignSubConditionMutation.mutate({ tourId, conditionId });
   }
 
-  function handleListShipmentClick(shipmentId: string) {
-    setSelectedShipmentId(shipmentId);
-  }
+  // Phase-1: handleListShipmentClick obsolete (Logik in handleRowClick
+  // L336 mit useCallback). Eintrag entfernt — Row ist einziger Caller.
 
   function handleReleaseTour(tourId: string) {
     if (releaseMutation.isPending) return;
@@ -742,7 +794,9 @@ export default function DispositionPage() {
                 <p className="text-gray-500 text-sm">Keine Sendungen ohne Tour.</p>
               ) : (
                 (() => {
-                  const groups = groupShipments(undispatched);
+                  // Phase-1: undispatchedGroups statt inline-Call —
+                  // O(N) Aggregator laeuft jetzt nur bei Daten-Aenderung.
+                  const groups = undispatchedGroups;
                   const searchActive = filterSearch.trim().length > 0;
                   return groups.map((cg) => {
                     const cExpanded = searchActive || expandedCountries.has(cg.code);
@@ -822,47 +876,27 @@ export default function DispositionPage() {
                                     </span>
                                   </div>
                                   {rExpanded && (() => {
+                                    // Phase-1 Perf-Refactor: inline-JSX
+                                    // → <ShipmentRow> memo'd-Komponente.
+                                    // Boolean-Props isSelected/Highlighted/
+                                    // DetailFocused werden per-Row im
+                                    // Parent abgeleitet; Memo greift fuer
+                                    // alle Non-Selection-Re-Renders.
                                     const renderItem = (s: Shipment) => (
-                                      <div
+                                      <ShipmentRow
                                         key={s.id}
-                                        ref={(el) => {
-                                          if (el) cardRefs.current.set(s.id, el);
-                                          else cardRefs.current.delete(s.id);
-                                        }}
-                                        className={`flex items-start gap-2 rounded-lg border transition-colors ${
-                                          highlightedId === s.id
-                                            ? 'border-yellow-500 ring-2 ring-yellow-300 bg-yellow-50 animate-pulse'
-                                            : selectedShipmentId === s.id
-                                            ? 'border-[#1e40af] bg-yellow-100'
-                                            : selectedIds.has(s.id)
-                                            ? 'border-blue-300 bg-blue-50'
-                                            : 'border-gray-200 bg-white hover:bg-gray-50'
-                                        }`}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={selectedIds.has(s.id)}
-                                          onChange={() => toggleId(s.id)}
-                                          onClick={(e) => e.stopPropagation()}
-                                          className="mt-3 ml-2"
-                                          aria-label={`Sendung ${s.shipment_number ?? s.id} markieren`}
-                                        />
-                                        <div
-                                          className="flex-1 cursor-pointer"
-                                          onClick={() => handleListShipmentClick(s.id)}
-                                        >
-                                          <ShipmentCard
-                                            shipment={s}
-                                            draggable
-                                            selectedIds={selectedIds}
-                                            onCardClick={() => {
-                                              setSelectedShipmentId(s.id);
-                                              setDetailNavSource('undispatched');
-                                              setDetailViewShipmentId(s.id);
-                                            }}
-                                          />
-                                        </div>
-                                      </div>
+                                        shipment={s}
+                                        isSelected={selectedIds.has(s.id)}
+                                        isHighlighted={highlightedId === s.id}
+                                        isDetailFocused={
+                                          selectedShipmentId === s.id
+                                        }
+                                        onToggleSelection={toggleId}
+                                        onRowClick={handleRowClick}
+                                        onCardClick={handleCardClick}
+                                        registerRef={registerCardRef}
+                                        selectedIds={selectedIds}
+                                      />
                                     );
                                     if (rg.kind === 'relation') {
                                       return (
@@ -1325,14 +1359,11 @@ export default function DispositionPage() {
       {(() => {
         // Detail-Modal: Quelle der Pfeil-Navigation = aktuell-gefilterte Liste,
         // entweder undispatched (gruppiert, group-flat) oder Tour-Detail.
+        // Phase-1: undispatchedFlat statt inline-Re-Compute — memoized.
         const groupFlat: Shipment[] =
           detailNavSource === 'tour'
             ? (sortedTourShipments as Shipment[])
-            : groupShipments(undispatched).flatMap((cg) =>
-                cg.relations.flatMap((rg) =>
-                  rg.kind === 'relation' ? rg.items : rg.subAxes.flatMap((a) => a.items),
-                ),
-              );
+            : undispatchedFlat;
         const handleNavigate = (dir: 'prev' | 'next') => {
           const idx = groupFlat.findIndex((s) => s.id === detailViewShipmentId);
           if (idx < 0 || groupFlat.length === 0) return;

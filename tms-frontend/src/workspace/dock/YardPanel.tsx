@@ -55,6 +55,8 @@ import {
   resolveVehicleCapacity,
   type ResolvedVehicleCapacity,
 } from '../../lib/vehicleTypes';
+// T3: PLZ-Cluster aus shared lib (auch NvLoadingPlanHofPanel nutzt das).
+import { PLZ_CLUSTER_DIGITS, plzPrefix } from '../../lib/plzCluster';
 
 interface NearbyShipment {
   id: string;
@@ -154,39 +156,6 @@ interface FvOptimizeResponse {
 
 const NV_RADIUS_KM = 20; // NV: BE-Default reicht; explizit klar fuer Konstanz.
 const FV_RADIUS_KM = 100;
-
-/**
- * T3: PLZ-Cluster-Tiefe (1..5). Bei 5 Stellen = exakte PLZ (alt).
- *   3 = "704xx" (~13km Radius pro Cluster, 225 Sdg → ~3-5 Lanes
- *       statt 30+ → drastisch weniger Leer-km wenn 1 LKW pro Lane).
- *   2 = "70xxx" (Bundesland-grob, zu wenig fuer Operations).
- *   4 = "7041x" (Strassen-grob, mehr Lanes als 3, weniger Buendelung).
- *
- * Justierbar (Carlos-Spec: spaeter UI-Slider). Fuer FV-Empfangs-PLZ
- * (DIREKT + Sammelgut-ohne-Depot-Fallback) gilt dieselbe Tiefe.
- * Depot-/Relation-Gruppen bleiben unangetastet (sind bereits per
- * Hauptlauf gebuendelt).
- */
-const PLZ_CLUSTER_DIGITS = 3;
-
-/**
- * Liefert den PLZ-Prefix als Label-String — die ersten N Ziffern,
- * Rest mit 'x' aufgefuellt (5-Stellen-Display). z.B.:
- *   plzPrefix("70435", 3) → "704xx"
- *   plzPrefix("70435", 5) → "70435"
- *   plzPrefix(null, 3)    → "—"
- * Bei Stringlaenge < digits → return wie ist + Rest-x (defensiv).
- */
-function plzPrefix(zip: string | null | undefined, digits: number): string {
-  if (!zip) return '—';
-  const trimmed = zip.trim();
-  if (!trimmed) return '—';
-  // Numerische PLZ erwartet (5-stellig DE / AT 4 / CH 4) — wir
-  // schneiden nach digits Zeichen und fuellen auf 5 mit 'x'.
-  const head = trimmed.slice(0, digits);
-  const padLen = Math.max(0, 5 - head.length);
-  return head + 'x'.repeat(padLen);
-}
 
 export default function YardPanel() {
   const { mode } = useWorkspace();

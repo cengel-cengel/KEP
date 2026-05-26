@@ -19,6 +19,8 @@ import {
 import { computeStackingLdmMetrics } from '../lib/loadingLdm';
 import { placePackages, sortPackagesForOptimalPack, type SharedPlacedPackage } from '../lib/loadingShared';
 import { nvExpandPackages, type NvExpandedPackage } from '../lib/nvExpand';
+// Beladeplan/Hof-Verschmelzung Schritt 1: Hof-Liste rechts.
+import NvLoadingPlanHofPanel from './NvLoadingPlanHofPanel';
 
 /**
  * NV-Pack-Output. Plan3DPackage-kompatibel (struktureller Superset)
@@ -449,7 +451,10 @@ export default function NvLoadingPlanPage() {
           <X size={18} />
         </button>
       </div>
-      <div className="flex-1 p-3 overflow-auto">
+      {/* Beladeplan/Hof Schritt 1: Split-View — Auflieger 3D links,
+          Hof-Liste rechts. Hof-Tab im Dock bleibt vorerst (Phase 1). */}
+      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 p-3 overflow-auto min-w-0">
         <div className="mb-3">
           <InsertModeBanner
             active={insertMode.active}
@@ -641,6 +646,12 @@ export default function NvLoadingPlanPage() {
             />
           </div>
         )}
+      </div>
+        {/* RIGHT: Hof-Liste (PLZ-Cluster, Sendung-Cards). Phase 1
+            ohne Drag — Phase 2 ergänzt HTML5-Drag-Source. */}
+        <aside className="w-80 lg:w-96 flex-shrink-0 border-l bg-white flex flex-col overflow-hidden">
+          <NvLoadingPlanHofPanel tourId={tourId ?? null} />
+        </aside>
       </div>
       {ctxMenu &&
         (() => {

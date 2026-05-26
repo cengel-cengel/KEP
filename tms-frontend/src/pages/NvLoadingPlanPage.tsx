@@ -201,22 +201,6 @@ export default function NvLoadingPlanPage() {
     ],
   );
 
-  const packages = useMemo(
-    () =>
-      flattenPackages(
-        tourQ.data ?? null,
-        capacity.widthCm,
-        capacity.lengthCm,
-        capacity.heightCm,
-      ),
-    [
-      tourQ.data,
-      capacity.widthCm,
-      capacity.lengthCm,
-      capacity.heightCm,
-    ],
-  );
-
   // Schritt 2: Sandbox-Reducer. Alle Drag/Eject-Aktionen schreiben
   // hier rein, NICHT direkt ans BE. "Übernehmen"-Button persistiert
   // den State. Bei Unmount → React droppt State (Reset by design).
@@ -225,32 +209,76 @@ export default function NvLoadingPlanPage() {
     initialSandboxState,
   );
 
+  // Fix-C: Sandbox-Overrides werden VOR flattenPackages angewandt
+  // (statt im renderedPackages-Mapper). Hintergrund: Quantity-Klone
+  // q>0 haben dbItemId=undefined (nvExpand L142) und werden via
+  // Phase-2 placePackages um die q===0-Position herum auto-platziert.
+  // Override im Mapper traf nur q===0 → q>0 blieben an alten Positionen
+  // stehen ("verschachtelt" auf Touren mit Mehrfach-Paletten wie N050).
+  // Lösung: positionOverrides ersetzen pos_x_cm/y/z auf der q===0-Row
+  // VOR flattenPackages → Phase-2 plaziert Klone wieder mit auto-Slot.
+  // Ejected Shipments werden hier ebenfalls rausgefiltert.
+  const patchedTour = useMemo<NvLoadingDetail | null>(() => {
+    if (!tourQ.data) return null;
+    if (
+      sandbox.positionOverrides.size === 0 &&
+      sandbox.ejectedShipmentIds.size === 0
+    ) {
+      return tourQ.data;
+    }
+    return {
+      ...tourQ.data,
+      stops: tourQ.data.stops
+        .filter((s) => !sandbox.ejectedShipmentIds.has(s.shipment.id))
+        .map((s) => ({
+          ...s,
+          shipment: {
+            ...s.shipment,
+            shipment_package_items: (
+              s.shipment.shipment_package_items ?? []
+            ).map((it) => {
+              const override = sandbox.positionOverrides.get(it.id);
+              if (!override) return it;
+              return {
+                ...it,
+                pos_x_cm: Math.round(override.posXCm),
+                pos_y_cm: Math.round(override.posYCm),
+                pos_z_cm: Math.round(override.posZCm),
+                rotation_deg:
+                  override.rotationDeg !== undefined
+                    ? Math.round(override.rotationDeg)
+                    : (it.rotation_deg ?? null),
+              };
+            }),
+          },
+        })),
+    };
+  }, [tourQ.data, sandbox]);
+
+  const packages = useMemo(
+    () =>
+      flattenPackages(
+        patchedTour,
+        capacity.widthCm,
+        capacity.lengthCm,
+        capacity.heightCm,
+      ),
+    [
+      patchedTour,
+      capacity.widthCm,
+      capacity.lengthCm,
+      capacity.heightCm,
+    ],
+  );
+
   // BUG-F-PACK: Render/Drag-Target = nur platzierte Pakete; unplaced
   // werden im Banner gezaehlt, aber nicht ins 3D-Mesh gereicht.
-  // Schritt 2: + Sandbox-Filter (ejected raus) + Sandbox-Position-
-  // Overrides anwenden.
+  // Fix-C: Sandbox-Anwendung wandert in patchedTour (siehe oben) →
+  // hier wieder simpel wie pre-Schritt-2. Quantity-Klone werden korrekt
+  // via Phase-2 placePackages um die neue q===0-Position auto-platziert.
   const renderedPackages = useMemo(
-    () =>
-      packages
-        .filter((p) => !p.unplaced)
-        .filter((p) => {
-          const sid = (p as { shipmentId?: string }).shipmentId;
-          return !sid || !sandbox.ejectedShipmentIds.has(sid);
-        })
-        .map((p) => {
-          const dbId = (p as { dbItemId?: string }).dbItemId;
-          const override = dbId
-            ? sandbox.positionOverrides.get(dbId)
-            : undefined;
-          if (!override) return p;
-          return {
-            ...p,
-            posX: override.posXCm,
-            posY: override.posYCm,
-            posZ: override.posZCm,
-          };
-        }),
-    [packages, sandbox],
+    () => packages.filter((p) => !p.unplaced),
+    [packages],
   );
   const unplacedCount = useMemo(
     () => packages.filter((p) => p.unplaced).length,

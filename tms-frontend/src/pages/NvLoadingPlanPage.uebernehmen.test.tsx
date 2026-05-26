@@ -20,13 +20,21 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 // LoadingPlan3D stub — vermeidet three.js im jsdom + exposed
 // onPositionChange als Test-Button.
+// Render-Position pro Paket via data-attrs (fuer Fix-C: Quantity-
+// Klonen-Propagation-Assertions). Fix-C-Test prueft dass q===0-Drag
+// ALLE Klone (q===1, q===2, ...) mit-bewegt via re-pack.
 vi.mock('../components/LoadingPlan3D', () => ({
   default: ({
     packages,
     onPositionChange,
     onPackageContextMenu,
   }: {
-    packages: Array<{ id: string }>;
+    packages: Array<{
+      id: string;
+      posX: number;
+      posY: number;
+      posZ: number;
+    }>;
     onPositionChange: (
       id: string,
       x: number,
@@ -37,7 +45,13 @@ vi.mock('../components/LoadingPlan3D', () => ({
   }) => (
     <div data-testid="lp3d-stub">
       {packages.map((p) => (
-        <div key={p.id}>
+        <div
+          key={p.id}
+          data-testid={`pkg-${p.id}`}
+          data-pos-x={p.posX}
+          data-pos-y={p.posY}
+          data-pos-z={p.posZ}
+        >
           <button
             data-testid={`drag-${p.id}`}
             onClick={() => onPositionChange(p.id, 100, 200, 0)}
@@ -289,6 +303,131 @@ describe('NvLoadingPlanPage Übernehmen-Mutation (Schritt 2)', () => {
     });
     // Sandbox unveraendert (1 Aenderung weiterhin sichtbar).
     expect(screen.getByText(/Sandbox: 1 Änderung/)).toBeInTheDocument();
+  });
+
+  it('Fix-C: Drag q===0 verschiebt clones q>0 in der Visualisierung mit (re-pack)', async () => {
+    // Tour mit 1 Sendung, qty=3 → 3 Klone:
+    //   q===0 mit dbItemId='pi-3x', initial-storedPos (50,0,0) via BE.
+    //   q===1, q===2 ohne dbItemId, ohne storedPos → Phase-2 auto-pack.
+    // Erwartung pre-Fix-C: drag q===0 → nur q===0 wandert; q>0 bleiben.
+    // Erwartung Fix-C:    drag q===0 → patchedTour mit neuer pos_x_cm
+    //   auf q===0 → flattenPackages re-runs → Phase-2 platziert q>0
+    //   um die NEUE q===0-Pos herum (clustered).
+    const TOUR_QTY3 = {
+      ...TOUR_FIXTURE,
+      stops: [
+        {
+          id: 'stop-q',
+          position: 1,
+          is_stamm_kunde: false,
+          shipment: {
+            id: 'sh-q',
+            shipment_number: 'Q-1',
+            ldm: 6,
+            weight_kg: 1500,
+            length_cm: 120,
+            width_cm: 80,
+            height_cm: 100,
+            customer_id: 'c-q',
+            loading_date: '2099-12-31',
+            status: 'new',
+            has_active_lock: false,
+            is_hazmat: false,
+            customers: { priority_tier: null },
+            shipment_package_items: [
+              {
+                id: 'pi-3x',
+                line_index: 0,
+                quantity: 3,
+                length_cm: 120,
+                width_cm: 80,
+                height_cm: 100,
+                weight_kg: 500,
+                stackable: true,
+                // Initial-BE-Pos: bei posY=50, klein.
+                pos_x_cm: 0,
+                pos_y_cm: 50,
+                pos_z_cm: 0,
+              },
+            ],
+          },
+        },
+      ],
+    };
+    apiGet.mockResolvedValue({ data: TOUR_QTY3 });
+    render(
+      <Wrapper>
+        <NvLoadingPlanPage />
+      </Wrapper>,
+    );
+    // 3 Klone gerendert (id-Pattern via nvExpand L136:
+    //   qty>1 → `${it.id}:pkg:${q}` für ALLE q inkl 0).
+    const c0 = await screen.findByTestId('pkg-pi-3x:pkg:0');
+    const c1 = await screen.findByTestId('pkg-pi-3x:pkg:1');
+    const c2 = await screen.findByTestId('pkg-pi-3x:pkg:2');
+    // Initial-Layout: q===0 bei posY≈50; q>0 von Phase-2 um q===0
+    // herum auto-platziert. q>0 sollten in der Nähe von q===0 sein
+    // (Cluster).
+    const initialY0 = Number(c0.getAttribute('data-pos-y'));
+    const initialY1 = Number(c1.getAttribute('data-pos-y'));
+    const initialY2 = Number(c2.getAttribute('data-pos-y'));
+    expect(initialY0).toBe(50);
+    // q>0 koennen bei 0 oder Nachbar-Slots liegen — wichtig: sie
+    // sind NICHT mehrere hundert cm entfernt (Phase-2 packt in Reihen).
+    expect(Math.abs(initialY1 - initialY0)).toBeLessThan(400);
+    expect(Math.abs(initialY2 - initialY0)).toBeLessThan(400);
+
+    // Drag q===0 → handlePosition(pi-3x:pkg:0, 100, 200, 0).
+    // handlePosition macht pkg-Lookup via id und nutzt dbItemId (it.id
+    // = 'pi-3x') als Sandbox-Key → patchedTour ersetzt pos auf der
+    // line_index-Row → flattenPackages re-packt alle 3 Klone.
+    fireEvent.click(screen.getByTestId('drag-pi-3x:pkg:0'));
+
+    // Re-Pack-Check
+    //   1. q===0 ist auf der neuen Drag-Position (Phase-1 honor).
+    //   2. KEIN clone steht mehr bei posY=50 (das wäre die alte BE-
+    //      Pos für q===0; pre-Fix-C wären alle Phase-2-Auto-Slots
+    //      relativ zu Y=50 berechnet → mind. ein clone in [40,70]).
+    //   3. Alle 3 Klone weiterhin gerendert (keine Eject-Regression).
+    //   4. q>0 ueberlappen NICHT mit q===0 (Phase-2 obstacle-aware).
+    await waitFor(() => {
+      const c0el = screen.getByTestId('pkg-pi-3x:pkg:0');
+      const c1el = screen.getByTestId('pkg-pi-3x:pkg:1');
+      const c2el = screen.getByTestId('pkg-pi-3x:pkg:2');
+      const newY0 = Number(c0el.getAttribute('data-pos-y'));
+      const newY1 = Number(c1el.getAttribute('data-pos-y'));
+      const newY2 = Number(c2el.getAttribute('data-pos-y'));
+      // (1) q===0 auf neuer Drag-Pos.
+      expect(newY0).toBe(200);
+      // (3) 3 Klone (durch findByTestId oben implizit garantiert).
+      // (2) Kein Clone bei der alten BE-Pos Y=50 (würde bei pre-Fix-C
+      //     so passieren weil clones nie re-platziert wurden und
+      //     Phase-2 sie initial NEBEN q===0_alt=50 setzte).
+      expect(Math.abs(newY1 - 50)).toBeGreaterThan(10);
+      expect(Math.abs(newY2 - 50)).toBeGreaterThan(10);
+      // (4) Overlap-Check: q===0 spannt Y=200..320 (length 120cm).
+      //     Wenn ein Clone ebenfalls in diesem Y-Bereich liegt, muss
+      //     sein posX oder posZ ausserhalb der q===0-X/Z-Box sein.
+      const overlapsY = (y: number) => y >= 80 && y <= 320;
+      [{ y: newY1, el: c1el }, { y: newY2, el: c2el }].forEach(
+        ({ y, el }) => {
+          if (overlapsY(y)) {
+            const x = Number(el.getAttribute('data-pos-x'));
+            const z = Number(el.getAttribute('data-pos-z'));
+            // q===0 bei X=100, Z=0 → kein Overlap wenn x ≥ 180 oder
+            // z ≥ 100. (Pakete 80 breit × 100 hoch.)
+            // Akzeptable Toleranzbereiche.
+            expect(x >= 100 + 80 || z >= 100).toBe(true);
+          }
+        },
+      );
+    });
+    // initialY1/initialY2 sind in dem Scope deklariert aber nicht
+    // strikt-vergleichend hier — sie zeigen nur, dass die initial-
+    // Pos im selben Lauf gesetzt waren; das Erfolgskriterium ist die
+    // re-pack-Konsistenz (Assertions 1-4 oben).
+    void initialY1;
+    void initialY2;
   });
 
   it('Verwerfen: Sandbox leert, KEIN BE-Write', async () => {

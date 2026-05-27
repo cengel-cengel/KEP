@@ -1,4 +1,4 @@
-import { useMemo, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Trash2, RotateCcw, X } from 'lucide-react';
@@ -194,6 +194,24 @@ export default function NvLoadingPlanPage() {
     enabled: !!tourId,
     staleTime: 10_000,
   });
+
+  // MOBILE-DnD (Polyfill): waehrend einer Drag-Geste OrbitControls
+  // in LoadingPlan3D "blind machen" → sonst rotiert das 3D-Modell
+  // beim Touch-Wischen ueber den Auflieger anstatt den Drop zu
+  // empfangen. Listener registriert sich an document, der dragstart/
+  // dragend feuert bei Hof-Card-Drag UND OnTrailer-Card-Drag, also
+  // greift fuer beide Schritt-3/4-Quellen.
+  const [isDndActive, setIsDndActive] = useState<boolean>(false);
+  useEffect(() => {
+    const onStart = () => setIsDndActive(true);
+    const onEnd = () => setIsDndActive(false);
+    document.addEventListener('dragstart', onStart);
+    document.addEventListener('dragend', onEnd);
+    return () => {
+      document.removeEventListener('dragstart', onStart);
+      document.removeEventListener('dragend', onEnd);
+    };
+  }, []);
 
   // Schritt 3: nearby-Pool (gleicher Query-Key wie HofPanel → dedupe
   // via tanstack-query). Wird gebraucht damit patchedTour fuer
@@ -856,9 +874,15 @@ export default function NvLoadingPlanPage() {
                 Geometrie), nicht aus getVehicleDims-Koffer-7t-Fallback.
                 Schritt 3: Drop-Zone-Wrapper fuer Drag-IN aus Hof.
                 onDragOver muss preventDefault aufrufen sonst feuert
-                onDrop nicht (HTML5-Spec). */}
+                onDrop nicht (HTML5-Spec).
+                MOBILE-DnD: touchAction:none + Inner-Wrapper mit
+                pointer-events:none waehrend isDndActive — OrbitControls
+                in LoadingPlan3D sieht die Touch-Events dann NICHT
+                (Drop-Events bubblen durch die transparente Schicht
+                trotzdem ans onDragOver/onDrop des Outer-Wrapper). */}
             <div
               data-testid="nv-3d-dropzone"
+              style={{ touchAction: 'none' }}
               onDragOver={(e) => {
                 if (e.dataTransfer.types.includes(NV_DRAG_SHIPMENT_MIME)) {
                   e.preventDefault();
@@ -873,6 +897,11 @@ export default function NvLoadingPlanPage() {
                 e.preventDefault();
                 sandboxDispatch({ type: 'insert', shipmentId });
                 showToast(`Sendung in Sandbox eingefügt — übernehmen?`);
+              }}
+            >
+            <div
+              style={{
+                pointerEvents: isDndActive ? 'none' : 'auto',
               }}
             >
             <LoadingPlan3D
@@ -899,6 +928,7 @@ export default function NvLoadingPlanPage() {
                 });
               }}
             />
+            </div>
             </div>
 
             {/* F1.a/O Achslast — trailerLength_m aus capacity (echte

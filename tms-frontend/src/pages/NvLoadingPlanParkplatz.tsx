@@ -75,6 +75,10 @@ export default function NvLoadingPlanParkplatz({
             ? 'flex items-center justify-center border-2 border-dashed border-gray-300 m-2 rounded'
             : 'space-y-1.5')
         }
+        // MOBILE-DnD: Drop-Zone braucht touch-action:none damit der
+        // Polyfill die touch-events in dragover/drop umsetzen kann
+        // ohne dass der Browser scroll-zoom-defaults dazwischenfunken.
+        style={{ touchAction: 'none' }}
         data-testid="nv-parkplatz-dropzone"
         onDragOver={(e) => {
           if (e.dataTransfer.types.includes(NV_DRAG_SHIPMENT_MIME)) {

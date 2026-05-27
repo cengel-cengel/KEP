@@ -41,6 +41,9 @@ export default function NvLoadingPlanOnTrailerList({ stops }: Props) {
               key={ship.id}
               type="button"
               draggable
+              // MOBILE-DnD: touch-action:none verhindert Page-Scroll
+              // waehrend Long-Press-Drag.
+              style={{ touchAction: 'none' }}
               onDragStart={(e) => {
                 // Schritt 4: shipmentId via dataTransfer. Routing
                 // (eject vs removeInsert) macht der Parent-Drop-

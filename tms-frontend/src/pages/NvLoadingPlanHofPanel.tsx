@@ -189,6 +189,10 @@ export default function NvLoadingPlanHofPanel({
                     <button
                       type="button"
                       draggable
+                      // MOBILE-DnD: touch-action:none verhindert Page-
+                      // Scroll waehrend Long-Press-Drag (Polyfill aktiv
+                      // ab 300ms). Click bleibt erreichbar (kurzer Tap).
+                      style={{ touchAction: 'none' }}
                       onDragStart={(e) => {
                         // Schritt 3: shipmentId via dataTransfer ans
                         // Page-Drop-Handler. effectAllowed=copy weil

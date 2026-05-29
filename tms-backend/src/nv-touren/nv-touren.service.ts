@@ -58,6 +58,7 @@ import {
   isShipmentFullyStackable,
 } from '../lib/stackable.lib';
 import { buildAddressQuery, nominatimGeocode } from '../lib/nominatim.lib';
+import { resolvePool } from '../lib/poolShipments.lib';
 
 function timeToDate(hhmm?: string | null): Date | null | undefined {
   if (hhmm === undefined) return undefined;
@@ -3114,6 +3115,25 @@ export class NvTourenService {
       failed,
       skipped: addrMap.size - candidates.length,
     };
+  }
+
+  /**
+   * Hof-Filter Stufe 1 (E2): PLZ-basierter Pool fuer NV-Touren.
+   * Delegiert an die geteilte Lib poolShipments.lib.ts (Regel #1).
+   * Controller validiert mode (nv-pickup | nv-delivery).
+   */
+  async poolShipmentsNv(
+    tourId: string,
+    mode: 'nv-pickup' | 'nv-delivery',
+  ) {
+    try {
+      return await resolvePool(this.prisma, tourId, mode);
+    } catch (err) {
+      if ((err as Error).message === 'Tour nicht gefunden') {
+        throw new NotFoundException('Tour nicht gefunden');
+      }
+      throw err;
+    }
   }
 
   /**

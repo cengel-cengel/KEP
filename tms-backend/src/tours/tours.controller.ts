@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -9,6 +10,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { isFvPoolMode } from '../lib/poolShipments.lib';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ToursService } from './tours.service';
@@ -217,6 +219,23 @@ export class ToursController {
       tourId,
       Number.isFinite(r) ? r : 20,
     );
+  }
+
+  /**
+   * Hof-Filter Stufe 1 (E2): Depot-basierter Pool fuer FV-Touren.
+   * mode REQUIRED — 400 bei fehlend oder ungueltig.
+   */
+  @Get(':id/pool-shipments')
+  poolShipments(
+    @Param('id') tourId: string,
+    @Query('mode') mode?: string,
+  ) {
+    if (!isFvPoolMode(mode)) {
+      throw new BadRequestException(
+        `mode required: fv-sammelgut (got: ${mode ?? 'missing'})`,
+      );
+    }
+    return this.toursService.poolShipmentsFv(tourId, mode);
   }
 
   // C-2.1 FV Sendung-Splitten — FV hat keine stops, direkte

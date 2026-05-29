@@ -23,6 +23,7 @@ import {
   routeWithDurations,
 } from '../lib/osrm.lib';
 import { getNvPlzSet } from '../lib/nv-plz.lib';
+import { resolvePool } from '../lib/poolShipments.lib';
 import {
   computeOverload,
   deriveMaxVolM3,
@@ -2412,6 +2413,22 @@ export class ToursService {
         cloned_item_count: plan.clonedItemCount,
       };
     });
+  }
+
+  /**
+   * Hof-Filter Stufe 1 (E2): Depot-basierter Pool fuer FV-Touren.
+   * Delegiert an die geteilte Lib poolShipments.lib.ts (Regel #1).
+   * Controller validiert mode (nur fv-sammelgut in Stufe 1).
+   */
+  async poolShipmentsFv(tourId: string, mode: 'fv-sammelgut') {
+    try {
+      return await resolvePool(this.prisma, tourId, mode);
+    } catch (err) {
+      if ((err as Error).message === 'Tour nicht gefunden') {
+        throw new NotFoundException('Tour nicht gefunden');
+      }
+      throw err;
+    }
   }
 
   /**

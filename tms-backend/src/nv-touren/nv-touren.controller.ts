@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -10,6 +11,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { isNvPoolMode } from '../lib/poolShipments.lib';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { NvTourenService } from './nv-touren.service';
@@ -197,6 +199,23 @@ export class NvTourenController {
   ) {
     const r = radius_km ? Number(radius_km) : 20;
     return this.svc.nearbyShipments(tourId, Number.isFinite(r) ? r : 20);
+  }
+
+  /**
+   * Hof-Filter Stufe 1 (E2): PLZ-basierter Pool fuer NV-Touren.
+   * mode REQUIRED — 400 bei fehlend oder ungueltig.
+   */
+  @Get(':id/pool-shipments')
+  poolShipments(
+    @Param('id') tourId: string,
+    @Query('mode') mode?: string,
+  ) {
+    if (!isNvPoolMode(mode)) {
+      throw new BadRequestException(
+        `mode required: nv-pickup | nv-delivery (got: ${mode ?? 'missing'})`,
+      );
+    }
+    return this.svc.poolShipmentsNv(tourId, mode);
   }
 
   @Get(':id/cost-components')

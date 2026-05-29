@@ -40,6 +40,7 @@
     "seed:nv-gebiete": "ts-node --transpile-only scripts/seed-nv-gebiete.ts",
     "seed:nv-subunternehmer": "ts-node --transpile-only scripts/seed-nv-subunternehmer.ts",
     "seed:nv-stamm-touren": "ts-node --transpile-only scripts/seed-nv-stamm-touren.ts",
+    "seed:depot-plz": "ts-node --transpile-only scripts/seed-depot-plz.ts",
     "recalc:aggregates": "ts-node --transpile-only scripts/recalc-shipment-aggregates.ts"
   },
   "dependencies": {

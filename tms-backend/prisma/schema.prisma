@@ -764,6 +764,9 @@ model hall_locations {
   description           String?
   is_active             Boolean?               @default(true)
   created_at            DateTime?              @default(now()) @db.Timestamptz(6)
+  // Hof-Filter Stufe 1 (E1): Depot-PLZ-Anker fuer FV-Sammelgut-Pool.
+  zip                   String?                @db.VarChar(10)
+  country_code          String?                @default("DE") @db.VarChar(2)
   hall_check_items      hall_check_items[]
   hall_movements_from   hall_movements[]       @relation("hall_movements_from_location")
   hall_movements_to     hall_movements[]       @relation("hall_movements_to_location")
@@ -773,6 +776,8 @@ model hall_locations {
   routing_rules         routing_rules[]
   surplus_items         surplus_items[]
   zip_relation_mappings zip_relation_mapping[] @relation("zip_relation_mapping_hall_location")
+
+  @@index([zip], map: "idx_hall_locations_zip")
 }
 
 model routing_rules {

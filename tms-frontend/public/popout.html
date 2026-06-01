@@ -3,6 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <title>tms-frontend (Popout)</title>
+    <style>
+      /* dockview hängt <div id="dv-popout-window" style="position:absolute;
+         width:100%; height:100%"> direkt unter body. Ohne 100%-Höhe an
+         html+body kollabiert der Container bei manchen Maximize-Pfaden
+         (Win+Up / Doppelklick Titelleiste) auf 0×0 — Content "leer/weiß"
+         bei CPU 0% (kein Hang). FIX A: html/body fest auf 100%. */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      #dockview-popout-root {
+        width: 100%;
+        height: 100%;
+      }
+    </style>
   </head>
   <body>
     <div id="dockview-popout-root"></div>

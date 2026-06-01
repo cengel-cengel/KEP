@@ -45,7 +45,46 @@ export default function CustomTab(props: IDockviewPanelHeaderProps) {
   };
   const onPopout = (e: React.MouseEvent) => {
     e.stopPropagation();
-    containerApi.addPopoutGroup(api.group);
+    // FIX B (Popout-Maximize-Bug, Carlos-Befund):
+    // dockview-core 6.5.0 hört im Popout auf 'resize' und ruft
+    // group.layout(innerWidth, innerHeight). Beim Windows-Maximize
+    // (Win+Up / Doppelklick Titelleiste / Chromium-Maximize) feuert
+    // 'resize' 1-2× mit Übergangswerten — danach kein finales Event
+    // mehr, Layout bleibt auf 0 → Content leer/weiß bei CPU 0%.
+    //
+    // onDidOpen registriert einen ZUSÄTZLICHEN resize-Listener im
+    // Popout-Fenster, der nach 2× rAF (Browser-Reflow + Paint
+    // abgeschlossen) ein synthetisches 'resize' dispatcht. dockview's
+    // eigener Listener bekommt damit die finalen innerWidth/Height.
+    // synthetic-Flag verhindert die Endlosschleife. AbortController
+    // haengt den Listener bei Window-Close sauber ab (defensiv;
+    // das Window-Lifecycle wuerde ihn ohnehin entsorgen).
+    containerApi.addPopoutGroup(api.group, {
+      onDidOpen: ({ window: w }: { window: Window }) => {
+        const ctrl = new AbortController();
+        let synthetic = false;
+        w.addEventListener(
+          'resize',
+          () => {
+            if (synthetic) return;
+            w.requestAnimationFrame(() =>
+              w.requestAnimationFrame(() => {
+                synthetic = true;
+                try {
+                  w.dispatchEvent(new Event('resize'));
+                } finally {
+                  synthetic = false;
+                }
+              }),
+            );
+          },
+          { signal: ctrl.signal },
+        );
+        w.addEventListener('beforeunload', () => ctrl.abort(), {
+          signal: ctrl.signal,
+        });
+      },
+    });
   };
 
   return (

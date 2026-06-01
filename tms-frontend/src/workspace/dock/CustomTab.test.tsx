@@ -90,6 +90,11 @@ describe('CustomTab', () => {
     render(<CustomTab {...props} />);
     fireEvent.click(screen.getByLabelText('Popout'));
     expect(addPop).toHaveBeenCalledTimes(1);
-    expect(addPop).toHaveBeenCalledWith(props.api.group);
+    // FIX B: zweites Argument = Popout-Options mit onDidOpen-Hook
+    // fuer den Maximize-resize-Relay. group muss als 1. Arg uebergeben
+    // werden; options-Shape pruefen wir grob (onDidOpen function).
+    const [groupArg, optsArg] = addPop.mock.calls[0];
+    expect(groupArg).toBe(props.api.group);
+    expect(typeof optsArg?.onDidOpen).toBe('function');
   });
 });

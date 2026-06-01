@@ -198,16 +198,14 @@ export default function DockRuntime({
         defaultTabComponent={defaultTabComponent}
         defaultRenderer="always"
         onReady={onReady}
-        // S-4: Floating-Groups explizit aktivieren + im Viewport
-        // halten (sonst koennen frei gedraggte Fenster ausserhalb
-        // sichtbarem Bereich enden). Popout (=window.open) wird
-        // per Tab-Button getriggert (CustomTab.onPopout).
-        // serializeLayout/fromJSON erfasst Floating-Bounds bereits
-        // out-of-the-box (dockview-Default-Verhalten); userTouched
-        // bleibt korrekt, weil der Tab-Button-Klick als
-        // pointerdown-im-Container zaehlt.
-        disableFloatingGroups={false}
-        floatingGroupBounds="boundedWithinViewport"
+        // D1: Float deaktiviert. Popout (=window.open) bleibt als
+        // einziger "Panel-loesen"-Weg (CustomTab.onPopout). Alte
+        // gespeicherte Layouts mit floatingGroups werden in
+        // serializeLayout.deserializeLayout defensiv ausgestrippt
+        // (Belt+Suspenders), zusaetzlich faengt onReady-try/catch
+        // jeden fromJSON-Crash und faellt auf das Default-Layout
+        // zurueck.
+        disableFloatingGroups={true}
         className="dockview-theme-light h-full w-full"
       />
     </div>

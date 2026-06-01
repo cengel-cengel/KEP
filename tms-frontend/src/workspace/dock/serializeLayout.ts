@@ -37,10 +37,35 @@ export function deserializeLayout(raw: string): SerializedDockview | null {
       return null;
     }
     if (!parsed.layout) return null;
-    return parsed.layout;
+    return stripFloatingGroups(parsed.layout);
   } catch {
     return null;
   }
+}
+
+/**
+ * D1: Float wurde komplett deaktiviert (disableFloatingGroups=true).
+ * Alte localStorage- oder Backend-Snapshots koennen weiterhin
+ * `floatingGroups` enthalten. dockview's fromJSON wuerde die zwar
+ * verarbeiten, sich aber bei deaktiviertem Float widerspruechlich
+ * verhalten — wir strippen das Feld defensiv. Die Panels in einer
+ * floating-Group sind ueblicherweise auch im Grid referenziert
+ * (Restore-Pfad), daher kein Datenverlust am Panel-Set.
+ *
+ * Belt+Suspenders: onReady-try/catch faengt zusaetzlich jeden
+ * fromJSON-Crash und faellt auf das Default-Layout zurueck.
+ */
+export function stripFloatingGroups(
+  layout: SerializedDockview,
+): SerializedDockview {
+  if (!('floatingGroups' in layout)) return layout;
+  // Shallow copy + delete; layout-Tree (grid/panels/activeGroup)
+  // bleibt unangetastet.
+  const copy = { ...layout } as SerializedDockview & {
+    floatingGroups?: unknown;
+  };
+  delete copy.floatingGroups;
+  return copy;
 }
 
 /**

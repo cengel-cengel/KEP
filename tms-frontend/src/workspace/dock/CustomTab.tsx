@@ -1,19 +1,23 @@
 /**
- * S-4 CustomTab — default-Tab-Renderer mit Float/Popout-Buttons.
+ * S-4 + D1 CustomTab — default-Tab-Renderer mit Popout-Button.
  *
  * Wird in DockRuntime via `defaultTabComponent={CustomTab}` an
  * dockview gereicht (gilt fuer ALLE Panels — kein opt-in noetig).
  *
+ * D1 (Float raus): Float-Button + addFloatingGroup-Handler entfernt;
+ *   dockview's Floating-Groups sind ueber disableFloatingGroups=true
+ *   (DockRuntime) komplett deaktiviert. Popout (window.open) bleibt
+ *   einziger "Panel-loesen"-Weg.
+ *
  * UX
  *  · Panel-Titel links (live aus props.api.title).
- *  · Hover-Buttons rechts (opacity-0 default, opacity-100 on hover):
- *      ⤢ Float   → containerApi.addFloatingGroup(group)
- *      ⤴ Popout  → containerApi.addPopoutGroup(group)
+ *  · Hover-Button rechts (opacity-0 default, opacity-100 on hover):
+ *      ⤴ Popout  → containerApi.addPopoutGroup(group, options)
  *  · Location-aware:
- *      'grid'     → beide Buttons sichtbar
- *      'floating' → nur Popout (Float ist schon erfuellt)
- *      'popout'   → keine Buttons (bereits popped out)
- *      'edge'     → beide Buttons (Edge ist quasi grid)
+ *      'grid' | 'edge' | 'floating'  → Popout sichtbar
+ *      'popout'                       → kein Button (bereits popped out)
+ *    (floating bleibt im Type-Set fuer Layout-Kompat — siehe Stripping
+ *    in serializeLayout; live entsteht es nicht mehr.)
  *
  * Caveats fuer Popout (=window.open mit createPortal)
  *  · React-Context (QueryClient, Auth, Panel) propagiert ueber den
@@ -36,13 +40,8 @@ export default function CustomTab(props: IDockviewPanelHeaderProps) {
   const [hover, setHover] = useState(false);
 
   const loc = api.group.api.location.type;
-  const showFloat = loc === 'grid' || loc === 'edge';
   const showPopout = loc !== 'popout';
 
-  const onFloat = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    containerApi.addFloatingGroup(api.group);
-  };
   const onPopout = (e: React.MouseEvent) => {
     e.stopPropagation();
     // FIX B (Popout-Maximize-Bug, Carlos-Befund):
@@ -102,18 +101,6 @@ export default function CustomTab(props: IDockviewPanelHeaderProps) {
         // versehentliche Klicks bei klick-durch-overlay-Hover.
         style={{ pointerEvents: hover ? 'auto' : 'none' }}
       >
-        {showFloat && (
-          <button
-            type="button"
-            onClick={onFloat}
-            onMouseDown={(e) => e.stopPropagation()}
-            title="Panel als schwebendes Fenster lösen"
-            aria-label="Float"
-            className="text-[11px] leading-none px-1 py-0.5 rounded hover:bg-gray-200 text-gray-600 hover:text-gray-900"
-          >
-            ⤢
-          </button>
-        )}
         {showPopout && (
           <button
             type="button"

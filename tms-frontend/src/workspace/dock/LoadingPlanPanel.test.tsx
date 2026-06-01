@@ -17,16 +17,29 @@ import type { ReactNode } from 'react';
 
 // LoadingPlan3D-Stub: exposed vehicle prop + packages-IDs als
 // data-attrs damit wir die Props inspizieren koennen.
+// D2: onPositionChange-Prop wird ebenfalls captured, sodass Tests
+// einen "Drag" durch direkten Aufruf simulieren koennen.
+type OnPositionChange = (
+  id: string,
+  posXCm: number,
+  posYCm: number,
+  posZCm: number,
+  rotationDeg?: number,
+) => void;
 const lp3dProps = vi.fn();
+let capturedOnPositionChange: OnPositionChange | null = null;
 vi.mock('../../components/LoadingPlan3D', () => ({
   default: ({
     vehicle,
     packages,
+    onPositionChange,
   }: {
     vehicle: { lengthCm: number; widthCm: number; heightCm: number };
     packages: Array<{ id: string; unplaced?: boolean }>;
+    onPositionChange?: OnPositionChange;
   }) => {
-    lp3dProps({ vehicle, packages });
+    lp3dProps({ vehicle, packages, onPositionChange });
+    capturedOnPositionChange = onPositionChange ?? null;
     return (
       <div
         data-testid="lp3d-stub"
@@ -34,6 +47,7 @@ vi.mock('../../components/LoadingPlan3D', () => ({
         data-vehicle-w={vehicle.widthCm}
         data-pkg-count={packages.length}
         data-unplaced-count={packages.filter((p) => p.unplaced).length}
+        data-has-drag={onPositionChange ? '1' : '0'}
       />
     );
   },
@@ -43,15 +57,19 @@ vi.mock('../../components/LoadingPlan3D', () => ({
 // Wir lesen vehicleInfo aus dem gerenderten DOM ("· 12T · 12.0×...").
 
 const apiGet = vi.fn();
+const apiPatch = vi.fn().mockResolvedValue({ data: { ok: true } });
 vi.mock('../../lib/api', () => ({
   api: {
     get: (url: string) => apiGet(url),
+    patch: (url: string, body?: unknown) => apiPatch(url, body),
   },
   AUTH_TOKEN_KEY: 'tms_token',
 }));
 
+// useWorkspace mocked — mode steuerbar je Test (D2: FV-Tests).
+const workspaceMock: { mode: 'nv' | 'fv' } = { mode: 'nv' };
 vi.mock('../../state/workspace', () => ({
-  useWorkspace: () => ({ mode: 'nv' as 'nv' | 'fv' }),
+  useWorkspace: () => workspaceMock,
 }));
 
 const activeTourViewId = 'tour-1';
@@ -79,6 +97,10 @@ function Wrapper({ children }: { children: ReactNode }) {
 beforeEach(() => {
   lp3dProps.mockClear();
   apiGet.mockReset();
+  apiPatch.mockClear();
+  apiPatch.mockResolvedValue({ data: { ok: true } });
+  capturedOnPositionChange = null;
+  workspaceMock.mode = 'nv';
 });
 
 // Carlos-Fixture: 12T-Tour mit 12 Klonen (würde in 6.2m überlaufen).
@@ -357,5 +379,234 @@ describe('LoadingPlanPanel unplaced-Banner (Dispo-Sicherheit)', () => {
     // Nur ship-full (1 Package) wird gerendert; ship-multi qty=3 ist
     // komplett unplaced + gefiltert.
     expect(lastCall.packages.length).toBe(1);
+  });
+});
+
+// D2: embedded-Drag-PATCH-Bridge — beide Bodies (NV + FV).
+// Strategie: LoadingPlan3D-Stub captured die onPositionChange-Prop;
+// Tests rufen sie direkt mit synth + echtem dbItemId auf und
+// asserten den api.patch-Call (oder dass kein Call kommt).
+
+// FV-Optimize-Fixture: 2 Sendungen, 1 mit 2 quantity-Items.
+// expandPackagesFromOrder erzeugt daraus 3 Pakete:
+//   pi-1 (q===1)        → dbItemId='pi-1'
+//   pi-2:q1 (q===1)     → dbItemId='pi-2'
+//   pi-2:q2 (q===2 Klon)→ dbItemId=undefined (synth)
+const FV_OPTIMIZE_FIXTURE = {
+  recommendedVehicle: {
+    type: 'Sattel',
+    lengthCm: 1360,
+    widthCm: 240,
+    heightCm: 270,
+  },
+  loadingOrder: [
+    {
+      id: 'ship-fv-1',
+      shipmentNumber: 'F-1',
+      customer: 'Kunde F1',
+      deliveryCity: 'Stuttgart',
+      deliveryOrder: 1,
+      lengthCm: 120,
+      widthCm: 80,
+      heightCm: 120,
+      weightKg: 100,
+      ldm: 1.2,
+      isStackable: true,
+      packageCount: 1,
+      packageType: 'pallet_euro',
+      packageItems: [
+        {
+          id: 'pi-1',
+          lineIndex: 1,
+          packageType: 'pallet_euro',
+          quantity: 1,
+          lengthCm: 120,
+          widthCm: 80,
+          heightCm: 120,
+          weightKg: 100,
+          stackable: true,
+          posXCm: null,
+          posYCm: null,
+          posZCm: null,
+          rotationDeg: 0,
+        },
+      ],
+    },
+    {
+      id: 'ship-fv-2',
+      shipmentNumber: 'F-2',
+      customer: 'Kunde F2',
+      deliveryCity: 'Muenchen',
+      deliveryOrder: 2,
+      lengthCm: 120,
+      widthCm: 80,
+      heightCm: 120,
+      weightKg: 200,
+      ldm: 2.4,
+      isStackable: true,
+      packageCount: 2,
+      packageType: 'pallet_euro',
+      packageItems: [
+        {
+          id: 'pi-2',
+          lineIndex: 1,
+          packageType: 'pallet_euro',
+          quantity: 2,
+          lengthCm: 120,
+          widthCm: 80,
+          heightCm: 120,
+          weightKg: 200,
+          stackable: true,
+          posXCm: null,
+          posYCm: null,
+          posZCm: null,
+          rotationDeg: 0,
+        },
+      ],
+    },
+  ],
+  layout: {
+    vehicle: { type: 'Sattel', lengthCm: 1360, widthCm: 240, heightCm: 270 },
+    items: [],
+    totalLdm: 0,
+    totalWeight: 0,
+    utilizationPercent: 0,
+    warnings: [],
+  },
+  warnings: [],
+};
+
+describe('LoadingPlanPanel D2 — embedded Drag → PATCH (FV)', () => {
+  it('FV: onPositionChange-Prop ist gesetzt (Drag aktiv)', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(lp3dProps).toHaveBeenCalled();
+    });
+    expect(capturedOnPositionChange).not.toBeNull();
+    const lastCall = lp3dProps.mock.calls[lp3dProps.mock.calls.length - 1][0];
+    expect(lastCall.onPositionChange).toBeTruthy();
+  });
+
+  it('FV: Drag auf q===1-Item ruft PATCH mit dbItemId', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnPositionChange).not.toBeNull();
+    });
+    // pi-1 ist q===1 → dbItemId='pi-1' (expandPackagesFromOrder).
+    capturedOnPositionChange!('pi-1', 100, 200, 0, 90);
+    await vi.waitFor(() => {
+      expect(apiPatch).toHaveBeenCalledTimes(1);
+    });
+    const [url, body] = apiPatch.mock.calls[0];
+    expect(url).toBe('/loading/package-item/pi-1/position');
+    expect(body).toEqual({
+      posXCm: 100,
+      posYCm: 200,
+      posZCm: 0,
+      rotationDeg: 90,
+    });
+  });
+
+  it('FV: Drag auf Quantity-Klon q>1 → KEIN PATCH (synth-Filter)', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnPositionChange).not.toBeNull();
+    });
+    // pi-2 ist quantity=2 → expandPackagesFromOrder erzeugt
+    // 'pi-2:q1' (q===1, dbItemId='pi-2') + 'pi-2:q2' (q===2, kein
+    // dbItemId). Drag auf q===2-Klon → no-op.
+    capturedOnPositionChange!('pi-2:q2', 500, 600, 0);
+    // Microtask + waitFor — selbst nach kurzer Wartezeit kein PATCH.
+    await new Promise((r) => setTimeout(r, 10));
+    expect(apiPatch).not.toHaveBeenCalled();
+  });
+});
+
+describe('LoadingPlanPanel D2 — embedded Drag → PATCH (NV)', () => {
+  it('NV: onPositionChange-Prop ist gesetzt (Drag aktiv)', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnPositionChange).not.toBeNull();
+    });
+    const lastCall = lp3dProps.mock.calls[lp3dProps.mock.calls.length - 1][0];
+    expect(lastCall.onPositionChange).toBeTruthy();
+  });
+
+  it('NV: Drag auf Real-Item ruft PATCH mit dbItemId', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnPositionChange).not.toBeNull();
+    });
+    // TOUR_12T.stop-A → shipment_package_items[0] id='pi-A',
+    // quantity=1 → nvExpand setzt dbItemId='pi-A' fuer das q===0-
+    // Item. Item-ID-Format: nvExpand verwendet 'pi-A:q0'
+    // (id-Schema). Wir lesen die echte id aus dem letzten Render
+    // (Plan3DPackage.id ist die nvExpand-id).
+    const lastCall = lp3dProps.mock.calls[lp3dProps.mock.calls.length - 1][0];
+    const piA = lastCall.packages.find(
+      (p: { id: string }) =>
+        p.id.startsWith('pi-A') || p.id.includes(':pi-A'),
+    );
+    expect(piA).toBeDefined();
+    capturedOnPositionChange!(piA!.id, 250, 350, 0);
+    await vi.waitFor(() => {
+      expect(apiPatch).toHaveBeenCalledTimes(1);
+    });
+    const [url, body] = apiPatch.mock.calls[0];
+    expect(url).toBe('/loading/package-item/pi-A/position');
+    expect(body).toEqual({ posXCm: 250, posYCm: 350, posZCm: 0 });
+  });
+
+  it('NV: Drag auf Quantity-Klon q>0 → KEIN PATCH (synth-Filter)', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnPositionChange).not.toBeNull();
+    });
+    // TOUR_12T.stop-D → shipment_package_items[0] id='pi-D',
+    // quantity=7 → nvExpand erzeugt 7 Pakete mit id-Pattern
+    // 'pi-D:pkg:0'…'pi-D:pkg:6'. Nur q===0 ('pi-D:pkg:0') hat
+    // dbItemId='pi-D'. Wir suchen einen Klon q>=1.
+    const lastCall = lp3dProps.mock.calls[lp3dProps.mock.calls.length - 1][0];
+    const piDKlon = lastCall.packages.find(
+      (p: { id: string }) =>
+        p.id.startsWith('pi-D:pkg:') && !p.id.endsWith(':pkg:0'),
+    );
+    expect(piDKlon).toBeDefined();
+    capturedOnPositionChange!(piDKlon!.id, 500, 600, 0);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(apiPatch).not.toHaveBeenCalled();
   });
 });

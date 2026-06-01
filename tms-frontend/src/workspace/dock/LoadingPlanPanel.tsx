@@ -35,6 +35,10 @@ import { useWorkspace } from '../../state/workspace';
 import { useWorkspaceRuntime } from '../runtime/WorkspaceRuntimeContext';
 import { useDockPanelApi } from './DockPanelContext';
 import LoadingPlan3D, { type Plan3DPackage } from '../../components/LoadingPlan3D';
+import ContextMenu, {
+  type ContextMenuItem,
+} from '../../components/loadingplan/ContextMenu';
+import { Trash2, RotateCcw } from 'lucide-react';
 import {
   flattenPackages as flattenNvPackages,
   type NvLoadingDetail,
@@ -106,6 +110,17 @@ function NvBody({
   frameloop: 'always' | 'never';
 }) {
   const queryClient = useQueryClient();
+  // D3b: ContextMenu-State. dbItemId fuer Position-Reset
+  // (PATCH /loading/package-item/:id/position null), shipmentId
+  // fuer Sendungs-Aktionen (Remove via stopId-Lookup).
+  const [ctxMenu, setCtxMenu] = useState<{
+    pkgId: string;
+    dbItemId?: string;
+    shipmentId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
   const tourQ = useQuery<NvLoadingDetail | null>({
     queryKey: ['nv-loading', tourId],
     queryFn: async () => {
@@ -136,6 +151,42 @@ function NvBody({
         `/loading/package-item/${vars.itemId}/position`,
         body,
       );
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['nv-loading', tourId] });
+    },
+  });
+
+  // D3b: Position-Reset via null-Body. loading.controller.ts:64-73
+  // akzeptiert posXCm/posYCm/posZCm als number|null — null = Reset
+  // auf Auto-Placer (BE-Pos wird verworfen).
+  const resetPositionMutation = useMutation({
+    mutationFn: async (dbItemId: string) => {
+      await apiClient.patch(
+        `/loading/package-item/${dbItemId}/position`,
+        { posXCm: null, posYCm: null, posZCm: null },
+      );
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['nv-loading', tourId] });
+    },
+  });
+
+  // D3b: Sendung-Entfernen via NV-eigenem Endpoint
+  // DELETE /nv-touren/:tourId/stops/:stopId (stopId-Lookup aus
+  // tourQ.data.stops; shipments.tour_id liegt bei NV nicht direkt
+  // an, daher der FV-Endpoint /tours/:id/remove-shipment passt
+  // hier technisch NICHT — NV-Tours leben in nv_touren, NV-Stops
+  // in nv_tour_stops).
+  const removeShipmentMutation = useMutation({
+    mutationFn: async (shipmentId: string) => {
+      const stop = tourQ.data?.stops.find(
+        (s) => s.shipment.id === shipmentId,
+      );
+      if (!stop) {
+        throw new Error(`Stop fuer Sendung ${shipmentId} nicht gefunden`);
+      }
+      await apiClient.delete(`/nv-touren/${tourId}/stops/${stop.id}`);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['nv-loading', tourId] });
@@ -243,6 +294,19 @@ function NvBody({
               rotationDeg,
             });
           }}
+          onPackageContextMenu={(pkgId, x, y) => {
+            // D3b: Regel #2 (ganze Sendung) — Rechtsklick auf Palette
+            // liefert pkgId, wir loesen die shipmentId daraus auf und
+            // exponieren beide an die ContextMenu-Items. dbItemId
+            // ist optional (NUR q===0/Single-Paket → Position-Reset
+            // verfuegbar).
+            const pkg = renderedPackages.find((p) => p.id === pkgId);
+            if (!pkg) return;
+            const dbItemId = (pkg as { dbItemId?: string }).dbItemId;
+            const shipmentId =
+              (pkg as { shipmentId?: string }).shipmentId ?? '';
+            setCtxMenu({ pkgId, dbItemId, shipmentId, x, y });
+          }}
         />
         {/* D3a: AchsLast-Panel. vehicleType-Heuristik: maxLdm-Buckets
             wie in der NV-Vollansicht (NvLoadingPlanPage L949-953).
@@ -267,6 +331,53 @@ function NvBody({
           />
         </div>
       </div>
+      {/* D3b: ContextMenu — DIRECT-Varianten ohne Sandbox. Aktionen
+          wirken auf die ganze Sendung (Regel #2). Position-Reset
+          erfordert dbItemId (q===0/single Paket). */}
+      {ctxMenu &&
+        (() => {
+          const shipNr =
+            tourQ.data?.stops.find(
+              (s) => s.shipment.id === ctxMenu.shipmentId,
+            )?.shipment.shipment_number ?? '';
+          const items: ContextMenuItem[] = [
+            {
+              label: 'Position zurücksetzen',
+              icon: <RotateCcw size={12} />,
+              disabled: !ctxMenu.dbItemId,
+              onClick: () => {
+                if (!ctxMenu.dbItemId) return;
+                resetPositionMutation.mutate(ctxMenu.dbItemId);
+              },
+              separator: true,
+            },
+            {
+              label: 'Sendung aus Tour entfernen',
+              icon: <Trash2 size={12} />,
+              danger: true,
+              disabled: !ctxMenu.shipmentId,
+              onClick: () => {
+                if (!ctxMenu.shipmentId) return;
+                if (
+                  !window.confirm(
+                    `Sendung ${shipNr} von Tour entfernen?`,
+                  )
+                ) {
+                  return;
+                }
+                removeShipmentMutation.mutate(ctxMenu.shipmentId);
+              },
+            },
+          ];
+          return (
+            <ContextMenu
+              x={ctxMenu.x}
+              y={ctxMenu.y}
+              items={items}
+              onClose={() => setCtxMenu(null)}
+            />
+          );
+        })()}
     </PanelShell>
   );
 }
@@ -281,6 +392,15 @@ function FvBody({
   frameloop: 'always' | 'never';
 }) {
   const queryClient = useQueryClient();
+  // D3b: ContextMenu-State. shipmentId fuer Stapelbar-Toggle +
+  // Remove. isStackable kommt aus loadingOrder (Shipment-Ebene).
+  const [ctxMenu, setCtxMenu] = useState<{
+    pkgId: string;
+    shipmentId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
   // D2: volle OptimizeResponse statt FvOptimizeLite-Stub —
   // F①-a (loadingFv.ts) liefert die Lib-Shape, expandPackagesFromOrder
   // produziert Packages MIT dbItemId fuer den PATCH-Lookup.
@@ -381,6 +501,38 @@ function FvBody({
     },
   });
 
+  // D3b: Stapelbar-Toggle (PATCH /shipments/:id/stackable) — 1:1
+  // aus LoadingPlanPage.setShipmentStackableMutation portiert,
+  // ohne optimistic update (Embedded ist Light — invalidate
+  // reicht).
+  const setStackableMutation = useMutation({
+    mutationFn: async (vars: { shipmentId: string; stackable: boolean }) => {
+      await apiClient.patch(`/shipments/${vars.shipmentId}/stackable`, {
+        stackable: vars.stackable,
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['loading', 'optimize', tourId],
+      });
+    },
+  });
+
+  // D3b: Sendung-Entfernen via FV-Endpoint
+  // POST /tours/:tourId/remove-shipment. 1:1 aus Vollansicht.
+  const removeShipmentMutation = useMutation({
+    mutationFn: async (shipmentId: string) => {
+      await apiClient.post(`/tours/${tourId}/remove-shipment`, {
+        shipmentId,
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['loading', 'optimize', tourId],
+      });
+    },
+  });
+
   const vehicleType = tourQ.data?.recommendedVehicle?.type ?? 'Sattel';
 
   return (
@@ -415,6 +567,17 @@ function FvBody({
               rotationDeg,
             });
           }}
+          onPackageContextMenu={(pkgId, x, y) => {
+            // D3b: Regel #2 — Aktion auf ganze Sendung.
+            const pkg = placedPackages.find((p) => p.id === pkgId);
+            if (!pkg) return;
+            setCtxMenu({
+              pkgId,
+              shipmentId: pkg.shipmentId,
+              x,
+              y,
+            });
+          }}
         />
         {/* D3a: AchsLast-Panel. vehicleType aus recommendedVehicle.type
             (FV-Vollansicht-Pattern: selectedVehicle?.type ?? Sattel).
@@ -435,6 +598,51 @@ function FvBody({
           />
         </div>
       </div>
+      {/* D3b: ContextMenu — FV Direct-Aktionen (Stapelbar + Remove).
+          1:1 aus LoadingPlanPage portiert, ohne Sandbox. */}
+      {ctxMenu &&
+        (() => {
+          const ship = (tourQ.data?.loadingOrder ?? []).find(
+            (s) => s.id === ctxMenu.shipmentId,
+          );
+          const isStackable = ship?.isStackable ?? true;
+          const items: ContextMenuItem[] = [
+            {
+              label: isStackable
+                ? 'Nicht stapelbar setzen'
+                : 'Stapelbar setzen',
+              onClick: () =>
+                setStackableMutation.mutate({
+                  shipmentId: ctxMenu.shipmentId,
+                  stackable: !isStackable,
+                }),
+              separator: true,
+            },
+            {
+              label: 'Sendung aus Tour entfernen',
+              danger: true,
+              icon: <Trash2 size={12} />,
+              onClick: () => {
+                if (
+                  !window.confirm(
+                    `Sendung ${ship?.shipmentNumber ?? ''} von Tour entfernen?`,
+                  )
+                ) {
+                  return;
+                }
+                removeShipmentMutation.mutate(ctxMenu.shipmentId);
+              },
+            },
+          ];
+          return (
+            <ContextMenu
+              x={ctxMenu.x}
+              y={ctxMenu.y}
+              items={items}
+              onClose={() => setCtxMenu(null)}
+            />
+          );
+        })()}
     </PanelShell>
   );
 }

@@ -19,6 +19,8 @@ import type { ReactNode } from 'react';
 // data-attrs damit wir die Props inspizieren koennen.
 // D2: onPositionChange-Prop wird ebenfalls captured, sodass Tests
 // einen "Drag" durch direkten Aufruf simulieren koennen.
+// D3b: onPackageContextMenu-Prop ebenfalls captured fuer Rechtsklick-
+//      Simulation.
 type OnPositionChange = (
   id: string,
   posXCm: number,
@@ -26,20 +28,25 @@ type OnPositionChange = (
   posZCm: number,
   rotationDeg?: number,
 ) => void;
+type OnPackageContextMenu = (pkgId: string, x: number, y: number) => void;
 const lp3dProps = vi.fn();
 let capturedOnPositionChange: OnPositionChange | null = null;
+let capturedOnPackageContextMenu: OnPackageContextMenu | null = null;
 vi.mock('../../components/LoadingPlan3D', () => ({
   default: ({
     vehicle,
     packages,
     onPositionChange,
+    onPackageContextMenu,
   }: {
     vehicle: { lengthCm: number; widthCm: number; heightCm: number };
     packages: Array<{ id: string; unplaced?: boolean }>;
     onPositionChange?: OnPositionChange;
+    onPackageContextMenu?: OnPackageContextMenu;
   }) => {
-    lp3dProps({ vehicle, packages, onPositionChange });
+    lp3dProps({ vehicle, packages, onPositionChange, onPackageContextMenu });
     capturedOnPositionChange = onPositionChange ?? null;
+    capturedOnPackageContextMenu = onPackageContextMenu ?? null;
     return (
       <div
         data-testid="lp3d-stub"
@@ -48,6 +55,7 @@ vi.mock('../../components/LoadingPlan3D', () => ({
         data-pkg-count={packages.length}
         data-unplaced-count={packages.filter((p) => p.unplaced).length}
         data-has-drag={onPositionChange ? '1' : '0'}
+        data-has-ctxmenu={onPackageContextMenu ? '1' : '0'}
       />
     );
   },
@@ -58,10 +66,14 @@ vi.mock('../../components/LoadingPlan3D', () => ({
 
 const apiGet = vi.fn();
 const apiPatch = vi.fn().mockResolvedValue({ data: { ok: true } });
+const apiPost = vi.fn().mockResolvedValue({ data: { ok: true } });
+const apiDelete = vi.fn().mockResolvedValue({ data: { ok: true } });
 vi.mock('../../lib/api', () => ({
   api: {
     get: (url: string) => apiGet(url),
     patch: (url: string, body?: unknown) => apiPatch(url, body),
+    post: (url: string, body?: unknown) => apiPost(url, body),
+    delete: (url: string) => apiDelete(url),
   },
   AUTH_TOKEN_KEY: 'tms_token',
 }));
@@ -99,8 +111,16 @@ beforeEach(() => {
   apiGet.mockReset();
   apiPatch.mockClear();
   apiPatch.mockResolvedValue({ data: { ok: true } });
+  apiPost.mockClear();
+  apiPost.mockResolvedValue({ data: { ok: true } });
+  apiDelete.mockClear();
+  apiDelete.mockResolvedValue({ data: { ok: true } });
   capturedOnPositionChange = null;
+  capturedOnPackageContextMenu = null;
   workspaceMock.mode = 'nv';
+  // window.confirm fuer Remove-Action — Tests bestaetigen
+  // standardmaessig. Per-Test ueberschreibbar.
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
 });
 
 // Carlos-Fixture: 12T-Tour mit 12 Klonen (würde in 6.2m überlaufen).
@@ -615,6 +635,132 @@ describe('LoadingPlanPanel D2 — embedded Drag → PATCH (NV)', () => {
 // Pruefung: Header "Achslast" rendert + Trailer-Laenge entspricht
 // dem aufgeloesten vehicleType-Bucket (NV: capacity.maxLdm, FV:
 // recommendedVehicle.type).
+// D3b: ContextMenu — Aktionen via Rechtsklick auf Palette
+// (onPackageContextMenu). Strategie: stub captured die Prop,
+// Tests rufen sie direkt + klicken danach den Menue-Eintrag.
+async function openContextMenu(pkgId: string) {
+  // Stub-Prop direkt aufrufen — oeffnet ctxMenu-State im Panel.
+  capturedOnPackageContextMenu!(pkgId, 100, 200);
+}
+
+describe('LoadingPlanPanel D3b — ContextMenu (FV)', () => {
+  it('FV: Stapelbar-Toggle → PATCH /shipments/:id/stackable', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
+    const { findByText } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnPackageContextMenu).not.toBeNull();
+    });
+    // ship-fv-1 ist stackable=true (default), Toggle setzt false.
+    await openContextMenu('pi-1');
+    const toggleBtn = await findByText('Nicht stapelbar setzen');
+    toggleBtn.click();
+    await vi.waitFor(() => {
+      expect(apiPatch).toHaveBeenCalledWith(
+        '/shipments/ship-fv-1/stackable',
+        { stackable: false },
+      );
+    });
+  });
+
+  it('FV: Sendung entfernen → POST /tours/:id/remove-shipment', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
+    const { findByText } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnPackageContextMenu).not.toBeNull();
+    });
+    await openContextMenu('pi-1');
+    const removeBtn = await findByText('Sendung aus Tour entfernen');
+    removeBtn.click();
+    await vi.waitFor(() => {
+      expect(apiPost).toHaveBeenCalledWith(
+        '/tours/tour-1/remove-shipment',
+        { shipmentId: 'ship-fv-1' },
+      );
+    });
+  });
+
+  it('FV: Remove ohne Bestaetigung (confirm=false) → KEIN POST', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const { findByText } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnPackageContextMenu).not.toBeNull();
+    });
+    await openContextMenu('pi-1');
+    const removeBtn = await findByText('Sendung aus Tour entfernen');
+    removeBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+});
+
+describe('LoadingPlanPanel D3b — ContextMenu (NV)', () => {
+  it('NV: Position zuruecksetzen → PATCH mit null-Body', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    const { findByText } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnPackageContextMenu).not.toBeNull();
+    });
+    // pi-A hat quantity=1 → nvExpand setzt id='pi-A' direkt
+    // (kein :pkg:0-Suffix bei single-Paket-Sendungen).
+    const lastCall = lp3dProps.mock.calls[lp3dProps.mock.calls.length - 1][0];
+    const piA = lastCall.packages.find((p: { id: string }) => p.id === 'pi-A');
+    expect(piA).toBeDefined();
+    await openContextMenu(piA!.id);
+    const resetBtn = await findByText('Position zurücksetzen');
+    resetBtn.click();
+    await vi.waitFor(() => {
+      expect(apiPatch).toHaveBeenCalledWith(
+        '/loading/package-item/pi-A/position',
+        { posXCm: null, posYCm: null, posZCm: null },
+      );
+    });
+  });
+
+  it('NV: Sendung entfernen → DELETE /nv-touren/:id/stops/:stopId', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    const { findByText } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnPackageContextMenu).not.toBeNull();
+    });
+    // pi-A → shipmentId=ship-A → stopId=stop-A (aus TOUR_12T).
+    const lastCall = lp3dProps.mock.calls[lp3dProps.mock.calls.length - 1][0];
+    const piA = lastCall.packages.find((p: { id: string }) => p.id === 'pi-A');
+    expect(piA).toBeDefined();
+    await openContextMenu(piA!.id);
+    const removeBtn = await findByText('Sendung aus Tour entfernen');
+    removeBtn.click();
+    await vi.waitFor(() => {
+      expect(apiDelete).toHaveBeenCalledWith(
+        '/nv-touren/tour-1/stops/stop-A',
+      );
+    });
+  });
+});
+
 describe('LoadingPlanPanel D3a — AxleLoadPanel im embedded', () => {
   it('NV: AchsLast-Panel rendert unter dem 3D-Canvas', async () => {
     apiGet.mockResolvedValue({ data: TOUR_12T });

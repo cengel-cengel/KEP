@@ -1,19 +1,31 @@
 /**
- * Hof-Filter Stufe 1 (E2): Geteilte Pool-Filter-Lib (BE).
+ * Hof-Filter Stufe 1 (E2+E3): Geteilte Pool-Filter-Lib (BE).
  *
  * Liefert pro Tour eine PLZ/Depot-basierte Vorauswahl an
  * undisponierten Sendungen — Anker je Modus, KEIN Geo-Radius
  * (Stufe 2). Konsumenten: nv-touren.service + tours.service
- * (Regel #1 — beide nutzen dieselbe Logik).
+ * (Regel #1 — beide nutzen dieselbe Logik UND denselben Mapper
+ * wie die bestehenden /nearby-shipments-Endpoints).
  *
  * Modi (Stufe 1):
  *   nv-pickup    status=new           Anker=Abhol-PLZ-Praefix der
  *                                     PICKUP-Stop-Adressen.
+ *                                     Item-Anker (zip/city/lat/lng)
+ *                                     = loading-Adresse.
  *   nv-delivery  status=in_warehouse  Anker=Zustell-PLZ-Praefix der
  *                                     DELIVERY-Stop-Adressen.
+ *                                     Item-Anker = delivery-Adresse.
  *   fv-sammelgut status=in_warehouse  transport_type=SAMMELGUT,
  *                                     Anker=distinct Ziel-Depots
  *                                     (relation.network_partner_id).
+ *                                     Item-Anker = loading-Adresse
+ *                                     (wie FV-nearby).
+ *
+ * Item-Shape (ShipmentPoolItem): EXAKT die nearby-Shape, damit
+ * FE-Konsumenten (YardPanel, NvLoadingPlanHofPanel) den Endpoint
+ * nur in der URL austauschen müssen. Für nv-delivery ist die
+ * Anker-Adresse (zip/city/lat/lng) die delivery-Adresse statt
+ * der loading-Adresse — sonst identisch.
  *
  * Algorithmus (alle Modi):
  *   1. Tour laden (schlank: nur Anker-Felder).
@@ -21,10 +33,7 @@
  *   3. Pool-Query (tour_id=null, deleted_at=null, status/tt passend,
  *      ohne Anker → leer).
  *   4. Cap 500 (Schutz, analog nearby-Endpoint).
- *
- * Geo-Faelle (Depot-loser Sammelgut-Fallback 100km, DIREKT_UMSCHLAG-
- * Teilladung 50km) sind Stufe 2 (Geocoding-Voraussetzung) — NICHT
- * hier.
+ *   5. mapShipmentToPoolItem pro Kandidat — Shape-Parität mit nearby.
  *
  * Hinweis E1: hall_locations.zip (Migration 50) ist NICHT der
  * FV-Sammelgut-Anker — Depots sitzen in business_partners via
@@ -44,24 +53,179 @@ export interface PoolOpts {
   cap?: number;
 }
 
-/** Eintrag pro Pool-Sendung — flach, FE-konsumierbar. */
+/** Item-Shape entspricht 1:1 der nearby-Shape (NV + FV-extras). */
 export interface ShipmentPoolItem {
   id: string;
   shipment_number: string;
-  status: string;
-  transport_type: string | null;
-  customer_name: string | null;
   weight_kg: number | null;
   ldm: number | null;
   volume_m3: number | null;
-  // Anker-Adresse (Pool-relevant): NV-pickup → loading, sonst delivery.
-  anchor_zip: string | null;
-  anchor_city: string | null;
-  anchor_country: string | null;
-  // FV-Sammelgut: Ziel-Depot zur Anzeige (sonst null).
-  depot_id: string | null;
-  depot_name: string | null;
-  depot_number: string | null;
+  length_cm: number | null;
+  width_cm: number | null;
+  height_cm: number | null;
+  effective_pallets: number | null;
+  customer_name: string | null;
+  /** Anker-Adresse: nv-pickup → loading, nv-delivery → delivery,
+   *  fv-sammelgut → loading. Falls Adresse fehlt 0/null. */
+  lat: number;
+  lng: number;
+  zip: string | null;
+  city: string | null;
+  loading_street: string | null;
+  loading_country: string | null;
+  /** Pool: 0 (kein Haversine). nearby: tatsaechliche Distanz. */
+  distance_km: number;
+  package_items: Array<{
+    id: string;
+    length_cm: number | null;
+    width_cm: number | null;
+    height_cm: number | null;
+    weight_kg: number | null;
+    quantity: number | null;
+    stackable: boolean;
+  }>;
+  // FV-only (in NV-Modi null/undefined). Im NV-pool sind die
+  // Felder als null gesetzt, damit das Type stabil bleibt.
+  transport_type: string | null;
+  delivery_zip: string | null;
+  delivery_city: string | null;
+  delivery_country: string | null;
+  relation_id: string | null;
+  relation_code: string | null;
+  depot_label: string | null;
+}
+
+export interface MapItemOpts {
+  /** Quelle fuer zip/city/lat/lng am Item. */
+  anchor: 'loading' | 'delivery';
+  /** Wenn true, FV-Felder (transport_type, delivery_*, relation_*,
+   *  depot_label) werden befuellt; sonst null. */
+  withFvFields?: boolean;
+  /** Default 0 (Pool). nearby-Aufrufer reicht Haversine durch. */
+  distance_km?: number;
+}
+
+/** Shared Select fuer Pool + nearby — identische Shape garantiert. */
+export const POOL_ITEM_SELECT = {
+  id: true,
+  shipment_number: true,
+  weight_kg: true,
+  ldm: true,
+  volume_m3: true,
+  length_cm: true,
+  width_cm: true,
+  height_cm: true,
+  effective_pallets: true,
+  loading_date: true,
+  transport_type: true,
+  relation_id: true,
+  customers: { select: { id: true, name: true } },
+  addresses_shipments_loading_address_idToaddresses: {
+    select: {
+      lat: true,
+      lng: true,
+      zip: true,
+      city: true,
+      street: true,
+      country_code: true,
+    },
+  },
+  addresses_shipments_delivery_address_idToaddresses: {
+    select: {
+      lat: true,
+      lng: true,
+      zip: true,
+      city: true,
+      street: true,
+      country_code: true,
+    },
+  },
+  relation: {
+    select: {
+      code: true,
+      network_partner_id: true,
+      network_partner: {
+        select: { id: true, name: true, partner_number: true },
+      },
+      default_hall_location: {
+        select: { code: true, description: true },
+      },
+    },
+  },
+  shipment_package_items: {
+    orderBy: { line_index: 'asc' as const },
+    select: {
+      id: true,
+      length_cm: true,
+      width_cm: true,
+      height_cm: true,
+      weight_kg: true,
+      quantity: true,
+      stackable: true,
+    },
+  },
+} as const;
+
+/**
+ * Wandelt einen Prisma-shipment-Datensatz (POOL_ITEM_SELECT) in
+ * das public ShipmentPoolItem-Shape. WIRD VON pool UND nearby
+ * konsumiert — Shape-Drift wird so verhindert.
+ */
+export function mapShipmentToPoolItem(
+  c: any,
+  opts: MapItemOpts,
+): ShipmentPoolItem {
+  const loading = c.addresses_shipments_loading_address_idToaddresses ?? null;
+  const delivery = c.addresses_shipments_delivery_address_idToaddresses ?? null;
+  const anchorAddr = opts.anchor === 'delivery' ? delivery : loading;
+  const lat = anchorAddr?.lat != null ? Number(anchorAddr.lat) : 0;
+  const lng = anchorAddr?.lng != null ? Number(anchorAddr.lng) : 0;
+  const np = c.relation?.network_partner ?? null;
+  const depotLabel =
+    c.relation?.default_hall_location?.description ??
+    c.relation?.default_hall_location?.code ??
+    np?.name ??
+    null;
+  return {
+    id: c.id,
+    shipment_number: c.shipment_number,
+    weight_kg: c.weight_kg != null ? Number(c.weight_kg) : null,
+    ldm: c.ldm != null ? Number(c.ldm) : null,
+    volume_m3: c.volume_m3 != null ? Number(c.volume_m3) : null,
+    length_cm: c.length_cm ?? null,
+    width_cm: c.width_cm ?? null,
+    height_cm: c.height_cm ?? null,
+    effective_pallets:
+      c.effective_pallets != null ? Number(c.effective_pallets) : null,
+    customer_name: c.customers?.name ?? null,
+    lat,
+    lng,
+    zip: anchorAddr?.zip ?? null,
+    city: anchorAddr?.city ?? null,
+    // loading_street/loading_country bleiben — wie nearby — IMMER
+    // aus loading_address (Per-Sendung-Label im FE).
+    loading_street: loading?.street ?? null,
+    loading_country: loading?.country_code ?? null,
+    distance_km: opts.distance_km ?? 0,
+    package_items: (c.shipment_package_items ?? []).map((it: any) => ({
+      id: it.id,
+      length_cm: it.length_cm ?? null,
+      width_cm: it.width_cm ?? null,
+      height_cm: it.height_cm ?? null,
+      weight_kg: it.weight_kg != null ? Number(it.weight_kg) : null,
+      quantity: it.quantity ?? null,
+      stackable: it.stackable,
+    })),
+    transport_type: opts.withFvFields ? (c.transport_type ?? null) : null,
+    delivery_zip: opts.withFvFields ? (delivery?.zip ?? null) : null,
+    delivery_city: opts.withFvFields ? (delivery?.city ?? null) : null,
+    delivery_country: opts.withFvFields
+      ? (delivery?.country_code ?? null)
+      : null,
+    relation_id: opts.withFvFields ? (c.relation_id ?? null) : null,
+    relation_code: opts.withFvFields ? (c.relation?.code ?? null) : null,
+    depot_label: opts.withFvFields ? depotLabel : null,
+  };
 }
 
 /** Liefert den PLZ-Praefix (lowercase, getrimmt) oder null. */
@@ -94,7 +258,6 @@ export async function resolvePool(
   if (mode === 'fv-sammelgut') {
     return resolveFvSammelgutPool(prisma, tourId, cap);
   }
-  // Compile-time exhaustiveness — Caller validiert mode bereits.
   throw new Error(`Unbekannter pool mode: ${String(mode)}`);
 }
 
@@ -109,8 +272,9 @@ async function resolveNvPool(
 ): Promise<ShipmentPoolItem[]> {
   const stopTypeFilter = mode === 'nv-pickup' ? 'PICKUP' : 'DELIVERY';
   const status = mode === 'nv-pickup' ? 'new' : 'in_warehouse';
+  const anchor: 'loading' | 'delivery' =
+    mode === 'nv-pickup' ? 'loading' : 'delivery';
 
-  // Schlanker Tour-Load: nur Anker-Adressen pro Stop nach stop_type.
   const tour = await prisma.nv_touren.findUnique({
     where: { id: tourId },
     select: {
@@ -135,12 +299,10 @@ async function resolveNvPool(
   });
   if (!tour) throw new Error('Tour nicht gefunden');
 
-  // Anker bilden: pro Stop die zum stop_type passende Adresse.
-  // Set<`${country}|${prefix}`>, damit Land + PLZ-Praefix kombiniert.
   const ankerSet = new Set<string>();
   for (const s of tour.stops ?? []) {
     const addr =
-      mode === 'nv-pickup'
+      anchor === 'loading'
         ? s.shipment?.addresses_shipments_loading_address_idToaddresses
         : s.shipment?.addresses_shipments_delivery_address_idToaddresses;
     const prefix = plzPrefix(addr?.zip, prefixDigits);
@@ -150,30 +312,27 @@ async function resolveNvPool(
   }
   if (ankerSet.size === 0) return [];
 
-  // Anker → OR-Liste fuer Prisma. Pool-Adresse abhaengig vom Modus.
   type AnkerOr = { country_code: string; zip: { startsWith: string } };
   const anchorOrs: AnkerOr[] = [];
   for (const key of ankerSet) {
     const [country, prefix] = key.split('|');
     anchorOrs.push({ country_code: country, zip: { startsWith: prefix } });
   }
-
   const addressFilter = { OR: anchorOrs };
   const where: Record<string, unknown> = {
     deleted_at: null,
     tour_id: null,
     status,
-    ...(mode === 'nv-pickup'
+    ...(anchor === 'loading'
       ? { addresses_shipments_loading_address_idToaddresses: addressFilter }
       : { addresses_shipments_delivery_address_idToaddresses: addressFilter }),
   };
-
   const rows = await prisma.shipments.findMany({
     where,
     take: cap,
-    select: poolSelect(),
+    select: POOL_ITEM_SELECT,
   });
-  return rows.map((r: any) => toPoolItem(r, mode));
+  return rows.map((r: any) => mapShipmentToPoolItem(r, { anchor }));
 }
 
 // ─── FV-Sammelgut ─────────────────────────────────────────────
@@ -183,7 +342,6 @@ async function resolveFvSammelgutPool(
   tourId: string,
   cap: number,
 ): Promise<ShipmentPoolItem[]> {
-  // Schlanker Tour-Load: nur network_partner_id pro Sendung.
   const tour = await prisma.tours.findUnique({
     where: { id: tourId },
     select: {
@@ -205,74 +363,20 @@ async function resolveFvSammelgutPool(
   }
   if (depotSet.size === 0) return [];
 
-  // Pool: Sammelgut + in_warehouse + relation.network_partner_id ∈ depots.
   const rows = await prisma.shipments.findMany({
     where: {
       deleted_at: null,
       tour_id: null,
       status: 'in_warehouse',
       transport_type: 'SAMMELGUT',
-      relation: {
-        network_partner_id: { in: Array.from(depotSet) },
-      },
+      relation: { network_partner_id: { in: Array.from(depotSet) } },
     },
     take: cap,
-    select: poolSelect(),
+    select: POOL_ITEM_SELECT,
   });
-  return rows.map((r: any) => toPoolItem(r, 'fv-sammelgut'));
-}
-
-// ─── Shared select / mapping ──────────────────────────────────
-
-function poolSelect() {
-  return {
-    id: true,
-    shipment_number: true,
-    status: true,
-    transport_type: true,
-    weight_kg: true,
-    ldm: true,
-    volume_m3: true,
-    customers: { select: { name: true } },
-    addresses_shipments_loading_address_idToaddresses: {
-      select: { zip: true, city: true, country_code: true },
-    },
-    addresses_shipments_delivery_address_idToaddresses: {
-      select: { zip: true, city: true, country_code: true },
-    },
-    relation: {
-      select: {
-        network_partner_id: true,
-        network_partner: {
-          select: { id: true, name: true, partner_number: true },
-        },
-      },
-    },
-  } as const;
-}
-
-function toPoolItem(r: any, mode: PoolMode): ShipmentPoolItem {
-  const anchorAddr =
-    mode === 'nv-pickup'
-      ? r.addresses_shipments_loading_address_idToaddresses
-      : r.addresses_shipments_delivery_address_idToaddresses;
-  const np = r.relation?.network_partner ?? null;
-  return {
-    id: r.id,
-    shipment_number: r.shipment_number,
-    status: r.status,
-    transport_type: r.transport_type ?? null,
-    customer_name: r.customers?.name ?? null,
-    weight_kg: r.weight_kg != null ? Number(r.weight_kg) : null,
-    ldm: r.ldm != null ? Number(r.ldm) : null,
-    volume_m3: r.volume_m3 != null ? Number(r.volume_m3) : null,
-    anchor_zip: anchorAddr?.zip ?? null,
-    anchor_city: anchorAddr?.city ?? null,
-    anchor_country: anchorAddr?.country_code ?? null,
-    depot_id: np?.id ?? null,
-    depot_name: np?.name ?? null,
-    depot_number: np?.partner_number ?? null,
-  };
+  return rows.map((r: any) =>
+    mapShipmentToPoolItem(r, { anchor: 'loading', withFvFields: true }),
+  );
 }
 
 // ─── Mode-Validation (Caller-Helper) ─────────────────────────

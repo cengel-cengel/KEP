@@ -33,6 +33,14 @@ vi.mock('../state/panel', () => ({
   }),
 }));
 
+// E3: useWorkspace mocked — pickupMode steuerbar je Test.
+const workspaceMock: { filter: { pickupMode: 'PICKUP' | 'DELIVERY' } } = {
+  filter: { pickupMode: 'PICKUP' },
+};
+vi.mock('../state/workspace', () => ({
+  useWorkspace: () => workspaceMock,
+}));
+
 import NvLoadingPlanHofPanel from './NvLoadingPlanHofPanel';
 
 function Wrapper({ children }: { children: ReactNode }) {
@@ -62,7 +70,7 @@ describe('NvLoadingPlanHofPanel — Schritt 1', () => {
     expect(screen.getByText(/Kein Tour-Kontext/)).toBeInTheDocument();
   });
 
-  it('Leerer Pool: Hinweis "Keine Sendungen im 20-km-Umkreis"', async () => {
+  it('Leerer Pool: Hinweis "Keine Sendungen im Pool"', async () => {
     apiGet.mockResolvedValue({ data: [] });
     render(
       <Wrapper>
@@ -70,7 +78,7 @@ describe('NvLoadingPlanHofPanel — Schritt 1', () => {
       </Wrapper>,
     );
     expect(
-      await screen.findByText(/Keine Sendungen im 20-km-Umkreis/),
+      await screen.findByText(/Keine Sendungen im Pool/),
     ).toBeInTheDocument();
   });
 

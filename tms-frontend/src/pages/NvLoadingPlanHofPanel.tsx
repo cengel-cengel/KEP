@@ -34,6 +34,7 @@ import YardShipmentDetailModal, {
   type YardModalShipment,
 } from '../workspace/dock/YardShipmentDetailModal';
 import { usePanel } from '../state/panel';
+import { useWorkspace } from '../state/workspace';
 
 // Lokales NearbyShipment-Subset (Felder die der Hof-Panel braucht).
 // Identisch zur YardPanel-Definition; ggf. später in shared types.
@@ -67,21 +68,25 @@ interface Props {
   insertedShipmentIds?: Set<string>;
 }
 
-const NV_RADIUS_KM = 20;
-
 export default function NvLoadingPlanHofPanel({
   tourId,
   insertedShipmentIds,
 }: Props) {
   const panel = usePanel();
+  const { filter } = useWorkspace();
   const [modalShipmentId, setModalShipmentId] = useState<string | null>(null);
 
+  // E3: Pool-Mode aus useWorkspace().filter.pickupMode — 1:1 mapping.
+  const poolMode: 'nv-pickup' | 'nv-delivery' =
+    filter.pickupMode === 'DELIVERY' ? 'nv-delivery' : 'nv-pickup';
+
+  // E3: Pool-Query — ersetzt /nearby-shipments. Shape identisch.
   const nearbyQ = useQuery<NearbyShipment[]>({
-    queryKey: ['yard-nv', tourId, NV_RADIUS_KM],
+    queryKey: ['yard-nv-pool', tourId, poolMode],
     queryFn: async () => {
       if (!tourId) return [];
       const { data } = await api.get<NearbyShipment[]>(
-        `/nv-touren/${tourId}/nearby-shipments`,
+        `/nv-touren/${tourId}/pool-shipments?mode=${poolMode}`,
       );
       return data;
     },
@@ -162,7 +167,9 @@ export default function NvLoadingPlanHofPanel({
     <div className="h-full flex flex-col">
       <div className="px-3 py-2 border-b bg-gray-50 flex items-center gap-2 text-xs">
         <span className="font-semibold text-gray-900">Hof</span>
-        <span className="text-gray-500">· {NV_RADIUS_KM} km Umkreis</span>
+        <span className="text-gray-500">
+          · {poolMode === 'nv-delivery' ? 'Zustell-PLZ' : 'Abhol-PLZ'}
+        </span>
         <span className="ml-auto font-mono text-gray-700">
           {totalCount} im Pool
         </span>
@@ -173,7 +180,7 @@ export default function NvLoadingPlanHofPanel({
         )}
         {!nearbyQ.isLoading && totalCount === 0 && (
           <div className="text-xs text-gray-400 p-3 text-center">
-            Keine Sendungen im 20-km-Umkreis.
+            Keine Sendungen im Pool.
           </div>
         )}
         {clusters.map((c) => (

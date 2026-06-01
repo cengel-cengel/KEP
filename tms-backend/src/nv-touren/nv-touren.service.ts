@@ -58,7 +58,12 @@ import {
   isShipmentFullyStackable,
 } from '../lib/stackable.lib';
 import { buildAddressQuery, nominatimGeocode } from '../lib/nominatim.lib';
-import { resolvePool } from '../lib/poolShipments.lib';
+import {
+  POOL_ITEM_SELECT,
+  mapShipmentToPoolItem,
+  resolvePool,
+  type ShipmentPoolItem,
+} from '../lib/poolShipments.lib';
 
 function timeToDate(hhmm?: string | null): Date | null | undefined {
   if (hhmm === undefined) return undefined;
@@ -3166,81 +3171,15 @@ export class NvTourenService {
         tour_id: null,
         status: { in: ['new', 'in_warehouse'] },
       },
-      select: {
-        id: true,
-        shipment_number: true,
-        weight_kg: true,
-        ldm: true,
-        // S-6.1: Volumen-Box-Daten fuer Hof-Visualisierung. Add-only;
-        // bestehende Konsumenten (Map-Pin etc.) ignorieren die Felder.
-        volume_m3: true,
-        length_cm: true,
-        width_cm: true,
-        height_cm: true,
-        effective_pallets: true,
-        loading_date: true,
-        customers: { select: { id: true, name: true } },
-        addresses_shipments_loading_address_idToaddresses: {
-          // S-6.2: street + country_code fuer Hof-Per-Sendung-Label.
-          select: {
-            lat: true,
-            lng: true,
-            zip: true,
-            city: true,
-            street: true,
-            country_code: true,
-          },
-        },
-        // S-6.3 B: package_items pro Sendung fuer Hof-Trailer-Pack.
-        // Pro Trailer wird placePackages auf den items aller
-        // zugewiesenen Sendungen laufen. Reihenfolge: line_index asc
-        // damit Pack-Output deterministisch ist.
-        shipment_package_items: {
-          orderBy: { line_index: 'asc' as const },
-          select: {
-            id: true,
-            length_cm: true,
-            width_cm: true,
-            height_cm: true,
-            weight_kg: true,
-            quantity: true,
-            stackable: true,
-          },
-        },
-      },
+      // E3: Shared Select aus poolShipments.lib — identisches Shape
+      // wie /pool-shipments. Pool-only Felder (delivery-Adresse,
+      // relation) ziehen wir hier ueber den Select mit, der nearby-
+      // Mapper setzt sie unten via mapShipmentToPoolItem null/leer.
+      select: POOL_ITEM_SELECT,
       take: 500,
     });
 
-    const out: Array<{
-      id: string;
-      shipment_number: string;
-      weight_kg: number | null;
-      ldm: number | null;
-      volume_m3: number | null;
-      length_cm: number | null;
-      width_cm: number | null;
-      height_cm: number | null;
-      effective_pallets: number | null;
-      customer_name: string | null;
-      lat: number;
-      lng: number;
-      zip: string | null;
-      city: string | null;
-      // S-6.2: Loading-Adresse-Detail
-      loading_street: string | null;
-      loading_country: string | null;
-      distance_km: number;
-      // S-6.3 B: package_items pro Sendung (Hof-Trailer-Pack).
-      package_items: Array<{
-        id: string;
-        length_cm: number | null;
-        width_cm: number | null;
-        height_cm: number | null;
-        weight_kg: number | null;
-        quantity: number | null;
-        stackable: boolean;
-      }>;
-    }> = [];
+    const out: ShipmentPoolItem[] = [];
     for (const c of candidates) {
       const a = c.addresses_shipments_loading_address_idToaddresses;
       if (!a?.lat || !a?.lng) continue;
@@ -3252,35 +3191,12 @@ export class NvTourenService {
         if (d < minDist) minDist = d;
       }
       if (minDist <= radius_km) {
-        out.push({
-          id: c.id,
-          shipment_number: c.shipment_number,
-          weight_kg: c.weight_kg ? Number(c.weight_kg) : null,
-          ldm: c.ldm ? Number(c.ldm) : null,
-          volume_m3: c.volume_m3 != null ? Number(c.volume_m3) : null,
-          length_cm: c.length_cm ?? null,
-          width_cm: c.width_cm ?? null,
-          height_cm: c.height_cm ?? null,
-          effective_pallets:
-            c.effective_pallets != null ? Number(c.effective_pallets) : null,
-          customer_name: c.customers?.name ?? null,
-          lat: cLat,
-          lng: cLng,
-          zip: a.zip ?? null,
-          city: a.city ?? null,
-          loading_street: a.street ?? null,
-          loading_country: a.country_code ?? null,
-          distance_km: minDist,
-          package_items: (c.shipment_package_items ?? []).map((it) => ({
-            id: it.id,
-            length_cm: it.length_cm ?? null,
-            width_cm: it.width_cm ?? null,
-            height_cm: it.height_cm ?? null,
-            weight_kg: it.weight_kg != null ? Number(it.weight_kg) : null,
-            quantity: it.quantity ?? null,
-            stackable: it.stackable,
-          })),
-        });
+        out.push(
+          mapShipmentToPoolItem(c, {
+            anchor: 'loading',
+            distance_km: minDist,
+          }),
+        );
       }
     }
     out.sort((a, b) => a.distance_km - b.distance_km);

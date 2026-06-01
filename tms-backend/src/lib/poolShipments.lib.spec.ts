@@ -1,18 +1,23 @@
 /**
- * E2: Tests fuer poolShipments.lib — Stufe 1 (NV-pickup/-delivery,
- * FV-Sammelgut). Mock-Prisma analog nv-plz.lib.spec.ts.
+ * E2+E3: Tests fuer poolShipments.lib — Stufe 1 (NV-pickup/-delivery,
+ * FV-Sammelgut) + Shape-Parity-Mapper. Mock-Prisma analog
+ * nv-plz.lib.spec.ts.
  *
  * Scope:
  *   · Mode-Routing (nv-* → NV-Pfad, fv-sammelgut → FV-Pfad).
  *   · Anker-Bildung mit country|prefix (kein Schneeball).
+ *   · Anker-Adresse je Modus: pickup→loading, delivery→delivery.
  *   · Edge: leerer Anker → leerer Pool.
  *   · FV-Sammelgut ohne relation.network_partner_id → ausgeschlossen.
  *   · Cap-Default 500.
+ *   · mapShipmentToPoolItem: Shape-Parity inkl. package_items,
+ *     FV-Felder via withFvFields.
  *   · isNvPoolMode / isFvPoolMode Helper.
  */
 import {
   isFvPoolMode,
   isNvPoolMode,
+  mapShipmentToPoolItem,
   NV_PREFIX_DIGITS_DEFAULT,
   POOL_CAP_DEFAULT,
   resolvePool,
@@ -22,23 +27,44 @@ function makeShipmentRow(overrides: Partial<any> = {}) {
   return {
     id: 's1',
     shipment_number: 'S-001',
-    status: 'new',
     transport_type: 'DIREKT',
     weight_kg: 100,
     ldm: 0.5,
     volume_m3: 1.2,
+    length_cm: 120,
+    width_cm: 80,
+    height_cm: 100,
+    effective_pallets: 1,
     customers: { name: 'Kunde A' },
     addresses_shipments_loading_address_idToaddresses: {
+      lat: 48.78,
+      lng: 9.18,
       zip: '70435',
       city: 'Stuttgart',
+      street: 'Teststr. 1',
       country_code: 'DE',
     },
     addresses_shipments_delivery_address_idToaddresses: {
+      lat: 48.13,
+      lng: 11.58,
       zip: '80331',
       city: 'Muenchen',
+      street: 'Marienpl. 1',
       country_code: 'DE',
     },
+    relation_id: null,
     relation: null,
+    shipment_package_items: [
+      {
+        id: 'pi1',
+        length_cm: 120,
+        width_cm: 80,
+        height_cm: 100,
+        weight_kg: 50,
+        quantity: 2,
+        stackable: true,
+      },
+    ],
     ...overrides,
   };
 }
@@ -59,14 +85,131 @@ describe('poolShipments.lib — mode validators', () => {
   });
 });
 
+describe('poolShipments.lib — mapShipmentToPoolItem (Shape-Parity)', () => {
+  it('anchor=loading: zip/city/lat/lng = loading-Adresse', () => {
+    const out = mapShipmentToPoolItem(makeShipmentRow(), {
+      anchor: 'loading',
+    });
+    expect(out).toMatchObject({
+      id: 's1',
+      shipment_number: 'S-001',
+      weight_kg: 100,
+      ldm: 0.5,
+      volume_m3: 1.2,
+      length_cm: 120,
+      width_cm: 80,
+      height_cm: 100,
+      effective_pallets: 1,
+      customer_name: 'Kunde A',
+      lat: 48.78,
+      lng: 9.18,
+      zip: '70435',
+      city: 'Stuttgart',
+      loading_street: 'Teststr. 1',
+      loading_country: 'DE',
+      distance_km: 0,
+      // FV-Felder ohne withFvFields = null
+      transport_type: null,
+      delivery_zip: null,
+      delivery_city: null,
+      delivery_country: null,
+      relation_id: null,
+      relation_code: null,
+      depot_label: null,
+    });
+    expect(out.package_items).toEqual([
+      {
+        id: 'pi1',
+        length_cm: 120,
+        width_cm: 80,
+        height_cm: 100,
+        weight_kg: 50,
+        quantity: 2,
+        stackable: true,
+      },
+    ]);
+  });
+  it('anchor=delivery: zip/city/lat/lng = delivery-Adresse, loading_street bleibt loading', () => {
+    const out = mapShipmentToPoolItem(makeShipmentRow(), {
+      anchor: 'delivery',
+    });
+    expect(out.zip).toBe('80331');
+    expect(out.city).toBe('Muenchen');
+    expect(out.lat).toBe(48.13);
+    expect(out.lng).toBe(11.58);
+    // loading_street/loading_country IMMER aus loading-Adresse (wie nearby)
+    expect(out.loading_street).toBe('Teststr. 1');
+    expect(out.loading_country).toBe('DE');
+  });
+  it('withFvFields=true: transport_type + delivery_* + relation_* + depot_label gesetzt', () => {
+    const row = makeShipmentRow({
+      transport_type: 'SAMMELGUT',
+      relation_id: 'r1',
+      relation: {
+        code: 'FRA-STR',
+        network_partner_id: 'np1',
+        network_partner: {
+          id: 'np1',
+          name: 'Depot Frankfurt',
+          partner_number: 'DEPOT-FRA',
+        },
+        default_hall_location: {
+          code: 'FRA-HALL',
+          description: 'Halle Frankfurt',
+        },
+      },
+    });
+    const out = mapShipmentToPoolItem(row, {
+      anchor: 'loading',
+      withFvFields: true,
+    });
+    expect(out.transport_type).toBe('SAMMELGUT');
+    expect(out.delivery_zip).toBe('80331');
+    expect(out.delivery_city).toBe('Muenchen');
+    expect(out.delivery_country).toBe('DE');
+    expect(out.relation_id).toBe('r1');
+    expect(out.relation_code).toBe('FRA-STR');
+    // depot_label bevorzugt hall_location.description, fallback code, fallback network_partner.name
+    expect(out.depot_label).toBe('Halle Frankfurt');
+  });
+  it('withFvFields + nur network_partner (kein hall_location) → depot_label = partner.name', () => {
+    const row = makeShipmentRow({
+      relation: {
+        code: 'X',
+        network_partner_id: 'np1',
+        network_partner: { id: 'np1', name: 'Depot X', partner_number: 'X' },
+        default_hall_location: null,
+      },
+    });
+    const out = mapShipmentToPoolItem(row, {
+      anchor: 'loading',
+      withFvFields: true,
+    });
+    expect(out.depot_label).toBe('Depot X');
+  });
+  it('distance_km wird durchgereicht (nearby-Pfad)', () => {
+    const out = mapShipmentToPoolItem(makeShipmentRow(), {
+      anchor: 'loading',
+      distance_km: 12.3,
+    });
+    expect(out.distance_km).toBe(12.3);
+  });
+  it('fehlende Anker-Adresse → lat/lng=0, zip/city=null', () => {
+    const row = makeShipmentRow({
+      addresses_shipments_delivery_address_idToaddresses: null,
+    });
+    const out = mapShipmentToPoolItem(row, { anchor: 'delivery' });
+    expect(out.lat).toBe(0);
+    expect(out.lng).toBe(0);
+    expect(out.zip).toBeNull();
+    expect(out.city).toBeNull();
+  });
+});
+
 describe('poolShipments.lib — resolvePool (nv-pickup)', () => {
-  it('Anker aus PICKUP-Stops, status=new, loading-Adresse-Filter', async () => {
+  it('Anker aus PICKUP-Stops, status=new, loading-Adresse-Filter, anchor=loading', async () => {
     const findManyMock = jest.fn().mockResolvedValue([
-      makeShipmentRow({
-        id: 's2',
-        shipment_number: 'S-002',
-        status: 'new',
-      }),
+      makeShipmentRow({ id: 's2', shipment_number: 'S-002' }),
     ]);
     const prisma = {
       nv_touren: {
@@ -90,13 +233,14 @@ describe('poolShipments.lib — resolvePool (nv-pickup)', () => {
     };
     const out = await resolvePool(prisma as any, 't1', 'nv-pickup');
     expect(out).toHaveLength(1);
+    // anchor=loading: zip aus loading-Adresse des Items
     expect(out[0]).toMatchObject({
       id: 's2',
-      anchor_zip: '70435', // loading-zip aus dem mock-Shipment
-      anchor_country: 'DE',
-      depot_id: null,
+      zip: '70435',
+      lat: 48.78,
     });
-    // Tour-Load mit stop_type=PICKUP-Filter.
+    // package_items mitgeliefert
+    expect(out[0].package_items).toHaveLength(1);
     expect(prisma.nv_touren.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 't1' },
@@ -107,8 +251,6 @@ describe('poolShipments.lib — resolvePool (nv-pickup)', () => {
         }),
       }),
     );
-    // Pool-Query: status=new + loading-Adresse-Filter mit
-    // 3-stelligem Praefix + country 'DE'.
     const callArg = findManyMock.mock.calls[0][0];
     expect(callArg.where.status).toBe('new');
     expect(callArg.where.tour_id).toBeNull();
@@ -128,7 +270,7 @@ describe('poolShipments.lib — resolvePool (nv-pickup)', () => {
           id: 't1',
           stops: [
             mkStop('PICKUP', '70499', 'DE'),
-            mkStop('PICKUP', '70499', 'DE'), // duplicate → dedup
+            mkStop('PICKUP', '70499', 'DE'),
             mkStop('PICKUP', '80331', 'DE'),
             mkStop('PICKUP', '1100', 'AT'),
           ],
@@ -140,7 +282,7 @@ describe('poolShipments.lib — resolvePool (nv-pickup)', () => {
     const or =
       findManyMock.mock.calls[0][0].where
         .addresses_shipments_loading_address_idToaddresses.OR;
-    expect(or).toHaveLength(3); // 704/DE, 803/DE, 110/AT
+    expect(or).toHaveLength(3);
     expect(or).toEqual(
       expect.arrayContaining([
         { country_code: 'DE', zip: { startsWith: '704' } },
@@ -154,9 +296,7 @@ describe('poolShipments.lib — resolvePool (nv-pickup)', () => {
     const findManyMock = jest.fn();
     const prisma = {
       nv_touren: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({ id: 't1', stops: [] }),
+        findUnique: jest.fn().mockResolvedValue({ id: 't1', stops: [] }),
       },
       shipments: { findMany: findManyMock },
     };
@@ -169,9 +309,10 @@ describe('poolShipments.lib — resolvePool (nv-pickup)', () => {
     const findManyMock = jest.fn().mockResolvedValue([]);
     const prisma = {
       nv_touren: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({ id: 't1', stops: [mkStop('PICKUP', '70499', 'DE')] }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 't1',
+          stops: [mkStop('PICKUP', '70499', 'DE')],
+        }),
       },
       shipments: { findMany: findManyMock },
     };
@@ -194,10 +335,10 @@ describe('poolShipments.lib — resolvePool (nv-pickup)', () => {
 });
 
 describe('poolShipments.lib — resolvePool (nv-delivery)', () => {
-  it('Anker aus DELIVERY-Stops, status=in_warehouse, delivery-Adresse-Filter', async () => {
-    const findManyMock = jest.fn().mockResolvedValue([
-      makeShipmentRow({ id: 's3', status: 'in_warehouse' }),
-    ]);
+  it('Anker aus DELIVERY-Stops, status=in_warehouse, delivery-Adresse-Filter, anchor=delivery', async () => {
+    const findManyMock = jest
+      .fn()
+      .mockResolvedValue([makeShipmentRow({ id: 's3' })]);
     const prisma = {
       nv_touren: {
         findUnique: jest.fn().mockResolvedValue({
@@ -220,8 +361,16 @@ describe('poolShipments.lib — resolvePool (nv-delivery)', () => {
     };
     const out = await resolvePool(prisma as any, 't1', 'nv-delivery');
     expect(out).toHaveLength(1);
-    expect(out[0].anchor_zip).toBe('80331'); // delivery-zip aus mock
-    expect(out[0].anchor_country).toBe('DE');
+    // anchor=delivery: zip/city/lat/lng aus delivery-Adresse
+    expect(out[0]).toMatchObject({
+      zip: '80331',
+      city: 'Muenchen',
+      lat: 48.13,
+      lng: 11.58,
+      // loading_street bleibt loading
+      loading_street: 'Teststr. 1',
+      loading_country: 'DE',
+    });
     expect(prisma.nv_touren.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
         select: expect.objectContaining({
@@ -236,7 +385,6 @@ describe('poolShipments.lib — resolvePool (nv-delivery)', () => {
     expect(
       callArg.where.addresses_shipments_delivery_address_idToaddresses.OR,
     ).toEqual([{ country_code: 'DE', zip: { startsWith: '603' } }]);
-    // KEIN loading-Adresse-Filter im DELIVERY-Modus
     expect(
       callArg.where.addresses_shipments_loading_address_idToaddresses,
     ).toBeUndefined();
@@ -244,18 +392,23 @@ describe('poolShipments.lib — resolvePool (nv-delivery)', () => {
 });
 
 describe('poolShipments.lib — resolvePool (fv-sammelgut)', () => {
-  it('Anker aus relation.network_partner_id (distinct), Pool=SAMMELGUT', async () => {
+  it('Anker aus relation.network_partner_id (distinct), Pool=SAMMELGUT, FV-Felder befuellt', async () => {
     const findManyMock = jest.fn().mockResolvedValue([
       makeShipmentRow({
         id: 's-sg',
         transport_type: 'SAMMELGUT',
-        status: 'in_warehouse',
+        relation_id: 'r1',
         relation: {
+          code: 'FRA-STR',
           network_partner_id: 'np-A',
           network_partner: {
             id: 'np-A',
             name: 'Depot Frankfurt',
             partner_number: 'DEPOT-FRA',
+          },
+          default_hall_location: {
+            code: 'FRA-HALL',
+            description: 'Halle Frankfurt',
           },
         },
       }),
@@ -267,9 +420,9 @@ describe('poolShipments.lib — resolvePool (fv-sammelgut)', () => {
           shipments: [
             { relation: { network_partner_id: 'np-A' } },
             { relation: { network_partner_id: 'np-B' } },
-            { relation: { network_partner_id: 'np-A' } }, // dedup
-            { relation: { network_partner_id: null } },   // ignore
-            { relation: null },                            // ignore
+            { relation: { network_partner_id: 'np-A' } },
+            { relation: { network_partner_id: null } },
+            { relation: null },
           ],
         }),
       },
@@ -279,10 +432,16 @@ describe('poolShipments.lib — resolvePool (fv-sammelgut)', () => {
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({
       id: 's-sg',
-      depot_id: 'np-A',
-      depot_name: 'Depot Frankfurt',
-      depot_number: 'DEPOT-FRA',
-      anchor_zip: '80331', // delivery (nicht-pickup → delivery-Adresse)
+      // anchor=loading bei fv-sammelgut
+      zip: '70435',
+      city: 'Stuttgart',
+      transport_type: 'SAMMELGUT',
+      delivery_zip: '80331',
+      delivery_city: 'Muenchen',
+      delivery_country: 'DE',
+      relation_id: 'r1',
+      relation_code: 'FRA-STR',
+      depot_label: 'Halle Frankfurt',
     });
     const callArg = findManyMock.mock.calls[0][0];
     expect(callArg.where.status).toBe('in_warehouse');
@@ -332,7 +491,11 @@ describe('poolShipments.lib — Defaults', () => {
 
 // ─── helpers ──────────────────────────────────────────────────
 
-function mkStop(stop_type: 'PICKUP' | 'DELIVERY', zip: string, country_code: string) {
+function mkStop(
+  stop_type: 'PICKUP' | 'DELIVERY',
+  zip: string,
+  country_code: string,
+) {
   return {
     stop_type,
     shipment: {

@@ -119,8 +119,12 @@ vi.mock('../runtime/WorkspaceRuntimeContext', () => ({
     children,
 }));
 
-// useWorkspace mocked — mode steuerbar je Test.
-const workspaceMock = { mode: 'nv' as 'nv' | 'fv' };
+// useWorkspace mocked — mode + filter.pickupMode steuerbar je Test
+// (E3: poolMode wird aus filter.pickupMode abgeleitet).
+const workspaceMock: {
+  mode: 'nv' | 'fv';
+  filter: { pickupMode: 'PICKUP' | 'DELIVERY' };
+} = { mode: 'nv', filter: { pickupMode: 'PICKUP' } };
 vi.mock('../../state/workspace', () => ({
   useWorkspace: () => workspaceMock,
   DEFAULT_LAYOUT: { queueSize: 30, boardSize: 35, mapSize: 35 },
@@ -254,9 +258,9 @@ describe('YardPanel — smoke', () => {
     expect(screen.queryByTestId('scene-stub')).toBeNull();
   });
 
-  it('NV: Header "20 km Umkreis" + Pool-Count + PLZ-Gruppierung (Versender)', async () => {
+  it('NV: Header "Abhol-PLZ" + Pool-Count + PLZ-Gruppierung (Versender)', async () => {
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nv-touren/tour-1/nearby-shipments')) {
+      if (url.includes('/nv-touren/tour-1/pool-shipments')) {
         return Promise.resolve({ data: mockNearbyNv });
       }
       if (url.includes('/nv-touren/tour-1/loading')) {
@@ -269,7 +273,7 @@ describe('YardPanel — smoke', () => {
         <YardPanel />
       </Wrapper>,
     );
-    expect(await screen.findByText(/20 km Umkreis/)).toBeInTheDocument();
+    expect(await screen.findByText(/Abhol-PLZ/)).toBeInTheDocument();
     expect(await screen.findByText(/3 im Pool/)).toBeInTheDocument();
     // T3: NV gruppiert nach PLZ-PRAEFIX (3 Digits). 80331+80331+80335
     // collapsen alle zu "803xx" → 1 Lane mit 3 Sdg.
@@ -281,7 +285,7 @@ describe('YardPanel — smoke', () => {
   it('S-6.1 FV-Sammelgut: Gruppe = Depot-Label', async () => {
     workspaceMock.mode = 'fv';
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/tours/tour-1/nearby-shipments')) {
+      if (url.includes('/tours/tour-1/pool-shipments')) {
         return Promise.resolve({
           data: [
             {
@@ -342,7 +346,7 @@ describe('YardPanel — smoke', () => {
   it('S-6.1 FV-Direkt: Gruppe = Empfangs-PLZ', async () => {
     workspaceMock.mode = 'fv';
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/tours/tour-1/nearby-shipments')) {
+      if (url.includes('/tours/tour-1/pool-shipments')) {
         return Promise.resolve({
           data: [
             {
@@ -399,7 +403,7 @@ describe('YardPanel — smoke', () => {
   it('S-6.1 FV-Sammelgut OHNE Depot/Relation: Fallback Empfangs-PLZ', async () => {
     workspaceMock.mode = 'fv';
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/tours/tour-1/nearby-shipments')) {
+      if (url.includes('/tours/tour-1/pool-shipments')) {
         return Promise.resolve({
           data: [
             {
@@ -435,11 +439,10 @@ describe('YardPanel — smoke', () => {
     ).toBeInTheDocument();
   });
 
-  it('FV: Header "100 km Umkreis" + URL hat ?radius_km=100', async () => {
+  it('FV: Header "Sammelgut-Depot" + URL hat ?mode=fv-sammelgut', async () => {
     workspaceMock.mode = 'fv';
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/tours/tour-1/nearby-shipments')) {
-        // URL muss radius_km=100 enthalten — assertion unten.
+      if (url.includes('/tours/tour-1/pool-shipments')) {
         return Promise.resolve({ data: mockNearbyNv });
       }
       if (url.includes('/loading/tour/tour-1/optimize')) {
@@ -452,17 +455,18 @@ describe('YardPanel — smoke', () => {
         <YardPanel />
       </Wrapper>,
     );
-    expect(await screen.findByText(/100 km Umkreis/)).toBeInTheDocument();
-    // URL-Check: irgendwann muss api.get(..radius_km=100..) gerufen sein.
+    expect(await screen.findByText(/Sammelgut-Depot/)).toBeInTheDocument();
     const fvUrls = apiGet.mock.calls
       .map((c) => c[0])
-      .filter((u: string) => u.includes('nearby-shipments'));
-    expect(fvUrls.some((u: string) => u.includes('radius_km=100'))).toBe(true);
+      .filter((u: string) => u.includes('pool-shipments'));
+    expect(
+      fvUrls.some((u: string) => u.includes('mode=fv-sammelgut')),
+    ).toBe(true);
   });
 
   it('S-6.3 D: Tap auf Hof-Box → Modal oeffnet (nicht direkt Panel)', async () => {
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({ data: mockNearbyNv });
       }
       return Promise.resolve({ data: { stops: [] } });
@@ -484,7 +488,7 @@ describe('YardPanel — smoke', () => {
 
   it('S-6.3 D: Modal "Volle Details" → panel.selectShipment + Modal zu', async () => {
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({ data: mockNearbyNv });
       }
       return Promise.resolve({ data: { stops: [] } });
@@ -502,7 +506,7 @@ describe('YardPanel — smoke', () => {
 
   it('S-6.2 NV: Per-Sendung-Label-Felder erreichen YardScene3D', async () => {
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({ data: mockNearbyNv });
       }
       return Promise.resolve({ data: { stops: [] } });
@@ -523,7 +527,7 @@ describe('YardPanel — smoke', () => {
 
   it('S-6.2 Country-Prefix: einheitliche DE-Gruppe → KEIN Prefix', async () => {
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({ data: mockNearbyNv });
       }
       return Promise.resolve({ data: { stops: [] } });
@@ -542,7 +546,7 @@ describe('YardPanel — smoke', () => {
 
   it('S-6.2 Country-Prefix: einheitliche AT-Gruppe → "AT · " Prefix', async () => {
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({
           data: [
             {
@@ -575,7 +579,7 @@ describe('YardPanel — smoke', () => {
 
   it('S-6.2 Country-Prefix: gemischte Gruppe (DE + AT) → KEIN Prefix', async () => {
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({
           data: [
             { ...mockNearbyNv[0], id: 's-mix1', loading_country: 'DE' },
@@ -599,7 +603,7 @@ describe('YardPanel — smoke', () => {
 
   it('S-6.3 C: LKW-Total im Header (≈ N LKW) summiert ueber Slots', async () => {
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         // 2 Sendungen je 10 m³ → 1 LKW (Slot PLZ 80331)
         // 1 Sendung 5 m³ → 1 LKW (Slot PLZ 80335)
         // Σ ≈ 2 LKW.
@@ -629,7 +633,7 @@ describe('YardPanel — smoke', () => {
 
   it('S-6.3 C: Slot-Label enthaelt "N Sdg · ≈ K LKW"', async () => {
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({ data: mockNearbyNv });
       }
       return Promise.resolve({ data: { stops: [] } });
@@ -647,7 +651,7 @@ describe('YardPanel — smoke', () => {
 
   it('S-6.3 C: 3 Sendungen je 40 m³ → 2 LKW im Slot (FFD)', async () => {
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         // Alle in PLZ 80331 (gleiche Gruppe).
         return Promise.resolve({
           data: [
@@ -692,7 +696,7 @@ describe('YardPanel — smoke', () => {
 
   it('S-6.2 Auflieger-Vorladung: placed-Pakete erreichen YardScene3D', async () => {
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({ data: [] });
       }
       if (url.includes('/nv-touren/tour-1/loading')) {
@@ -758,7 +762,7 @@ describe('YardPanel — smoke', () => {
     // 1 unplaced kleine Sendung — Σ Vol weit unter Sattel 88 m³.
     // Erwartung: Reason = "Pack-Grenze (Reserve)".
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({ data: [] });
       }
       return Promise.resolve({
@@ -807,7 +811,7 @@ describe('YardPanel — smoke', () => {
 
   it('T1: fahrzeug_typ=12T → FFD nutzt 50 m³ cap (3×20 m³ → 1 LKW, 12+12=24 ≤ 50)', async () => {
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({
           data: [
             { ...mockNearbyNv[0], id: 's-t1a', volume_m3: 20, weight_kg: 500 },
@@ -834,7 +838,7 @@ describe('YardPanel — smoke', () => {
 
   it('T1: fahrzeug_typ=7_5T → kleinere cap (40 m³) → mehr LKW als Sattel', async () => {
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({
           data: [
             { ...mockNearbyNv[0], id: 's-t75a', volume_m3: 30, weight_kg: 500 },
@@ -861,7 +865,7 @@ describe('YardPanel — smoke', () => {
     // 3 Sendungen à 40 m³ → 2 LKW im Slot (FFD-Standard).
     // packedTrailers.length muss 2 sein.
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({
           data: [
             {
@@ -964,7 +968,7 @@ describe('YardPanel — smoke', () => {
     // Sendung ohne package_items (BE-Backwards-Compat) → FFD trotzdem
     // OK (Volumen-basiert), aber Items-Liste pro Trailer leer.
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({
           data: [
             {
@@ -993,7 +997,7 @@ describe('YardPanel — smoke', () => {
   it('S-6.3 Overflow-Grund "Σ Vol > Kapazität" wenn Σ Vol > Sattel-Vol', async () => {
     // 1 unplaced + 1 placed XXL — Σ Vol > 88 m³ Sattel-Default.
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({ data: [] });
       }
       return Promise.resolve({
@@ -1071,7 +1075,7 @@ describe('YardPanel — smoke', () => {
     // sparsen Daten (NV liefert kein customer_name) + "Volle Details"-
     // Button.
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({ data: [] });
       }
       if (url.includes('/nv-touren/tour-1/loading')) {
@@ -1129,7 +1133,7 @@ describe('YardPanel — smoke', () => {
 
   it('T3: NV PLZ-Praefix-Cluster (3 Digits) buendelt 70435+70499+71229 zu "704xx" + "712xx"', async () => {
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({
           data: [
             { ...mockNearbyNv[0], id: 'a1', zip: '70435' },
@@ -1157,7 +1161,7 @@ describe('YardPanel — smoke', () => {
   it('T3: FV-Depot/Relation bleibt UNGECLUSTERED (Empfangs-PLZ-Branch alleine clustert)', async () => {
     workspaceMock.mode = 'fv';
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         return Promise.resolve({
           data: [
             // Sammelgut mit Depot → bleibt "Depot Hub HH" unverändert
@@ -1231,7 +1235,7 @@ describe('YardPanel — smoke', () => {
   it('T1.6: FV-Hof zieht tour.max_ldm + tour.max_weight_kg → FFD nutzt die echte Cap', async () => {
     workspaceMock.mode = 'fv';
     apiGet.mockImplementation((url: string) => {
-      if (url.includes('/nearby-shipments')) {
+      if (url.includes('/pool-shipments')) {
         // 2 Sdg je 30 m³ in Empfangs-PLZ — passt zusammen unter 88 m³
         // (Sattel-Default), aber NICHT unter Cap die wir per Tour
         // setzen (siehe /tours/tour-1 unten).

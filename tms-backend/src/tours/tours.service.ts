@@ -23,7 +23,12 @@ import {
   routeWithDurations,
 } from '../lib/osrm.lib';
 import { getNvPlzSet } from '../lib/nv-plz.lib';
-import { resolvePool } from '../lib/poolShipments.lib';
+import {
+  POOL_ITEM_SELECT,
+  mapShipmentToPoolItem,
+  resolvePool,
+  type ShipmentPoolItem,
+} from '../lib/poolShipments.lib';
 import {
   computeOverload,
   deriveMaxVolM3,
@@ -2468,101 +2473,13 @@ export class ToursService {
         status: { in: ['new', 'in_warehouse'] },
         transport_type: { in: [...FV_TRANSPORT_TYPES] },
       },
-      select: {
-        id: true,
-        shipment_number: true,
-        weight_kg: true,
-        ldm: true,
-        volume_m3: true,
-        length_cm: true,
-        width_cm: true,
-        height_cm: true,
-        effective_pallets: true,
-        loading_date: true,
-        // S-6.1: Empfaenger-Gruppierung. transport_type entscheidet
-        // ueber Slot-Logik (Sammelgut → Depot/Relation; Direkt →
-        // Empfangs-PLZ). relation+default_hall_location liefert das
-        // Depot-Label.
-        transport_type: true,
-        relation_id: true,
-        relation: {
-          select: {
-            code: true,
-            default_hall_location: {
-              select: { code: true, description: true },
-            },
-          },
-        },
-        customers: { select: { id: true, name: true } },
-        addresses_shipments_loading_address_idToaddresses: {
-          // S-6.2: street + country_code fuer Hof-Per-Sendung-Label.
-          select: {
-            lat: true,
-            lng: true,
-            zip: true,
-            city: true,
-            street: true,
-            country_code: true,
-          },
-        },
-        addresses_shipments_delivery_address_idToaddresses: {
-          // S-6.2: country_code fuer Slot-Country-Prefix.
-          select: { zip: true, city: true, country_code: true },
-        },
-        // S-6.3 B: package_items pro Sendung fuer Hof-Trailer-Pack.
-        shipment_package_items: {
-          orderBy: { line_index: 'asc' as const },
-          select: {
-            id: true,
-            length_cm: true,
-            width_cm: true,
-            height_cm: true,
-            weight_kg: true,
-            quantity: true,
-            stackable: true,
-          },
-        },
-      },
+      // E3: Shared Select aus poolShipments.lib — identische Shape
+      // wie /pool-shipments. Pool-Mapper unten setzt FV-Felder via
+      // withFvFields:true.
+      select: POOL_ITEM_SELECT,
       take: 500,
     });
-    const out: Array<{
-      id: string;
-      shipment_number: string;
-      weight_kg: number | null;
-      ldm: number | null;
-      volume_m3: number | null;
-      length_cm: number | null;
-      width_cm: number | null;
-      height_cm: number | null;
-      effective_pallets: number | null;
-      customer_name: string | null;
-      lat: number;
-      lng: number;
-      zip: string | null;
-      city: string | null;
-      // S-6.2: Adress-Detail fuer Per-Sendung-Label + Country-Prefix
-      loading_street: string | null;
-      loading_country: string | null;
-      distance_km: number;
-      // S-6.1 Empfaenger-Gruppierung
-      transport_type: string | null;
-      delivery_zip: string | null;
-      delivery_city: string | null;
-      delivery_country: string | null;
-      relation_id: string | null;
-      relation_code: string | null;
-      depot_label: string | null;
-      // S-6.3 B: package_items pro Sendung (Hof-Trailer-Pack).
-      package_items: Array<{
-        id: string;
-        length_cm: number | null;
-        width_cm: number | null;
-        height_cm: number | null;
-        weight_kg: number | null;
-        quantity: number | null;
-        stackable: boolean;
-      }>;
-    }> = [];
+    const out: ShipmentPoolItem[] = [];
     for (const c of candidates) {
       const a = c.addresses_shipments_loading_address_idToaddresses;
       if (!a?.lat || !a?.lng) continue;
@@ -2585,46 +2502,13 @@ export class ToursService {
         if (dd < minDist) minDist = dd;
       }
       if (minDist <= radius_km) {
-        const delivery = c.addresses_shipments_delivery_address_idToaddresses;
-        out.push({
-          id: c.id,
-          shipment_number: c.shipment_number,
-          weight_kg: c.weight_kg ? Number(c.weight_kg) : null,
-          ldm: c.ldm ? Number(c.ldm) : null,
-          volume_m3: c.volume_m3 != null ? Number(c.volume_m3) : null,
-          length_cm: c.length_cm ?? null,
-          width_cm: c.width_cm ?? null,
-          height_cm: c.height_cm ?? null,
-          effective_pallets:
-            c.effective_pallets != null ? Number(c.effective_pallets) : null,
-          customer_name: c.customers?.name ?? null,
-          lat: cLat,
-          lng: cLng,
-          zip: a.zip ?? null,
-          city: a.city ?? null,
-          loading_street: a.street ?? null,
-          loading_country: a.country_code ?? null,
-          distance_km: minDist,
-          transport_type: c.transport_type ?? null,
-          delivery_zip: delivery?.zip ?? null,
-          delivery_city: delivery?.city ?? null,
-          delivery_country: delivery?.country_code ?? null,
-          relation_id: c.relation_id ?? null,
-          relation_code: c.relation?.code ?? null,
-          depot_label:
-            c.relation?.default_hall_location?.description ??
-            c.relation?.default_hall_location?.code ??
-            null,
-          package_items: (c.shipment_package_items ?? []).map((it) => ({
-            id: it.id,
-            length_cm: it.length_cm ?? null,
-            width_cm: it.width_cm ?? null,
-            height_cm: it.height_cm ?? null,
-            weight_kg: it.weight_kg != null ? Number(it.weight_kg) : null,
-            quantity: it.quantity ?? null,
-            stackable: it.stackable,
-          })),
-        });
+        out.push(
+          mapShipmentToPoolItem(c, {
+            anchor: 'loading',
+            withFvFields: true,
+            distance_km: minDist,
+          }),
+        );
       }
     }
     out.sort((a, b) => a.distance_km - b.distance_km);

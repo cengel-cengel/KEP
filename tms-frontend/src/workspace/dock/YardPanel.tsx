@@ -153,18 +153,16 @@ interface FvOptimizeResponse {
   loadingOrder?: FvOptimizeShipment[];
 }
 
-const NV_RADIUS_KM = 20; // NV: BE-Default reicht; explizit klar fuer Konstanz.
-const FV_RADIUS_KM = 100;
 
 export default function YardPanel() {
-  const { mode } = useWorkspace();
+  const { mode, filter } = useWorkspace();
   const { activeTourViewId } = useWorkspaceRuntime();
   const panel = usePanel();
   const dockApi = useDockPanelApi();
   const [visible, setVisible] = useState<boolean>(dockApi?.isVisible ?? true);
   // S-6.3 D: Modal-State fuer Sendungs-Tap. Default-Use-Case ist
   // Mobile (Carlos auf iPhone) — Tap auf Hof-Item oeffnet das Modal
-  // mit Kerninfos aus den nearby-Daten. Desktop kann zusaetzlich
+  // mit Kerninfos aus den Pool-Daten. Desktop kann zusaetzlich
   // "Volle Details" -> S-5-Detail-Panel triggern.
   const [modalShipmentId, setModalShipmentId] = useState<string | null>(null);
 
@@ -178,17 +176,28 @@ export default function YardPanel() {
   const frameloop: 'always' | 'never' = visible ? 'always' : 'never';
   const tourId = activeTourViewId;
 
-  // Nearby-Pool. URL + Radius pro Modus.
+  // E3: Pool-Mode aus Tour-Kontext ableiten.
+  // NV: pickupMode (PICKUP|DELIVERY) aus useWorkspace().filter → 1:1.
+  // FV: Stufe 1 hat nur fv-sammelgut.
+  const poolMode: 'nv-pickup' | 'nv-delivery' | 'fv-sammelgut' =
+    mode === 'nv'
+      ? filter.pickupMode === 'DELIVERY'
+        ? 'nv-delivery'
+        : 'nv-pickup'
+      : 'fv-sammelgut';
+
+  // E3: Pool-Query — ersetzt /nearby-shipments durch /pool-shipments
+  // (Tour-bezogen, PLZ/Depot-gefiltert, kein Geo-Radius).
+  // Shape-Parity garantiert: Response = NearbyShipment-Felder 1:1.
   const nearbyQ = useQuery<NearbyShipment[]>({
-    queryKey: ['yard', mode, tourId, mode === 'nv' ? NV_RADIUS_KM : FV_RADIUS_KM],
+    queryKey: ['yard-pool', mode, tourId, poolMode],
     queryFn: async () => {
       if (!tourId) return [];
       const base =
         mode === 'nv'
-          ? `/nv-touren/${tourId}/nearby-shipments`
-          : `/tours/${tourId}/nearby-shipments`;
-      const url =
-        mode === 'fv' ? `${base}?radius_km=${FV_RADIUS_KM}` : base;
+          ? `/nv-touren/${tourId}/pool-shipments`
+          : `/tours/${tourId}/pool-shipments`;
+      const url = `${base}?mode=${poolMode}`;
       const { data } = await api.get<NearbyShipment[]>(url);
       return data;
     },
@@ -899,8 +908,10 @@ export default function YardPanel() {
         <span className="text-gray-500">
           ·{' '}
           {mode === 'nv'
-            ? `${NV_RADIUS_KM} km Umkreis`
-            : `${FV_RADIUS_KM} km Umkreis`}
+            ? poolMode === 'nv-delivery'
+              ? 'Zustell-PLZ'
+              : 'Abhol-PLZ'
+            : 'Sammelgut-Depot'}
         </span>
         <span className="text-gray-500">·</span>
         <span className="font-mono text-gray-700">

@@ -610,3 +610,38 @@ describe('LoadingPlanPanel D2 — embedded Drag → PATCH (NV)', () => {
     expect(apiPatch).not.toHaveBeenCalled();
   });
 });
+
+// D3a: AxleLoadPanel sichtbar im embedded (NV + FV).
+// Pruefung: Header "Achslast" rendert + Trailer-Laenge entspricht
+// dem aufgeloesten vehicleType-Bucket (NV: capacity.maxLdm, FV:
+// recommendedVehicle.type).
+describe('LoadingPlanPanel D3a — AxleLoadPanel im embedded', () => {
+  it('NV: AchsLast-Panel rendert unter dem 3D-Canvas', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    const { findByText } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    // Header "Achslast" aus AxleLoadPanel
+    expect(await findByText('Achslast')).toBeInTheDocument();
+    // vehicleType-Heuristik: capacity.maxLdm=12 → "Koffer 12t",
+    // trailerLength = 1200/100 = 12.0 m. Beides wird im AxleLoadPanel-
+    // Header gerendert: "Koffer 12t · 12.0 m".
+    expect(await findByText(/Koffer 12t · 12\.0 m/)).toBeInTheDocument();
+  });
+
+  it('FV: AchsLast-Panel rendert mit recommendedVehicle.type', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
+    const { findByText } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    expect(await findByText('Achslast')).toBeInTheDocument();
+    // FV_OPTIMIZE_FIXTURE.recommendedVehicle: { type: 'Sattel',
+    // lengthCm: 1360 } → "Sattel · 13.6 m".
+    expect(await findByText(/Sattel · 13\.6 m/)).toBeInTheDocument();
+  });
+});

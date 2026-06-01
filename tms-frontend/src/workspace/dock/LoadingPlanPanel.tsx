@@ -40,6 +40,7 @@ import {
   type NvLoadingDetail,
 } from '../../pages/NvLoadingPlanPage';
 import { resolveVehicleCapacity } from '../../lib/vehicleTypes';
+import AxleLoadPanel from '../../components/AxleLoadPanel';
 import {
   DEFAULT_TRAILER_CM,
   expandPackagesFromOrder,
@@ -214,31 +215,58 @@ function NvBody({
       isLoading={tourQ.isLoading}
       hasData={!!tourQ.data}
     >
-      <LoadingPlan3D
-        vehicle={{
-          lengthCm: capacity.lengthCm,
-          widthCm: capacity.widthCm,
-          heightCm: capacity.heightCm,
-        }}
-        packages={renderedPackages}
-        frameloop={frameloop}
-        onPositionChange={(id, posXCm, posYCm, posZCm, rotationDeg) => {
-          // D2: synth-Filter via dbItemId. Quantity-Klone q>0 + synth
-          // ":pkg:"-Fallbacks haben kein dbItemId und sind BE-seitig
-          // nicht persistierbar (1 Row pro line_index).
-          const pkg = renderedPackages.find((p) => p.id === id);
-          const dbItemId = (pkg as { dbItemId?: string } | undefined)
-            ?.dbItemId;
-          if (!dbItemId) return;
-          persistMutation.mutate({
-            itemId: dbItemId,
-            posXCm,
-            posYCm,
-            posZCm,
-            rotationDeg,
-          });
-        }}
-      />
+      {/* D3a: vertikaler Split — 3D oben (h-[480px] aus LoadingPlan3D
+          selbst), AchsLast-Panel unten. Container hat overflow-auto
+          damit der Inhalt scrollt wenn das Dock-Panel kleiner ist. */}
+      <div className="h-full overflow-auto">
+        <LoadingPlan3D
+          vehicle={{
+            lengthCm: capacity.lengthCm,
+            widthCm: capacity.widthCm,
+            heightCm: capacity.heightCm,
+          }}
+          packages={renderedPackages}
+          frameloop={frameloop}
+          onPositionChange={(id, posXCm, posYCm, posZCm, rotationDeg) => {
+            // D2: synth-Filter via dbItemId. Quantity-Klone q>0 + synth
+            // ":pkg:"-Fallbacks haben kein dbItemId und sind BE-seitig
+            // nicht persistierbar (1 Row pro line_index).
+            const pkg = renderedPackages.find((p) => p.id === id);
+            const dbItemId = (pkg as { dbItemId?: string } | undefined)
+              ?.dbItemId;
+            if (!dbItemId) return;
+            persistMutation.mutate({
+              itemId: dbItemId,
+              posXCm,
+              posYCm,
+              posZCm,
+              rotationDeg,
+            });
+          }}
+        />
+        {/* D3a: AchsLast-Panel. vehicleType-Heuristik: maxLdm-Buckets
+            wie in der NV-Vollansicht (NvLoadingPlanPage L949-953).
+            BUG-V-Fix-Mirror: vehicle.type (getVehicleDims) wuerde fuer
+            Tonnen-Typen falsch auf "Koffer 7t" zurueckfallen. */}
+        <div className="px-3 pb-3">
+          <AxleLoadPanel
+            packages={renderedPackages.map((p) => ({
+              posY: p.posY,
+              weightKg: Number(p.weightKg) || 0,
+            }))}
+            vehicleType={
+              capacity.maxLdm <= 8
+                ? 'Koffer 7t'
+                : capacity.maxLdm <= 13
+                  ? 'Koffer 12t'
+                  : 'Sattel'
+            }
+            trailerLength_m={capacity.lengthCm / 100}
+            groundedCount={renderedPackages.filter((p) => p.posZ < 1e-6).length}
+            totalCount={renderedPackages.length}
+          />
+        </div>
+      </div>
     </PanelShell>
   );
 }
@@ -365,26 +393,48 @@ function FvBody({
       isLoading={tourQ.isLoading}
       hasData={!!tourQ.data}
     >
-      <LoadingPlan3D
-        vehicle={vehicleDims}
-        packages={renderedPackages}
-        frameloop={frameloop}
-        onPositionChange={(id, posXCm, posYCm, posZCm, rotationDeg) => {
-          // D2: synth-Filter via dbItemId. Quantity-Klone q>0 +
-          // synth ":pkg:"-Fallbacks (siehe loadingFv.expandPackages-
-          // FromOrder L229-244) haben dbItemId=undefined und sind
-          // nicht persistierbar (BE-Side: 1 Row pro line_index).
-          const pkg = placedPackages.find((p) => p.id === id);
-          if (!pkg?.dbItemId) return;
-          persistMutation.mutate({
-            itemId: pkg.dbItemId,
-            posXCm,
-            posYCm,
-            posZCm,
-            rotationDeg,
-          });
-        }}
-      />
+      {/* D3a: vertikaler Split — 3D oben (h-[480px] aus LoadingPlan3D
+          selbst), AchsLast-Panel unten. Mirror NvBody. */}
+      <div className="h-full overflow-auto">
+        <LoadingPlan3D
+          vehicle={vehicleDims}
+          packages={renderedPackages}
+          frameloop={frameloop}
+          onPositionChange={(id, posXCm, posYCm, posZCm, rotationDeg) => {
+            // D2: synth-Filter via dbItemId. Quantity-Klone q>0 +
+            // synth ":pkg:"-Fallbacks (siehe loadingFv.expandPackages-
+            // FromOrder L229-244) haben dbItemId=undefined und sind
+            // nicht persistierbar (BE-Side: 1 Row pro line_index).
+            const pkg = placedPackages.find((p) => p.id === id);
+            if (!pkg?.dbItemId) return;
+            persistMutation.mutate({
+              itemId: pkg.dbItemId,
+              posXCm,
+              posYCm,
+              posZCm,
+              rotationDeg,
+            });
+          }}
+        />
+        {/* D3a: AchsLast-Panel. vehicleType aus recommendedVehicle.type
+            (FV-Vollansicht-Pattern: selectedVehicle?.type ?? Sattel).
+            packages aus placedPackages (PlacedPackage hat weightKg
+            aus expandPackagesFromOrder), unplaced gefiltert. */}
+        <div className="px-3 pb-3">
+          <AxleLoadPanel
+            packages={placedPackages
+              .filter((p) => !p.unplaced)
+              .map((p) => ({
+                posY: p.posY,
+                weightKg: Number(p.weightKg) || 0,
+              }))}
+            vehicleType={vehicleType}
+            trailerLength_m={vehicleDims.lengthCm / 100}
+            groundedCount={renderedPackages.filter((p) => p.posZ < 1e-6).length}
+            totalCount={renderedPackages.length}
+          />
+        </div>
+      </div>
     </PanelShell>
   );
 }

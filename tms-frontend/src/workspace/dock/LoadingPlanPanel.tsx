@@ -725,6 +725,62 @@ function FvBody({
     },
   });
 
+  // Stufe-1 TEIL C — Repack-Optimal-Button (FV-only).
+  // 1:1 aus LoadingPlanPage.repackOptimalMutation portiert.
+  // reset-positions → sortPackagesForOptimalPack(placedPackages) →
+  // placePackages → PATCH-Loop. NV nicht moeglich: loading.service
+  // ist FV-zentriert (sucht via prisma.tours, NICHT nv_touren).
+  const repackOptimalMutation = useMutation({
+    mutationFn: async () => {
+      if (!tourId) throw new Error('Keine Tour-ID');
+      await apiClient.post(`/loading/tour/${tourId}/reset-positions`);
+      const sorted = sortPackagesForOptimalPack(placedPackages);
+      const repacked = placePackages(
+        sorted,
+        vehicleDims.lengthCm,
+        vehicleDims.widthCm,
+        vehicleDims.heightCm,
+      );
+      let written = 0;
+      for (const pkg of repacked) {
+        if (!pkg.dbItemId) continue;
+        if (pkg.unplaced) continue;
+        await apiClient.patch(
+          `/loading/package-item/${pkg.dbItemId}/position`,
+          {
+            posXCm: Math.round(pkg.posX),
+            posYCm: Math.round(pkg.posY),
+            posZCm: Math.round(pkg.posZ),
+            rotationDeg: pkg.rotationDeg ?? 0,
+          },
+        );
+        written += 1;
+      }
+      return { count: written };
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['loading', 'optimize', tourId],
+      });
+    },
+  });
+
+  // Stufe-1 TEIL D — Reset-Positions-Button (FV-only).
+  // POST /loading/tour/:tourId/reset-positions setzt alle pos_*_cm
+  // auf NULL (Auto-Placer-Cache leeren). FV-zentriert, NV nicht
+  // unterstuetzt (siehe Stufe-1 NV-BE-Flag).
+  const resetPositionsMutation = useMutation({
+    mutationFn: async () => {
+      if (!tourId) throw new Error('Keine Tour-ID');
+      await apiClient.post(`/loading/tour/${tourId}/reset-positions`);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['loading', 'optimize', tourId],
+      });
+    },
+  });
+
   // D3c: Insert-Mode Drop-Cascade-Handler — 1:1 aus
   // LoadingPlanPage.handleInsertAt (L419-498) portiert.
   // findInsertTarget → computeInsertedOrder → placePackages →
@@ -838,6 +894,48 @@ function FvBody({
       vehicleInfo={`${vehicleType} · ${(vehicleDims.lengthCm / 100).toFixed(1)}×${(vehicleDims.widthCm / 100).toFixed(2)}×${(vehicleDims.heightCm / 100).toFixed(2)} m`}
       pkgCount={renderedPackages.length}
       usage={usage}
+      actions={
+        <>
+          {/* Stufe-1 TEIL C: Repack-Optimal. */}
+          <button
+            type="button"
+            data-testid="action-repack-optimal"
+            onClick={() => {
+              if (
+                !window.confirm(
+                  'Alle Positionen neu optimal beladen? Bestehende manuelle Drag-Positionen werden überschrieben.',
+                )
+              )
+                return;
+              repackOptimalMutation.mutate();
+            }}
+            disabled={repackOptimalMutation.isPending}
+            className="inline-flex items-center gap-1 px-2 py-0.5 border border-gray-300 rounded hover:bg-gray-50 text-gray-700 disabled:opacity-50"
+            title="Neu optimal beladen (sort + re-pack + PATCH alle Items)"
+          >
+            🔄 Optimal
+          </button>
+          {/* Stufe-1 TEIL D: Reset-Positions (destruktiv → confirm). */}
+          <button
+            type="button"
+            data-testid="action-reset-positions"
+            onClick={() => {
+              if (
+                !window.confirm(
+                  'Alle gespeicherten Positionen verwerfen und Auto-Placement neu berechnen?',
+                )
+              )
+                return;
+              resetPositionsMutation.mutate();
+            }}
+            disabled={resetPositionsMutation.isPending}
+            className="inline-flex items-center gap-1 px-2 py-0.5 border border-gray-300 rounded hover:bg-gray-50 text-gray-700 disabled:opacity-50"
+            title="Alle Drag-Positionen verwerfen, Auto-Placement aktivieren"
+          >
+            ↺ Reset
+          </button>
+        </>
+      }
       unplacedShipmentCount={unplacedShipmentCount}
       fullViewHref={`/loading/${tourId}`}
       isLoading={tourQ.isLoading}
@@ -965,6 +1063,7 @@ function PanelShell({
   vehicleInfo,
   pkgCount,
   usage,
+  actions,
   unplacedShipmentCount,
   fullViewHref,
   isLoading,
@@ -982,6 +1081,9 @@ function PanelShell({
     totalWeightKg: number;
     utilizationPct: number;
   };
+  /** Stufe-1 TEIL C/D: optionale Action-Buttons im Header
+   *  (Repack-Optimal / Reset). Rendert links vom Vollansicht-Link. */
+  actions?: React.ReactNode;
   unplacedShipmentCount: number;
   fullViewHref: string;
   isLoading: boolean;
@@ -1006,6 +1108,7 @@ function PanelShell({
         ) : (
           <span className="ml-auto text-gray-400">{pkgCount} Packstücke</span>
         )}
+        {actions}
         <Link
           to={fullViewHref}
           className="inline-flex items-center gap-1 px-2 py-0.5 border border-gray-300 rounded hover:bg-gray-50 text-gray-700"

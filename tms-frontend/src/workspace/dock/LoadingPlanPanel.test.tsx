@@ -1156,3 +1156,85 @@ describe('LoadingPlanPanel TEIL A — Live-Aggregat-Header', () => {
     expect(usageEl.textContent).toMatch(/% Vol/);
   });
 });
+
+// Stufe-1 TEIL C+D: Repack-Optimal + Reset-Buttons (FV-only).
+// NV-BE-Vorbehalt: loading.service ist FV-zentriert (prisma.tours,
+// nicht nv_touren) → die Buttons werden bewusst NUR in FvBody
+// gerendert. NV-Tests verifizieren, dass die data-testid's fehlen.
+describe('LoadingPlanPanel Stufe-1 — Repack + Reset (FV-only)', () => {
+  it('FV: Reset-Button → POST /loading/tour/:id/reset-positions (mit confirm)', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
+    const { findByTestId } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    const btn = await findByTestId('action-reset-positions');
+    btn.click();
+    await vi.waitFor(() => {
+      expect(apiPost).toHaveBeenCalledWith(
+        '/loading/tour/tour-1/reset-positions',
+        undefined,
+      );
+    });
+  });
+
+  it('FV: Reset-Button + confirm=false → KEIN POST', async () => {
+    workspaceMock.mode = 'fv';
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
+    const { findByTestId } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    const btn = await findByTestId('action-reset-positions');
+    btn.click();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  it('FV: Repack-Optimal → reset-positions wird als erster Schritt gerufen', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
+    const { findByTestId } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    const btn = await findByTestId('action-repack-optimal');
+    btn.click();
+    // Erster API-Call ist immer POST reset-positions (vor placePackages).
+    await vi.waitFor(() => {
+      expect(apiPost).toHaveBeenCalledWith(
+        '/loading/tour/tour-1/reset-positions',
+        undefined,
+      );
+    });
+    // PATCH-Count haengt vom placePackages-Output ab (Fixture-
+    // abhaengig, vgl. Cascade-Test-Lessons aus D3c). Wir asserten
+    // nur, dass — falls PATCHes erfolgen — sie das richtige Schema
+    // treffen.
+    for (const c of apiPatch.mock.calls) {
+      const url = c[0] as string;
+      expect(url).toMatch(/^\/loading\/package-item\/[^/]+\/position$/);
+    }
+  });
+
+  it('NV: KEINE Repack/Reset-Buttons (loading.service ist FV-only)', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    const { queryByTestId } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    // Tour laden + AchsLast warten (sicherstellen, dass Panel
+    // initial gerendert ist).
+    await vi.waitFor(() => {
+      expect(lp3dProps).toHaveBeenCalled();
+    });
+    expect(queryByTestId('action-repack-optimal')).toBeNull();
+    expect(queryByTestId('action-reset-positions')).toBeNull();
+  });
+});

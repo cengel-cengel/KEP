@@ -295,6 +295,76 @@ function NvBody({
     capacity.heightCm,
   ]);
 
+  // Stufe-1b TEIL D (NV) — Reset-Positions FE-side.
+  // loading.service.resetTourPositions ist FV-only (prisma.tours-
+  // Lookup), darum hier per Per-Item-PATCH-null. Loop ueber distinct
+  // dbItemIds aus packages (Quantity-Klone q>0 haben kein dbItemId →
+  // synth-Filter via Regel #2).
+  const resetPositionsMutation = useMutation({
+    mutationFn: async () => {
+      if (!tourId) throw new Error('Keine Tour-ID');
+      const dbItemIds = Array.from(
+        new Set(
+          packages
+            .map((p) => (p as { dbItemId?: string }).dbItemId)
+            .filter((id): id is string => !!id),
+        ),
+      );
+      for (const dbItemId of dbItemIds) {
+        await apiClient.patch(
+          `/loading/package-item/${dbItemId}/position`,
+          { posXCm: null, posYCm: null, posZCm: null },
+        );
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['nv-loading', tourId] });
+    },
+  });
+
+  // Stufe-1b TEIL C (NV) — Repack-Optimal FE-side.
+  // Analog FV-repackOptimalMutation, aber statt POST reset-positions
+  // (FV-only Endpoint) wird storedPos:null im Mapping uebergeben →
+  // placePackages packt frisch. sortPackagesForOptimalPack +
+  // placePackages sind Shape-agnostisch (NvExpandedPackage extends
+  // SharedPackage), keine Adapter-Schicht noetig.
+  const repackOptimalMutation = useMutation({
+    mutationFn: async () => {
+      if (!tourId) throw new Error('Keine Tour-ID');
+      const flat = packages.map((p) => ({
+        ...p,
+        storedPosX: null,
+        storedPosY: null,
+        storedPosZ: null,
+      }));
+      const sorted = sortPackagesForOptimalPack(flat);
+      const repacked = placePackages(
+        sorted,
+        capacity.lengthCm,
+        capacity.widthCm,
+        capacity.heightCm,
+      );
+      for (const pkg of repacked) {
+        const dbItemId = (pkg as { dbItemId?: string }).dbItemId;
+        if (!dbItemId) continue;
+        if (pkg.unplaced) continue;
+        await apiClient.patch(
+          `/loading/package-item/${dbItemId}/position`,
+          {
+            posXCm: Math.round(pkg.posX),
+            posYCm: Math.round(pkg.posY),
+            posZCm: Math.round(pkg.posZ),
+            rotationDeg:
+              (pkg as { rotationDeg?: number }).rotationDeg ?? 0,
+          },
+        );
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['nv-loading', tourId] });
+    },
+  });
+
   // Stufe-1: NV-Insert-Direct-Cascade — analog FvBody.handleInsertAt
   // (D3c-Logik), aber auf NvFlatPackage[] (renderedPackages). KEIN
   // Sandbox, Loop PATCH /loading/package-item/:id/position pro
@@ -407,6 +477,48 @@ function NvBody({
       vehicleInfo={`${typLabel} · ${(capacity.lengthCm / 100).toFixed(1)}×${(capacity.widthCm / 100).toFixed(2)}×${(capacity.heightCm / 100).toFixed(2)} m`}
       pkgCount={packages.length}
       usage={usage}
+      actions={
+        <>
+          {/* Stufe-1b TEIL C (NV): Repack-Optimal FE-side. */}
+          <button
+            type="button"
+            data-testid="action-repack-optimal"
+            onClick={() => {
+              if (
+                !window.confirm(
+                  'Alle Positionen neu optimal beladen? Bestehende manuelle Drag-Positionen werden überschrieben.',
+                )
+              )
+                return;
+              repackOptimalMutation.mutate();
+            }}
+            disabled={repackOptimalMutation.isPending}
+            className="inline-flex items-center gap-1 px-2 py-0.5 border border-gray-300 rounded hover:bg-gray-50 text-gray-700 disabled:opacity-50"
+            title="Neu optimal beladen (sort + re-pack + PATCH alle Items)"
+          >
+            🔄 Optimal
+          </button>
+          {/* Stufe-1b TEIL D (NV): Reset-Positions FE-side. */}
+          <button
+            type="button"
+            data-testid="action-reset-positions"
+            onClick={() => {
+              if (
+                !window.confirm(
+                  'Alle gespeicherten Positionen verwerfen und Auto-Placement neu berechnen?',
+                )
+              )
+                return;
+              resetPositionsMutation.mutate();
+            }}
+            disabled={resetPositionsMutation.isPending}
+            className="inline-flex items-center gap-1 px-2 py-0.5 border border-gray-300 rounded hover:bg-gray-50 text-gray-700 disabled:opacity-50"
+            title="Alle Drag-Positionen verwerfen, Auto-Placement aktivieren"
+          >
+            ↺ Reset
+          </button>
+        </>
+      }
       unplacedShipmentCount={unplacedShipmentCount}
       fullViewHref={`/nv-loading/${tourId}`}
       isLoading={tourQ.isLoading}

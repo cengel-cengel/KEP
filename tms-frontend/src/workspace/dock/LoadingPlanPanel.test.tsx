@@ -1222,19 +1222,108 @@ describe('LoadingPlanPanel Stufe-1 — Repack + Reset (FV-only)', () => {
     }
   });
 
-  it('NV: KEINE Repack/Reset-Buttons (loading.service ist FV-only)', async () => {
+  it('NV: Repack/Reset-Buttons sind sichtbar (Stufe-1b FE-side, BE-FV-only umgangen)', async () => {
     apiGet.mockResolvedValue({ data: TOUR_12T });
-    const { queryByTestId } = render(
+    const { findByTestId } = render(
       <Wrapper>
         <LoadingPlanPanel />
       </Wrapper>,
     );
-    // Tour laden + AchsLast warten (sicherstellen, dass Panel
-    // initial gerendert ist).
+    expect(await findByTestId('action-repack-optimal')).toBeInTheDocument();
+    expect(await findByTestId('action-reset-positions')).toBeInTheDocument();
+  });
+});
+
+// Stufe-1b — NV-Repack/Reset FE-side (loading.service ist FV-only,
+// darum Per-Item-PATCH-Loop statt POST /loading/tour/:id/reset-positions).
+describe('LoadingPlanPanel Stufe-1b — NV Repack + Reset (FE-side)', () => {
+  it('NV: Reset-Button → PATCH-null-Loop über distinct dbItemIds', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    const { findByTestId } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    // Tour-Load abwarten (LP3D-Stub erhält packages erst nach
+    // erfolgreichem Query) — sonst greift die Mutation auf eine
+    // leere packages-Liste zu (0 PATCHes).
     await vi.waitFor(() => {
       expect(lp3dProps).toHaveBeenCalled();
     });
-    expect(queryByTestId('action-repack-optimal')).toBeNull();
-    expect(queryByTestId('action-reset-positions')).toBeNull();
+    const btn = await findByTestId('action-reset-positions');
+    btn.click();
+    // TOUR_12T hat 4 distinct dbItemIds (pi-A, pi-D, pi-B, pi-C) →
+    // exact 4 PATCH-Calls erwartet, alle null-Body, alle ohne
+    // :pkg:-Suffix (Quantity-Klone sind ausgefiltert via Regel #2).
+    await vi.waitFor(() => {
+      expect(apiPatch.mock.calls.length).toBe(4);
+    });
+    const urls = apiPatch.mock.calls.map((c) => c[0] as string);
+    for (const url of urls) {
+      expect(url).toMatch(
+        /^\/loading\/package-item\/(pi-A|pi-B|pi-C|pi-D)\/position$/,
+      );
+      expect(url).not.toMatch(/:pkg:/);
+    }
+    for (const c of apiPatch.mock.calls) {
+      expect(c[1]).toEqual({ posXCm: null, posYCm: null, posZCm: null });
+    }
+  });
+
+  it('NV: Reset-Button + confirm=false → KEIN PATCH', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    const { findByTestId } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    const btn = await findByTestId('action-reset-positions');
+    btn.click();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(apiPatch).not.toHaveBeenCalled();
+  });
+
+  it('NV: Repack-Optimal → PATCH-Loop trifft dbItemIds, keine Klon-URLs', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    const { findByTestId } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(lp3dProps).toHaveBeenCalled();
+    });
+    const btn = await findByTestId('action-repack-optimal');
+    btn.click();
+    await vi.waitFor(() => {
+      expect(apiPatch.mock.calls.length).toBeGreaterThanOrEqual(1);
+    });
+    // Alle Calls treffen das Endpoint-Schema; keine :pkg:-IDs
+    // (Quantity-Klone NICHT persistiert, Regel #2).
+    for (const c of apiPatch.mock.calls) {
+      const url = c[0] as string;
+      expect(url).toMatch(/^\/loading\/package-item\/[^/]+\/position$/);
+      expect(url).not.toMatch(/:pkg:/);
+      const body = c[1] as Record<string, unknown>;
+      expect(body).toHaveProperty('posXCm');
+      expect(body).toHaveProperty('posYCm');
+      expect(body).toHaveProperty('posZCm');
+      expect(body).toHaveProperty('rotationDeg');
+    }
+  });
+
+  it('NV: Repack-Button + confirm=false → KEIN PATCH', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    const { findByTestId } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    const btn = await findByTestId('action-repack-optimal');
+    btn.click();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(apiPatch).not.toHaveBeenCalled();
   });
 });

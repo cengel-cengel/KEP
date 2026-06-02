@@ -115,13 +115,15 @@ function NvBody({
   tourId: string;
   frameloop: 'always' | 'never';
 }) {
-  // D3c-Hinweis: Insert-Mode (Hotkey 'i'/Esc) ist im NV-Embedded
-  // NICHT aktiv. NV-Insert verschiebt Cascade-Items in der Tour —
-  // im Vollansicht-Pfad geschuetzt durch Sandbox-Reducer
-  // ("alles oder nichts" via Uebernehmen). Direct-PATCH-Loop hier
-  // ohne Sandbox waere Partial-Failure-anfaellig. → Insert bleibt
-  // der Vollansicht /nv-loading/:tourId vorbehalten.
+  // Stufe-1-Carlos-Entscheidung: NV-embedded-Insert läuft Direct
+  // (analog FV-Body) — gleiche Crash-Toleranz wie FV (Partial-
+  // Failure-Risiko akzeptiert; try/catch + invalidate-Re-Fetch
+  // korrigieren). KEIN Sandbox-Reducer. Sandbox/Eject/Cascade-
+  // Shift bleiben weiterhin der Vollansicht /nv-loading/:tourId
+  // vorbehalten — die bietet Undo + "alles oder nichts" via
+  // Uebernehmen-Button.
   const queryClient = useQueryClient();
+  const insertMode = useInsertMode();
   // D3b: ContextMenu-State. dbItemId fuer Position-Reset
   // (PATCH /loading/package-item/:id/position null), shipmentId
   // fuer Sendungs-Aktionen (Remove via stopId-Lookup).
@@ -293,6 +295,104 @@ function NvBody({
     capacity.heightCm,
   ]);
 
+  // Stufe-1: NV-Insert-Direct-Cascade — analog FvBody.handleInsertAt
+  // (D3c-Logik), aber auf NvFlatPackage[] (renderedPackages). KEIN
+  // Sandbox, Loop PATCH /loading/package-item/:id/position pro
+  // verschobenem Item. Synth-Filter via dbItemId.
+  const handleInsertAt = (
+    draggedId: string,
+    targetId: string | null,
+    dropPosY: number,
+  ) => {
+    if (!draggedId) {
+      insertMode.cancel();
+      return;
+    }
+    const draggedPkg = renderedPackages.find((p) => p.id === draggedId);
+    const draggedDbItemId = (draggedPkg as { dbItemId?: string } | undefined)
+      ?.dbItemId;
+    if (!draggedDbItemId) {
+      insertMode.cancel();
+      return;
+    }
+    const t =
+      targetId ??
+      findInsertTarget(renderedPackages, dropPosY, draggedId);
+    if (!t || t === draggedId) {
+      persistMutation.mutate({
+        itemId: draggedDbItemId,
+        posXCm: 0,
+        posYCm: dropPosY,
+        posZCm: 0,
+      });
+      insertMode.cancel();
+      return;
+    }
+    const reordered = computeInsertedOrder(
+      renderedPackages.map((p) => ({ id: p.id })),
+      draggedId,
+      t,
+    )
+      .map((x) => renderedPackages.find((p) => p.id === x.id)!)
+      .filter(Boolean);
+    const repacked = placePackages(
+      reordered.map((p) => {
+        const ext = p as typeof p & {
+          dbItemId?: string;
+          shipmentId?: string;
+          weightKg?: number;
+          isStackable?: boolean;
+          rotationDeg?: number;
+        };
+        return {
+          id: p.id,
+          shipmentId: ext.shipmentId,
+          dbItemId: ext.dbItemId,
+          lengthCm: p.lengthCm,
+          widthCm: p.widthCm,
+          heightCm: p.heightCm,
+          weightKg: Number(ext.weightKg) || 0,
+          color: p.color,
+          isStackable: ext.isStackable !== false,
+          rotationDeg: ext.rotationDeg,
+          storedPosX: null,
+          storedPosY: null,
+          storedPosZ: null,
+        };
+      }),
+      capacity.lengthCm,
+      capacity.widthCm,
+      capacity.heightCm,
+    );
+    void (async () => {
+      try {
+        for (const pkg of repacked) {
+          if (!pkg.dbItemId) continue;
+          if (pkg.unplaced) continue;
+          await apiClient.patch(
+            `/loading/package-item/${pkg.dbItemId}/position`,
+            {
+              posXCm: Math.round(pkg.posX),
+              posYCm: Math.round(pkg.posY),
+              posZCm: Math.round(pkg.posZ),
+              rotationDeg: pkg.rotationDeg ?? 0,
+            },
+          );
+        }
+        await queryClient.invalidateQueries({
+          queryKey: ['nv-loading', tourId],
+        });
+      } catch (_e) {
+        // Partial-Failure-Toleranz (akzeptiert per Stufe-1-Entscheid):
+        // Re-Fetch via invalidate beim Catch-Cleanup zeigt BE-Truth.
+        await queryClient.invalidateQueries({
+          queryKey: ['nv-loading', tourId],
+        });
+      }
+      insertMode.cancel();
+    })();
+  };
+
   const code = tourQ.data?.nv_stamm_tour?.code ?? '—';
   // Display-Label: fahrzeug_typ aus Tour/Sub bevorzugt (zeigt z.B.
   // "12T"); Fallback auf maxLdm-Approximation wenn keine Beschriftung.
@@ -317,6 +417,15 @@ function NvBody({
           basiert). LoadingPlan3D selbst hat seit dem Refactor h-full +
           min-h-[200px] — Eltern bestimmt die Hoehe. */}
       <div className="h-full flex flex-col min-h-0">
+        {/* Stufe-1: Insert-Mode-Banner (Hotkey 'i'). NV jetzt analog FV. */}
+        {insertMode.active && (
+          <div className="px-3 pt-3">
+            <InsertModeBanner
+              active={insertMode.active}
+              onCancel={insertMode.cancel}
+            />
+          </div>
+        )}
         <div className="flex-1 min-h-0">
           <LoadingPlan3D
             vehicle={{
@@ -326,6 +435,8 @@ function NvBody({
             }}
             packages={renderedPackages}
             frameloop={frameloop}
+            insertMode={insertMode.active}
+            onInsertAt={handleInsertAt}
             onPositionChange={(id, posXCm, posYCm, posZCm, rotationDeg) => {
               // D2: synth-Filter via dbItemId. Quantity-Klone q>0 + synth
               // ":pkg:"-Fallbacks haben kein dbItemId und sind BE-seitig

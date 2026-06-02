@@ -1019,8 +1019,11 @@ describe('LoadingPlanPanel D3c — Insert-Mode (FV)', () => {
   });
 });
 
-describe('LoadingPlanPanel D3c — Insert-Mode (NV: deaktiviert)', () => {
-  it('NV: KEIN onInsertAt-Prop, KEIN insertMode aktiv (Sandbox-only-Vollansicht)', async () => {
+// Stufe-1-Carlos-Entscheidung: NV-Embedded-Insert ist jetzt
+// aktiv (Direct-PATCH-Cascade, analog FV). Sandbox bleibt in der
+// NV-Vollansicht.
+describe('LoadingPlanPanel Stufe-1 — Insert-Mode (NV: aktiv)', () => {
+  it('NV: onInsertAt-Prop ist gesetzt (Insert verkabelt)', async () => {
     apiGet.mockResolvedValue({ data: TOUR_12T });
     render(
       <Wrapper>
@@ -1028,12 +1031,55 @@ describe('LoadingPlanPanel D3c — Insert-Mode (NV: deaktiviert)', () => {
       </Wrapper>,
     );
     await vi.waitFor(() => {
-      expect(lp3dProps).toHaveBeenCalled();
+      expect(capturedOnInsertAt).not.toBeNull();
     });
+  });
+
+  it('NV: synth-Filter — Insert auf Quantity-Klon → KEIN PATCH', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnInsertAt).not.toBeNull();
+    });
+    // pi-D:pkg:N (N>=1) sind Quantity-Klone ohne dbItemId.
     const lastCall = lp3dProps.mock.calls[lp3dProps.mock.calls.length - 1][0];
-    expect(lastCall.onInsertAt).toBeUndefined();
-    // insertMode kann undefined/false sein — wichtig: NICHT true.
-    expect(lastCall.insertMode).toBeFalsy();
+    const piDKlon = lastCall.packages.find(
+      (p: { id: string }) =>
+        p.id.startsWith('pi-D:pkg:') && !p.id.endsWith(':pkg:0'),
+    );
+    expect(piDKlon).toBeDefined();
+    capturedOnInsertAt!(piDKlon!.id, 'pi-A', 100);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(apiPatch).not.toHaveBeenCalled();
+  });
+
+  it('NV: Cascade-Reorder mit Target — PATCH-Loop trifft mehrere dbItemIds', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnInsertAt).not.toBeNull();
+    });
+    // pi-A (qty=1, dbItemId='pi-A') VOR pi-B (qty=2, dbItemId='pi-B'
+    // fuer q===0) → Cascade-Reorder, mehrere PATCHes erwartet.
+    capturedOnInsertAt!('pi-A', 'pi-B:pkg:0', 0);
+    await vi.waitFor(() => {
+      expect(apiPatch.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    // PATCH-URLs treffen ein zulaessiges Endpoint-Schema; reale
+    // dbItemIds (pi-A, pi-B, pi-C oder pi-D) — KEINE :pkg:-IDs.
+    for (const c of apiPatch.mock.calls) {
+      const url = c[0] as string;
+      expect(url).toMatch(/^\/loading\/package-item\/[^/]+\/position$/);
+      expect(url).not.toMatch(/:pkg:/);
+    }
   });
 });
 

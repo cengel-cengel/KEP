@@ -6,7 +6,8 @@
  *  · Fallback auf legacy posXCm/posYCm/posZCm wenn positions fehlt.
  *  · Robustheit gegen Reihenfolge der positions-Eintraege.
  *  · null-pos (Reset) wird durchgereicht.
- *  · dbItemId-Konvention (q===1 → it.id; q>1 → undefined).
+ *  · dbItemId-Konvention (H5a): ALLE Klone haben dbItemId
+ *    (= line_index-Row-Id); paletteIndex unterscheidet sie.
  */
 import { describe, it, expect } from 'vitest';
 import { expandPackagesFromOrder, type ShipmentLoad } from './loadingFv';
@@ -57,7 +58,7 @@ describe('expandPackagesFromOrder — quantity & dbItemId', () => {
     expect(out[0].dbItemId).toBe('pi-1');
   });
 
-  it('quantity>1: nur q===1 hat dbItemId; q>=2 hat undefined', () => {
+  it('quantity>1: ALLE Klone haben dbItemId + paletteIndex (H5a)', () => {
     const ship = mkShip({
       packageItems: [
         {
@@ -81,10 +82,13 @@ describe('expandPackagesFromOrder — quantity & dbItemId', () => {
     expect(out).toHaveLength(3);
     expect(out[0].id).toBe('pi-1:q1');
     expect(out[0].dbItemId).toBe('pi-1');
+    expect(out[0].paletteIndex).toBe(0);
     expect(out[1].id).toBe('pi-1:q2');
-    expect(out[1].dbItemId).toBeUndefined();
+    expect(out[1].dbItemId).toBe('pi-1');
+    expect(out[1].paletteIndex).toBe(1);
     expect(out[2].id).toBe('pi-1:q3');
-    expect(out[2].dbItemId).toBeUndefined();
+    expect(out[2].dbItemId).toBe('pi-1');
+    expect(out[2].paletteIndex).toBe(2);
     // weightKg pro Klon = total/qty
     expect(out[0].weightKg).toBeCloseTo(100, 1);
   });

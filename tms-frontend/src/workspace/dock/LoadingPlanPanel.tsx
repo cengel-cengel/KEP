@@ -69,6 +69,9 @@ import {
  */
 interface PositionMutationVars {
   itemId: string;
+  /** H5a: 0..quantity-1, default 0. Adressiert die per-Palette-
+   *  Position in shipment_package_item_positions. */
+  paletteIndex?: number;
   posXCm: number;
   posYCm: number;
   posZCm: number;
@@ -178,6 +181,9 @@ function NvBody({
   const [ctxMenu, setCtxMenu] = useState<{
     pkgId: string;
     dbItemId?: string;
+    /** H5a: 0..quantity-1. Position-Reset bleibt vorerst nur fuer
+     *  paletteIndex===0 (Per-Klon-Reset = Backlog). */
+    paletteIndex?: number;
     shipmentId: string;
     x: number;
     y: number;
@@ -213,6 +219,8 @@ function NvBody({
         posXCm: Math.round(vars.posXCm),
         posYCm: Math.round(vars.posYCm),
         posZCm: Math.round(vars.posZCm),
+        // H5a: paletteIndex default 0; bei q>=1 explizit aus pkg.
+        paletteIndex: vars.paletteIndex ?? 0,
       };
       if (vars.rotationDeg !== undefined) {
         body.rotationDeg = Math.round(vars.rotationDeg);
@@ -401,17 +409,22 @@ function NvBody({
         capacity.heightCm,
       );
       for (const pkg of repacked) {
-        const dbItemId = (pkg as { dbItemId?: string }).dbItemId;
-        if (!dbItemId) continue;
+        const ext = pkg as {
+          dbItemId?: string;
+          paletteIndex?: number;
+          rotationDeg?: number;
+        };
+        if (!ext.dbItemId) continue; // synth-Fallback ohne BE-Item
         if (pkg.unplaced) continue;
+        // H5a: PATCH pro Klon mit paletteIndex (default 0).
         await apiClient.patch(
-          `/loading/package-item/${dbItemId}/position`,
+          `/loading/package-item/${ext.dbItemId}/position`,
           {
+            paletteIndex: ext.paletteIndex ?? 0,
             posXCm: Math.round(pkg.posX),
             posYCm: Math.round(pkg.posY),
             posZCm: Math.round(pkg.posZ),
-            rotationDeg:
-              (pkg as { rotationDeg?: number }).rotationDeg ?? 0,
+            rotationDeg: ext.rotationDeg ?? 0,
           },
         );
       }
@@ -434,13 +447,17 @@ function NvBody({
       insertMode.cancel();
       return;
     }
-    const draggedPkg = renderedPackages.find((p) => p.id === draggedId);
-    const draggedDbItemId = (draggedPkg as { dbItemId?: string } | undefined)
-      ?.dbItemId;
-    if (!draggedDbItemId) {
+    const draggedPkg = renderedPackages.find((p) => p.id === draggedId) as
+      | { dbItemId?: string; paletteIndex?: number }
+      | undefined;
+    // H5a: Insert-Anker bleibt paletteIndex===0 (= line_index-Row).
+    // Klone q>=1 als Insert-Anker ist NICHT in H5a-Scope (Backlog
+    // Per-Palette-Insert-Cascade).
+    if (!draggedPkg?.dbItemId || draggedPkg.paletteIndex !== 0) {
       insertMode.cancel();
       return;
     }
+    const draggedDbItemId = draggedPkg.dbItemId;
     const t =
       targetId ??
       findInsertTarget(renderedPackages, dropPosY, draggedId);
@@ -493,15 +510,24 @@ function NvBody({
     void (async () => {
       try {
         for (const pkg of repacked) {
-          if (!pkg.dbItemId) continue;
+          const ext = pkg as {
+            dbItemId?: string;
+            paletteIndex?: number;
+            rotationDeg?: number;
+          };
+          if (!ext.dbItemId) continue;
           if (pkg.unplaced) continue;
+          // H5a: Insert-Cascade bleibt Item-Level (paletteIndex===0).
+          // Per-Palette-Cascade ist Backlog.
+          if ((ext.paletteIndex ?? 0) !== 0) continue;
           await apiClient.patch(
-            `/loading/package-item/${pkg.dbItemId}/position`,
+            `/loading/package-item/${ext.dbItemId}/position`,
             {
+              paletteIndex: 0,
               posXCm: Math.round(pkg.posX),
               posYCm: Math.round(pkg.posY),
               posZCm: Math.round(pkg.posZ),
-              rotationDeg: pkg.rotationDeg ?? 0,
+              rotationDeg: ext.rotationDeg ?? 0,
             },
           );
         }
@@ -608,17 +634,19 @@ function NvBody({
             onDragMove={onLiveDragMove}
             onPositionChange={(id, posXCm, posYCm, posZCm, rotationDeg) => {
               // Stufe 2: Drop räumt den Live-Drag-Override auf (invalidate
-              // bringt dann die persistierte Position).
+              // bringt dann die persistierde Position).
               resetLiveDrag();
-              // D2: synth-Filter via dbItemId. Quantity-Klone q>0 + synth
-              // ":pkg:"-Fallbacks haben kein dbItemId und sind BE-seitig
-              // nicht persistierbar (1 Row pro line_index).
-              const pkg = renderedPackages.find((p) => p.id === id);
-              const dbItemId = (pkg as { dbItemId?: string } | undefined)
-                ?.dbItemId;
-              if (!dbItemId) return;
+              // H5a: per-Klon-Persist. Quantity-Klone q>=1 haben
+              // dbItemId=line_index-Row-Id + paletteIndex>=1. Nur
+              // wenn kein dbItemId (synth-Fallback ohne BE-Item) →
+              // skip.
+              const pkg = renderedPackages.find((p) => p.id === id) as
+                | { dbItemId?: string; paletteIndex?: number }
+                | undefined;
+              if (!pkg?.dbItemId) return;
               persistMutation.mutate({
-                itemId: dbItemId,
+                itemId: pkg.dbItemId,
+                paletteIndex: pkg.paletteIndex ?? 0,
                 posXCm,
                 posYCm,
                 posZCm,
@@ -628,15 +656,25 @@ function NvBody({
             onPackageContextMenu={(pkgId, x, y) => {
               // D3b: Regel #2 (ganze Sendung) — Rechtsklick auf Palette
               // liefert pkgId, wir loesen die shipmentId daraus auf und
-              // exponieren beide an die ContextMenu-Items. dbItemId
-              // ist optional (NUR q===0/Single-Paket → Position-Reset
-              // verfuegbar).
-              const pkg = renderedPackages.find((p) => p.id === pkgId);
+              // exponieren beide an die ContextMenu-Items.
+              // H5a: paletteIndex mitgeben (Reset bleibt nur fuer
+              // paletteIndex===0 enabled — Per-Klon-Reset = Backlog).
+              const pkg = renderedPackages.find((p) => p.id === pkgId) as
+                | {
+                    dbItemId?: string;
+                    shipmentId?: string;
+                    paletteIndex?: number;
+                  }
+                | undefined;
               if (!pkg) return;
-              const dbItemId = (pkg as { dbItemId?: string }).dbItemId;
-              const shipmentId =
-                (pkg as { shipmentId?: string }).shipmentId ?? '';
-              setCtxMenu({ pkgId, dbItemId, shipmentId, x, y });
+              setCtxMenu({
+                pkgId,
+                dbItemId: pkg.dbItemId,
+                paletteIndex: pkg.paletteIndex,
+                shipmentId: pkg.shipmentId ?? '',
+                x,
+                y,
+              });
             }}
           />
         </div>
@@ -679,9 +717,13 @@ function NvBody({
             {
               label: 'Position zurücksetzen',
               icon: <RotateCcw size={12} />,
-              disabled: !ctxMenu.dbItemId,
+              // H5a: Reset bleibt vorerst nur fuer paletteIndex===0
+              // (Per-Klon-Reset = Backlog). Klone q>=1 → disabled.
+              disabled:
+                !ctxMenu.dbItemId || (ctxMenu.paletteIndex ?? 0) !== 0,
               onClick: () => {
                 if (!ctxMenu.dbItemId) return;
+                if ((ctxMenu.paletteIndex ?? 0) !== 0) return;
                 resetPositionMutation.mutate(ctxMenu.dbItemId);
               },
               separator: true,
@@ -854,6 +896,8 @@ function FvBody({
         posXCm: Math.round(vars.posXCm),
         posYCm: Math.round(vars.posYCm),
         posZCm: Math.round(vars.posZCm),
+        // H5a: paletteIndex default 0; bei q>=2 explizit aus pkg.
+        paletteIndex: vars.paletteIndex ?? 0,
       };
       if (vars.rotationDeg !== undefined) {
         body.rotationDeg = Math.round(vars.rotationDeg);
@@ -923,11 +967,13 @@ function FvBody({
       );
       let written = 0;
       for (const pkg of repacked) {
-        if (!pkg.dbItemId) continue;
+        if (!pkg.dbItemId) continue; // synth-Fallback ohne BE-Item
         if (pkg.unplaced) continue;
+        // H5a: PATCH pro Klon mit paletteIndex.
         await apiClient.patch(
           `/loading/package-item/${pkg.dbItemId}/position`,
           {
+            paletteIndex: pkg.paletteIndex ?? 0,
             posXCm: Math.round(pkg.posX),
             posYCm: Math.round(pkg.posY),
             posZCm: Math.round(pkg.posZ),
@@ -974,11 +1020,12 @@ function FvBody({
       insertMode.cancel();
       return;
     }
-    // Synth-Filter wie D2: ":pkg:"-Fallbacks + ":q*"-Quantity-Klone
-    // haben dbItemId=undefined; ohne Persist-Anker macht Cascade
-    // keinen Sinn.
+    // H5a: Insert-Anker bleibt paletteIndex===0 (= line_index-Row).
+    // Klone q>=2 als Insert-Anker ist NICHT in H5a-Scope (Backlog
+    // Per-Palette-Insert-Cascade). Synth-Fallback (kein BE-Item)
+    // weiterhin ausgefiltert.
     const draggedPkg = placedPackages.find((p) => p.id === draggedId);
-    if (!draggedPkg?.dbItemId) {
+    if (!draggedPkg?.dbItemId || (draggedPkg.paletteIndex ?? 0) !== 0) {
       insertMode.cancel();
       return;
     }
@@ -1015,6 +1062,7 @@ function FvBody({
         shipmentNumber: p.shipmentNumber,
         packageIndex: p.packageIndex,
         dbItemId: p.dbItemId,
+        paletteIndex: p.paletteIndex,
         lengthCm: p.lengthCm,
         widthCm: p.widthCm,
         heightCm: p.heightCm,
@@ -1041,9 +1089,13 @@ function FvBody({
         for (const pkg of repacked) {
           if (!pkg.dbItemId) continue;
           if (pkg.unplaced) continue;
+          // H5a: Insert-Cascade bleibt Item-Level (paletteIndex===0).
+          // Per-Palette-Cascade ist Backlog.
+          if ((pkg.paletteIndex ?? 0) !== 0) continue;
           await apiClient.patch(
             `/loading/package-item/${pkg.dbItemId}/position`,
             {
+              paletteIndex: 0,
               posXCm: Math.round(pkg.posX),
               posYCm: Math.round(pkg.posY),
               posZCm: Math.round(pkg.posZ),
@@ -1143,14 +1195,14 @@ function FvBody({
             onDragMove={onLiveDragMove}
             onPositionChange={(id, posXCm, posYCm, posZCm, rotationDeg) => {
               resetLiveDrag();
-              // D2: synth-Filter via dbItemId. Quantity-Klone q>0 +
-              // synth ":pkg:"-Fallbacks (siehe loadingFv.expandPackages-
-              // FromOrder L229-244) haben dbItemId=undefined und sind
-              // nicht persistierbar (BE-Side: 1 Row pro line_index).
+              // H5a: per-Klon-Persist. Klone q>=2 haben dbItemId=
+              // line_index-Row-Id + paletteIndex>=1. Synth-Fallback
+              // (kein BE-Item) bleibt mit dbItemId=undefined → skip.
               const pkg = placedPackages.find((p) => p.id === id);
               if (!pkg?.dbItemId) return;
               persistMutation.mutate({
                 itemId: pkg.dbItemId,
+                paletteIndex: pkg.paletteIndex,
                 posXCm,
                 posYCm,
                 posZCm,

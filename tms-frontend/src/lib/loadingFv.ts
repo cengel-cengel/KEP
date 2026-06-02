@@ -189,9 +189,17 @@ export type OptimizeResponse = {
  *  fuer das ERSTE Quantity-Item (Position-Persist via PATCH). */
 export interface Package {
   id: string;
-  /** Real DB-uuid des shipment_package_items (falls vorhanden) —
-   *  sonst undefined fuer synth/Quantity-Klon. */
+  /** H5a: DB-uuid des shipment_package_items (= line_index-Row).
+   *  Vorher nur fuer q===1 gesetzt; jetzt fuer ALLE Klone — sie
+   *  teilen sich dieselbe item-Row und unterscheiden sich nur
+   *  durch paletteIndex (siehe shipment_package_item_positions).
+   *  Bei synth-Fallback (kein packageItems-Reader-Output, nur
+   *  Aggregat) bleibt dbItemId undefined. */
   dbItemId?: string;
+  /** H5a: 0..quantity-1. Adressiert die per-Palette-Position in
+   *  shipment_package_item_positions. q===1 → paletteIndex===0
+   *  (= alte pos_*-Spalten via Legacy-Sync H3). */
+  paletteIndex: number;
   shipmentId: string;
   shipmentNumber: string;
   packageIndex: number;
@@ -263,11 +271,12 @@ export function expandPackagesFromOrder(order: ShipmentLoad[]): Package[] {
             !!klonPos && klonPos.posXCm != null && klonPos.posYCm != null;
           list.push({
             id: qty === 1 ? it.id : `${it.id}:q${q}`,
-            // Nur das ERSTE der Quantity-Klone (q===1, paletteIndex=0)
-            // traegt die DB-id als dbItemId — alte Konvention. Per-
-            // Palette-PATCH (H3) verwendet item.id + paletteIndex.
-            // Drag-Handler in H5 erweitern den Persist-Pfad fuer q>=2.
-            dbItemId: q === 1 ? it.id : undefined,
+            // H5a: dbItemId fuer ALLE Klone. Per-Palette-PATCH (H3)
+            // verwendet (dbItemId, paletteIndex). paletteIndex=0 +
+            // q===1 schreibt zusaetzlich die Legacy-Spalten via H3-Sync;
+            // paletteIndex>=1 nur in shipment_package_item_positions.
+            dbItemId: it.id,
+            paletteIndex,
             shipmentId: s.id,
             shipmentNumber: s.shipmentNumber,
             packageIndex: it.lineIndex || i + 1,
@@ -316,6 +325,9 @@ export function expandPackagesFromOrder(order: ShipmentLoad[]): Package[] {
     for (let i = 1; i <= n; i++) {
       list.push({
         id: `${s.id}:pkg:${i}`,
+        // H5a: synth-Fallback hat KEIN BE-Item — dbItemId bleibt
+        // undefined, Persist wird vom Handler ausgefiltert.
+        paletteIndex: i - 1,
         shipmentId: s.id,
         shipmentNumber: s.shipmentNumber,
         packageIndex: i,

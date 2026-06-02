@@ -7,7 +7,8 @@
  *  · Color-Mapping: Pakete derselben Sendung → selbe Farbe
  *  · isStackable per-Sendung: Misch-Sendungen → alle non-stackable
  *  · Leer-Input: null + leere stops
- *  · dbItemId: nur fuer q==0 gesetzt (q>0 → undefined)
+ *  · dbItemId: fuer ALLE Klone gesetzt (H5a) — Klone teilen die
+ *    line_index-Row-Id; paletteIndex unterscheidet sie
  *
  * Placement (posX/Y/Z, Stack-Slot) ist NICHT Teil dieses Tests —
  * gehoert in loadingShared.test.ts (bereits abgedeckt).
@@ -83,7 +84,7 @@ describe('nvExpandPackages — quantity expand', () => {
     expect(out[0].dbItemId).toBe('it-1');
   });
 
-  it('qty=3 → 3 Klone mit Synth-Suffix, nur q==0 hat dbItemId', () => {
+  it('qty=3 → 3 Klone mit Synth-Suffix, ALLE haben dbItemId + paletteIndex (H5a)', () => {
     const tour = mkTour([
       {
         shipmentId: 'sh-1',
@@ -94,10 +95,15 @@ describe('nvExpandPackages — quantity expand', () => {
     expect(out).toHaveLength(3);
     expect(out[0].id).toBe('it-1:pkg:0');
     expect(out[0].dbItemId).toBe('it-1');
+    expect(out[0].paletteIndex).toBe(0);
     expect(out[1].id).toBe('it-1:pkg:1');
-    expect(out[1].dbItemId).toBeUndefined();
+    // H5a: dbItemId fuer ALLE Klone (line_index-Row-Id);
+    // Klone unterscheiden sich nur durch paletteIndex.
+    expect(out[1].dbItemId).toBe('it-1');
+    expect(out[1].paletteIndex).toBe(1);
     expect(out[2].id).toBe('it-1:pkg:2');
-    expect(out[2].dbItemId).toBeUndefined();
+    expect(out[2].dbItemId).toBe('it-1');
+    expect(out[2].paletteIndex).toBe(2);
     // Alle Klone tragen dieselben Dimensionen + Sendung.
     expect(new Set(out.map((p) => p.lengthCm))).toEqual(new Set([120]));
     expect(new Set(out.map((p) => p.shipmentId))).toEqual(new Set(['sh-1']));

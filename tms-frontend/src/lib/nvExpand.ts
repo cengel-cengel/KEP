@@ -86,9 +86,15 @@ export interface NvExpandInput {
 export interface NvExpandedPackage extends SharedPackage {
   /** Synth-ID oder DB-uuid des shipment_package_items. */
   id: string;
-  /** Echte DB-uuid wenn dieser Klon q==0 ist; sonst undefined
-   *  (synthetischer Quantity-Klon, NICHT individuell persistierbar). */
+  /** H5a: DB-uuid des shipment_package_items (= line_index-Row).
+   *  Vorher nur fuer q===0 gesetzt; jetzt fuer ALLE Klone — sie
+   *  teilen sich dieselbe item-Row und unterscheiden sich nur
+   *  durch paletteIndex (siehe shipment_package_item_positions). */
   dbItemId?: string;
+  /** H5a: 0..quantity-1. Adressiert die per-Palette-Position in
+   *  shipment_package_item_positions. q===0 → paletteIndex===0
+   *  (= alte pos_*-Spalten via Legacy-Sync H3). */
+  paletteIndex: number;
   shipmentId: string;
   color: string;
   /** LP-1: 0/90-Y-Rotation, aus DB-Spalte rotation_deg. */
@@ -153,7 +159,6 @@ export function nvExpandPackages(
       const isStackable = shipFullyStackable && it.stackable !== false;
 
       for (let q = 0; q < qty; q++) {
-        const isFirst = q === 0;
         // Synth-ID nur fuer Quantity-Klone > 0; bestehender Pattern
         // ":pkg:N" bleibt, damit URL-Parameter / Logs unveraendert.
         const id = qty === 1 ? it.id : `${it.id}:pkg:${q}`;
@@ -167,10 +172,12 @@ export function nvExpandPackages(
           !!klonPos && klonPos.posXCm != null && klonPos.posYCm != null;
         out.push({
           id,
-          // Nur erster Klon persistierbar als pIdx=0 (alter BE-Pfad).
-          // Per-Palette-PATCH (H3) verwendet item-id + paletteIndex.
-          // Drag-Handler in H5 erweitern den Persist-Pfad fuer q>=1.
-          dbItemId: isFirst ? it.id : undefined,
+          // H5a: dbItemId fuer ALLE Klone (line_index-Row-Id). Klone
+          // adressieren ihre eigene Position via (dbItemId, paletteIndex).
+          // q===0 schreibt zusaetzlich die Legacy-Spalten via H3-Sync;
+          // q>=1 schreibt nur in shipment_package_item_positions.
+          dbItemId: it.id,
+          paletteIndex: q,
           shipmentId: ship.id,
           lengthCm,
           widthCm,

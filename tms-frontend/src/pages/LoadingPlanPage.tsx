@@ -256,16 +256,20 @@ export default function LoadingPlanPage() {
   const persistItemPositionMutation = useMutation({
     mutationFn: async (vars: {
       itemId: string;
+      /** H5a: 0..quantity-1; default 0. */
+      paletteIndex?: number;
       posXCm: number;
       posYCm: number;
       posZCm: number;
       rotationDeg?: number;
     }) => {
-      const { itemId, posXCm, posYCm, posZCm, rotationDeg } = vars;
+      const { itemId, paletteIndex, posXCm, posYCm, posZCm, rotationDeg } =
+        vars;
       const body: Record<string, number> = {
         posXCm: Math.round(posXCm),
         posYCm: Math.round(posYCm),
         posZCm: Math.round(posZCm),
+        paletteIndex: paletteIndex ?? 0,
       };
       if (rotationDeg !== undefined) body.rotationDeg = Math.round(rotationDeg);
       await api.patch(`/loading/package-item/${itemId}/position`, body);
@@ -329,9 +333,11 @@ export default function LoadingPlanPage() {
       //    Phantom-Positionen (0/0/0) in der DB.
       let written = 0;
       for (const pkg of repacked) {
-        if (!pkg.dbItemId) continue; // synth-pkgs nicht persistierbar
+        if (!pkg.dbItemId) continue; // synth-Fallback ohne BE-Item
         if (pkg.unplaced) continue;
+        // H5a: PATCH pro Klon mit paletteIndex.
         await api.patch(`/loading/package-item/${pkg.dbItemId}/position`, {
+          paletteIndex: pkg.paletteIndex ?? 0,
           posXCm: Math.round(pkg.posX),
           posYCm: Math.round(pkg.posY),
           posZCm: Math.round(pkg.posZ),
@@ -421,8 +427,16 @@ export default function LoadingPlanPage() {
     targetId: string | null,
     dropPosY: number,
   ) => {
-    if (!draggedId || draggedId.includes(':pkg:')) {
-      showToast('Synth-Items können nicht ge-insert-werden.', 'err');
+    if (!draggedId) {
+      insertMode.cancel();
+      return;
+    }
+    // H5a: Insert-Anker bleibt paletteIndex===0 (= line_index-Row).
+    // Vorher id-String-Heuristik ":pkg:" (filterte FV-Klone ":q*"
+    // NICHT — latent buggy). Jetzt pkg-Lookup analog NvBody/FvBody.
+    const draggedPkg = renderedPackages.find((p) => p.id === draggedId);
+    if (!draggedPkg?.dbItemId || (draggedPkg.paletteIndex ?? 0) !== 0) {
+      showToast('Klone (q>=1) sind keine Insert-Anker.', 'err');
       insertMode.cancel();
       return;
     }
@@ -450,6 +464,7 @@ export default function LoadingPlanPage() {
         shipmentNumber: p.shipmentNumber,
         packageIndex: p.packageIndex,
         dbItemId: p.dbItemId,
+        paletteIndex: p.paletteIndex,
         lengthCm: p.lengthCm,
         widthCm: p.widthCm,
         heightCm: p.heightCm,
@@ -477,7 +492,11 @@ export default function LoadingPlanPage() {
         for (const pkg of repacked) {
           if (!pkg.dbItemId) continue;
           if (pkg.unplaced) continue;
+          // H5a: Insert-Cascade bleibt Item-Level (paletteIndex===0).
+          // Per-Palette-Cascade ist Backlog.
+          if ((pkg.paletteIndex ?? 0) !== 0) continue;
           await api.patch(`/loading/package-item/${pkg.dbItemId}/position`, {
+            paletteIndex: 0,
             posXCm: Math.round(pkg.posX),
             posYCm: Math.round(pkg.posY),
             posZCm: Math.round(pkg.posZ),
@@ -503,12 +522,17 @@ export default function LoadingPlanPage() {
     posZCm: number,
     rotationDeg?: number,
   ) => {
-    // Heuristik: synth-IDs enthalten ":pkg:" — die koennen wir nicht persistieren.
-    if (!id || id.includes(':pkg:')) {
-      return;
-    }
+    if (!id) return;
+    // H5a: pkg-Lookup statt id-String-Heuristik (vorher
+    // `id.includes(':pkg:')` — funktionierte fuer FV-Klone ":q*"
+    // nicht und feuerte fuer q>=2 einen 404 PATCH /loading/package-
+    // item/pi-X:q2/position). Jetzt: dbItemId + paletteIndex aus
+    // pkg-Objekt (expandPackagesFromOrder setzt beides H5a).
+    const pkg = renderedPackages.find((p) => p.id === id);
+    if (!pkg?.dbItemId) return;
     persistItemPositionMutation.mutate({
-      itemId: id,
+      itemId: pkg.dbItemId,
+      paletteIndex: pkg.paletteIndex,
       posXCm,
       posYCm,
       posZCm,

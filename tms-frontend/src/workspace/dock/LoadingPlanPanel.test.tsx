@@ -548,7 +548,7 @@ describe('LoadingPlanPanel D2 — embedded Drag → PATCH (FV)', () => {
     expect(lastCall.onPositionChange).toBeTruthy();
   });
 
-  it('FV: Drag auf q===1-Item ruft PATCH mit dbItemId', async () => {
+  it('FV: Drag auf q===1-Item ruft PATCH mit dbItemId + paletteIndex=0', async () => {
     workspaceMock.mode = 'fv';
     apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
     render(
@@ -559,7 +559,8 @@ describe('LoadingPlanPanel D2 — embedded Drag → PATCH (FV)', () => {
     await vi.waitFor(() => {
       expect(capturedOnPositionChange).not.toBeNull();
     });
-    // pi-1 ist q===1 → dbItemId='pi-1' (expandPackagesFromOrder).
+    // pi-1 ist q===1 → dbItemId='pi-1', paletteIndex=0
+    // (expandPackagesFromOrder, H5a).
     capturedOnPositionChange!('pi-1', 100, 200, 0, 90);
     await vi.waitFor(() => {
       expect(apiPatch).toHaveBeenCalledTimes(1);
@@ -567,6 +568,7 @@ describe('LoadingPlanPanel D2 — embedded Drag → PATCH (FV)', () => {
     const [url, body] = apiPatch.mock.calls[0];
     expect(url).toBe('/loading/package-item/pi-1/position');
     expect(body).toEqual({
+      paletteIndex: 0,
       posXCm: 100,
       posYCm: 200,
       posZCm: 0,
@@ -574,7 +576,7 @@ describe('LoadingPlanPanel D2 — embedded Drag → PATCH (FV)', () => {
     });
   });
 
-  it('FV: Drag auf Quantity-Klon q>1 → KEIN PATCH (synth-Filter)', async () => {
+  it('FV: Drag auf Quantity-Klon q>1 → PATCH mit paletteIndex>=1 (H5a)', async () => {
     workspaceMock.mode = 'fv';
     apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
     render(
@@ -586,12 +588,21 @@ describe('LoadingPlanPanel D2 — embedded Drag → PATCH (FV)', () => {
       expect(capturedOnPositionChange).not.toBeNull();
     });
     // pi-2 ist quantity=2 → expandPackagesFromOrder erzeugt
-    // 'pi-2:q1' (q===1, dbItemId='pi-2') + 'pi-2:q2' (q===2, kein
-    // dbItemId). Drag auf q===2-Klon → no-op.
+    // 'pi-2:q1' (paletteIndex=0) + 'pi-2:q2' (paletteIndex=1).
+    // H5a: beide haben dbItemId='pi-2', der Klon q===2 PATCHt mit
+    // paletteIndex=1 in shipment_package_item_positions.
     capturedOnPositionChange!('pi-2:q2', 500, 600, 0);
-    // Microtask + waitFor — selbst nach kurzer Wartezeit kein PATCH.
-    await new Promise((r) => setTimeout(r, 10));
-    expect(apiPatch).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(apiPatch).toHaveBeenCalledTimes(1);
+    });
+    const [url, body] = apiPatch.mock.calls[0];
+    expect(url).toBe('/loading/package-item/pi-2/position');
+    expect(body).toMatchObject({
+      paletteIndex: 1,
+      posXCm: 500,
+      posYCm: 600,
+      posZCm: 0,
+    });
   });
 });
 
@@ -610,7 +621,7 @@ describe('LoadingPlanPanel D2 — embedded Drag → PATCH (NV)', () => {
     expect(lastCall.onPositionChange).toBeTruthy();
   });
 
-  it('NV: Drag auf Real-Item ruft PATCH mit dbItemId', async () => {
+  it('NV: Drag auf Real-Item ruft PATCH mit dbItemId + paletteIndex=0 (H5a)', async () => {
     apiGet.mockResolvedValue({ data: TOUR_12T });
     render(
       <Wrapper>
@@ -621,10 +632,7 @@ describe('LoadingPlanPanel D2 — embedded Drag → PATCH (NV)', () => {
       expect(capturedOnPositionChange).not.toBeNull();
     });
     // TOUR_12T.stop-A → shipment_package_items[0] id='pi-A',
-    // quantity=1 → nvExpand setzt dbItemId='pi-A' fuer das q===0-
-    // Item. Item-ID-Format: nvExpand verwendet 'pi-A:q0'
-    // (id-Schema). Wir lesen die echte id aus dem letzten Render
-    // (Plan3DPackage.id ist die nvExpand-id).
+    // quantity=1 → nvExpand setzt dbItemId='pi-A' + paletteIndex=0.
     const lastCall = lp3dProps.mock.calls[lp3dProps.mock.calls.length - 1][0];
     const piA = lastCall.packages.find(
       (p: { id: string }) =>
@@ -637,10 +645,15 @@ describe('LoadingPlanPanel D2 — embedded Drag → PATCH (NV)', () => {
     });
     const [url, body] = apiPatch.mock.calls[0];
     expect(url).toBe('/loading/package-item/pi-A/position');
-    expect(body).toEqual({ posXCm: 250, posYCm: 350, posZCm: 0 });
+    expect(body).toMatchObject({
+      paletteIndex: 0,
+      posXCm: 250,
+      posYCm: 350,
+      posZCm: 0,
+    });
   });
 
-  it('NV: Drag auf Quantity-Klon q>0 → KEIN PATCH (synth-Filter)', async () => {
+  it('NV: Drag auf Quantity-Klon q>0 → PATCH mit paletteIndex>=1 (H5a)', async () => {
     apiGet.mockResolvedValue({ data: TOUR_12T });
     render(
       <Wrapper>
@@ -652,17 +665,25 @@ describe('LoadingPlanPanel D2 — embedded Drag → PATCH (NV)', () => {
     });
     // TOUR_12T.stop-D → shipment_package_items[0] id='pi-D',
     // quantity=7 → nvExpand erzeugt 7 Pakete mit id-Pattern
-    // 'pi-D:pkg:0'…'pi-D:pkg:6'. Nur q===0 ('pi-D:pkg:0') hat
-    // dbItemId='pi-D'. Wir suchen einen Klon q>=1.
+    // 'pi-D:pkg:0'…'pi-D:pkg:6'. H5a: ALLE Klone haben dbItemId='pi-D'
+    // + paletteIndex=q (q∈[0,6]). Wir picken q=1 ('pi-D:pkg:1').
     const lastCall = lp3dProps.mock.calls[lp3dProps.mock.calls.length - 1][0];
     const piDKlon = lastCall.packages.find(
-      (p: { id: string }) =>
-        p.id.startsWith('pi-D:pkg:') && !p.id.endsWith(':pkg:0'),
+      (p: { id: string }) => p.id === 'pi-D:pkg:1',
     );
     expect(piDKlon).toBeDefined();
     capturedOnPositionChange!(piDKlon!.id, 500, 600, 0);
-    await new Promise((r) => setTimeout(r, 10));
-    expect(apiPatch).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(apiPatch).toHaveBeenCalledTimes(1);
+    });
+    const [url, body] = apiPatch.mock.calls[0];
+    expect(url).toBe('/loading/package-item/pi-D/position');
+    expect(body).toMatchObject({
+      paletteIndex: 1,
+      posXCm: 500,
+      posYCm: 600,
+      posZCm: 0,
+    });
   });
 });
 

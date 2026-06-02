@@ -38,6 +38,12 @@ import LoadingPlan3D, { type Plan3DPackage } from '../../components/LoadingPlan3
 import ContextMenu, {
   type ContextMenuItem,
 } from '../../components/loadingplan/ContextMenu';
+import InsertModeBanner from '../../components/loadingplan/InsertModeBanner';
+import { useInsertMode } from '../../hooks/useInsertMode';
+import {
+  computeInsertedOrder,
+  findInsertTarget,
+} from '../../lib/insertCascade';
 import { Trash2, RotateCcw } from 'lucide-react';
 import {
   flattenPackages as flattenNvPackages,
@@ -109,6 +115,12 @@ function NvBody({
   tourId: string;
   frameloop: 'always' | 'never';
 }) {
+  // D3c-Hinweis: Insert-Mode (Hotkey 'i'/Esc) ist im NV-Embedded
+  // NICHT aktiv. NV-Insert verschiebt Cascade-Items in der Tour —
+  // im Vollansicht-Pfad geschuetzt durch Sandbox-Reducer
+  // ("alles oder nichts" via Uebernehmen). Direct-PATCH-Loop hier
+  // ohne Sandbox waere Partial-Failure-anfaellig. → Insert bleibt
+  // der Vollansicht /nv-loading/:tourId vorbehalten.
   const queryClient = useQueryClient();
   // D3b: ContextMenu-State. dbItemId fuer Position-Reset
   // (PATCH /loading/package-item/:id/position null), shipmentId
@@ -392,6 +404,10 @@ function FvBody({
   frameloop: 'always' | 'never';
 }) {
   const queryClient = useQueryClient();
+  // D3c: Insert-Mode — page-local State, Hotkey 'i'/Esc.
+  // FV-only: NV-Insert ist Sandbox-Pflicht (Partial-Failure-
+  // Schutz), bleibt der Vollansicht vorbehalten.
+  const insertMode = useInsertMode();
   // D3b: ContextMenu-State. shipmentId fuer Stapelbar-Toggle +
   // Remove. isStackable kommt aus loadingOrder (Shipment-Ebene).
   const [ctxMenu, setCtxMenu] = useState<{
@@ -533,6 +549,111 @@ function FvBody({
     },
   });
 
+  // D3c: Insert-Mode Drop-Cascade-Handler — 1:1 aus
+  // LoadingPlanPage.handleInsertAt (L419-498) portiert.
+  // findInsertTarget → computeInsertedOrder → placePackages →
+  // Loop PATCH /loading/package-item/:id/position. KEIN Sandbox.
+  const handleInsertAt = (
+    draggedId: string,
+    targetId: string | null,
+    dropPosY: number,
+  ) => {
+    if (!draggedId) {
+      insertMode.cancel();
+      return;
+    }
+    // Synth-Filter wie D2: ":pkg:"-Fallbacks + ":q*"-Quantity-Klone
+    // haben dbItemId=undefined; ohne Persist-Anker macht Cascade
+    // keinen Sinn.
+    const draggedPkg = placedPackages.find((p) => p.id === draggedId);
+    if (!draggedPkg?.dbItemId) {
+      insertMode.cancel();
+      return;
+    }
+    const placedNoUnplaced = placedPackages.filter((p) => !p.unplaced);
+    // Falls LP3D keinen target erkannt hat, selbst suchen (renderedPackages
+    // hat schon nur die placed Items — Mirror Vollansicht-Logik).
+    const t =
+      targetId ??
+      findInsertTarget(placedNoUnplaced, dropPosY, draggedId);
+    if (!t || t === draggedId) {
+      // Kein sinnvolles Ziel → normaler Direct-Drop via persistMutation,
+      // KEIN Cascade-Re-Pack.
+      persistMutation.mutate({
+        itemId: draggedPkg.dbItemId,
+        posXCm: 0,
+        posYCm: dropPosY,
+        posZCm: 0,
+      });
+      insertMode.cancel();
+      return;
+    }
+    // Reorder + Re-Pack.
+    const reordered = computeInsertedOrder(
+      placedNoUnplaced.map((p) => ({ id: p.id })),
+      draggedId,
+      t,
+    )
+      .map((x) => placedNoUnplaced.find((p) => p.id === x.id)!)
+      .filter(Boolean);
+    const repacked = placePackages(
+      reordered.map((p) => ({
+        id: p.id,
+        shipmentId: p.shipmentId,
+        shipmentNumber: p.shipmentNumber,
+        packageIndex: p.packageIndex,
+        dbItemId: p.dbItemId,
+        lengthCm: p.lengthCm,
+        widthCm: p.widthCm,
+        heightCm: p.heightCm,
+        weightKg: p.weightKg,
+        color: p.color,
+        isStackable: p.isStackable,
+        rotationDeg: p.rotationDeg,
+        stopOrder: p.stopOrder,
+        // storedPos auf null setzen — sonst snapped placePackages
+        // direkt zur gespeicherten Position und ignoriert die neue
+        // Reihenfolge.
+        storedPosX: null,
+        storedPosY: null,
+        storedPosZ: null,
+      })),
+      vehicleDims.lengthCm,
+      vehicleDims.widthCm,
+      vehicleDims.heightCm,
+    );
+    // Loop PATCH — Persist alle DB-Items. unplaced + Klone ohne
+    // dbItemId werden uebersprungen (Phantom-Pos vermeiden).
+    void (async () => {
+      try {
+        for (const pkg of repacked) {
+          if (!pkg.dbItemId) continue;
+          if (pkg.unplaced) continue;
+          await apiClient.patch(
+            `/loading/package-item/${pkg.dbItemId}/position`,
+            {
+              posXCm: Math.round(pkg.posX),
+              posYCm: Math.round(pkg.posY),
+              posZCm: Math.round(pkg.posZ),
+              rotationDeg: pkg.rotationDeg ?? 0,
+            },
+          );
+        }
+        await queryClient.invalidateQueries({
+          queryKey: ['loading', 'optimize', tourId],
+        });
+      } catch (_e) {
+        // Partial-Failure-Risk im embedded ohne Sandbox bewusst
+        // toleriert (Vollansicht hat fuer diesen Fall Sandbox-
+        // Schutz). Re-Fetch via invalidate beim Catch-Cleanup.
+        await queryClient.invalidateQueries({
+          queryKey: ['loading', 'optimize', tourId],
+        });
+      }
+      insertMode.cancel();
+    })();
+  };
+
   const vehicleType = tourQ.data?.recommendedVehicle?.type ?? 'Sattel';
 
   return (
@@ -548,10 +669,21 @@ function FvBody({
       {/* D3a: vertikaler Split — 3D oben (h-[480px] aus LoadingPlan3D
           selbst), AchsLast-Panel unten. Mirror NvBody. */}
       <div className="h-full overflow-auto">
+        {/* D3c: Insert-Mode-Banner (Hotkey 'i' aktiviert). Nur FV. */}
+        {insertMode.active && (
+          <div className="px-3 pt-3">
+            <InsertModeBanner
+              active={insertMode.active}
+              onCancel={insertMode.cancel}
+            />
+          </div>
+        )}
         <LoadingPlan3D
           vehicle={vehicleDims}
           packages={renderedPackages}
           frameloop={frameloop}
+          insertMode={insertMode.active}
+          onInsertAt={handleInsertAt}
           onPositionChange={(id, posXCm, posYCm, posZCm, rotationDeg) => {
             // D2: synth-Filter via dbItemId. Quantity-Klone q>0 +
             // synth ":pkg:"-Fallbacks (siehe loadingFv.expandPackages-

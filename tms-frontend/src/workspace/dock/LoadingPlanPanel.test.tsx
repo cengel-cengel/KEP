@@ -21,6 +21,7 @@ import type { ReactNode } from 'react';
 // einen "Drag" durch direkten Aufruf simulieren koennen.
 // D3b: onPackageContextMenu-Prop ebenfalls captured fuer Rechtsklick-
 //      Simulation.
+// D3c: onInsertAt + insertMode-Prop captured (Insert-Mode FV-only).
 type OnPositionChange = (
   id: string,
   posXCm: number,
@@ -29,24 +30,42 @@ type OnPositionChange = (
   rotationDeg?: number,
 ) => void;
 type OnPackageContextMenu = (pkgId: string, x: number, y: number) => void;
+type OnInsertAt = (
+  draggedId: string,
+  targetId: string | null,
+  dropPosY: number,
+) => void;
 const lp3dProps = vi.fn();
 let capturedOnPositionChange: OnPositionChange | null = null;
 let capturedOnPackageContextMenu: OnPackageContextMenu | null = null;
+let capturedOnInsertAt: OnInsertAt | null = null;
 vi.mock('../../components/LoadingPlan3D', () => ({
   default: ({
     vehicle,
     packages,
     onPositionChange,
     onPackageContextMenu,
+    insertMode,
+    onInsertAt,
   }: {
     vehicle: { lengthCm: number; widthCm: number; heightCm: number };
     packages: Array<{ id: string; unplaced?: boolean }>;
     onPositionChange?: OnPositionChange;
     onPackageContextMenu?: OnPackageContextMenu;
+    insertMode?: boolean;
+    onInsertAt?: OnInsertAt;
   }) => {
-    lp3dProps({ vehicle, packages, onPositionChange, onPackageContextMenu });
+    lp3dProps({
+      vehicle,
+      packages,
+      onPositionChange,
+      onPackageContextMenu,
+      insertMode,
+      onInsertAt,
+    });
     capturedOnPositionChange = onPositionChange ?? null;
     capturedOnPackageContextMenu = onPackageContextMenu ?? null;
+    capturedOnInsertAt = onInsertAt ?? null;
     return (
       <div
         data-testid="lp3d-stub"
@@ -56,6 +75,7 @@ vi.mock('../../components/LoadingPlan3D', () => ({
         data-unplaced-count={packages.filter((p) => p.unplaced).length}
         data-has-drag={onPositionChange ? '1' : '0'}
         data-has-ctxmenu={onPackageContextMenu ? '1' : '0'}
+        data-insert-mode={insertMode ? '1' : '0'}
       />
     );
   },
@@ -117,6 +137,7 @@ beforeEach(() => {
   apiDelete.mockResolvedValue({ data: { ok: true } });
   capturedOnPositionChange = null;
   capturedOnPackageContextMenu = null;
+  capturedOnInsertAt = null;
   workspaceMock.mode = 'nv';
   // window.confirm fuer Remove-Action — Tests bestaetigen
   // standardmaessig. Per-Test ueberschreibbar.
@@ -758,6 +779,85 @@ describe('LoadingPlanPanel D3b — ContextMenu (NV)', () => {
         '/nv-touren/tour-1/stops/stop-A',
       );
     });
+  });
+});
+
+// D3c: Insert-Mode — FV-only. NvBody hat KEIN insertMode-Prop
+// (Sandbox-Schutz nur in Vollansicht).
+describe('LoadingPlanPanel D3c — Insert-Mode (FV)', () => {
+  it('FV: onInsertAt-Prop ist gesetzt (Insert verkabelt)', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnInsertAt).not.toBeNull();
+    });
+  });
+
+  it('FV: synth-Filter — Insert auf Quantity-Klon (q>1) → KEIN PATCH', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnInsertAt).not.toBeNull();
+    });
+    // 'pi-2:q2' ist Quantity-Klon → dbItemId=undefined.
+    capturedOnInsertAt!('pi-2:q2', 'pi-1', 100);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(apiPatch).not.toHaveBeenCalled();
+  });
+
+  it('FV: kein Target → single-PATCH (Direct-Drop-Fallback)', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnInsertAt).not.toBeNull();
+    });
+    // targetId=null + findInsertTarget liefert null (dropPosY weit
+    // ausserhalb aller placed Items) → Direct-Drop-Fallback per
+    // persistMutation (genau 1 PATCH).
+    capturedOnInsertAt!('pi-1', null, -1000);
+    await vi.waitFor(() => {
+      expect(apiPatch).toHaveBeenCalled();
+    });
+    // Nicht zwingend genau 1 (placePackages-Setup kann theoretisch
+    // mehrere PATCHes triggern, hier aber Direct-Drop-Pfad), wir
+    // asserten dass mindestens ein Call das gedraggte Item trifft.
+    const calls = apiPatch.mock.calls.filter(
+      (c: unknown[]) => typeof c[0] === 'string' && c[0].includes('pi-1'),
+    );
+    expect(calls.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('LoadingPlanPanel D3c — Insert-Mode (NV: deaktiviert)', () => {
+  it('NV: KEIN onInsertAt-Prop, KEIN insertMode aktiv (Sandbox-only-Vollansicht)', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(lp3dProps).toHaveBeenCalled();
+    });
+    const lastCall = lp3dProps.mock.calls[lp3dProps.mock.calls.length - 1][0];
+    expect(lastCall.onInsertAt).toBeUndefined();
+    // insertMode kann undefined/false sein — wichtig: NICHT true.
+    expect(lastCall.insertMode).toBeFalsy();
   });
 });
 

@@ -841,6 +841,182 @@ describe('LoadingPlanPanel D3c — Insert-Mode (FV)', () => {
     );
     expect(calls.length).toBeGreaterThanOrEqual(1);
   });
+
+  // Cascade-Reorder-Fixture: 3 Sendungen mit je quantity=1, gleiche
+  // kleine Dim (100×100×100, locker in Sattel 1360×240×270). Initiale
+  // Positionen sind zwar gegeben (storedPos), expandPackagesFromOrder
+  // setzt sie auf Phase-1, aber der Insert-Pfad ueberschreibt
+  // storedPos→null und re-packed alles deterministisch. Drei reale
+  // dbItemIds → ohne synth-Klone, damit der PATCH-Loop alle erreicht.
+  const FV_CASCADE_FIXTURE = {
+    recommendedVehicle: {
+      type: 'Sattel',
+      lengthCm: 1360,
+      widthCm: 240,
+      heightCm: 270,
+    },
+    loadingOrder: [
+      {
+        id: 'ship-A',
+        shipmentNumber: 'A',
+        customer: 'KA',
+        deliveryCity: 'Stuttgart',
+        deliveryOrder: 1,
+        lengthCm: 100,
+        widthCm: 100,
+        heightCm: 100,
+        weightKg: 100,
+        ldm: 1,
+        isStackable: true,
+        packageCount: 1,
+        packageType: 'pallet_euro',
+        packageItems: [
+          {
+            id: 'pi-A',
+            lineIndex: 1,
+            packageType: 'pallet_euro',
+            quantity: 1,
+            lengthCm: 100,
+            widthCm: 100,
+            heightCm: 100,
+            weightKg: 100,
+            stackable: true,
+            posXCm: null,
+            posYCm: null,
+            posZCm: null,
+            rotationDeg: 0,
+          },
+        ],
+      },
+      {
+        id: 'ship-B',
+        shipmentNumber: 'B',
+        customer: 'KB',
+        deliveryCity: 'Muenchen',
+        deliveryOrder: 2,
+        lengthCm: 100,
+        widthCm: 100,
+        heightCm: 100,
+        weightKg: 100,
+        ldm: 1,
+        isStackable: true,
+        packageCount: 1,
+        packageType: 'pallet_euro',
+        packageItems: [
+          {
+            id: 'pi-B',
+            lineIndex: 1,
+            packageType: 'pallet_euro',
+            quantity: 1,
+            lengthCm: 100,
+            widthCm: 100,
+            heightCm: 100,
+            weightKg: 100,
+            stackable: true,
+            posXCm: null,
+            posYCm: null,
+            posZCm: null,
+            rotationDeg: 0,
+          },
+        ],
+      },
+      {
+        id: 'ship-C',
+        shipmentNumber: 'C',
+        customer: 'KC',
+        deliveryCity: 'Frankfurt',
+        deliveryOrder: 3,
+        lengthCm: 100,
+        widthCm: 100,
+        heightCm: 100,
+        weightKg: 100,
+        ldm: 1,
+        isStackable: true,
+        packageCount: 1,
+        packageType: 'pallet_euro',
+        packageItems: [
+          {
+            id: 'pi-C',
+            lineIndex: 1,
+            packageType: 'pallet_euro',
+            quantity: 1,
+            lengthCm: 100,
+            widthCm: 100,
+            heightCm: 100,
+            weightKg: 100,
+            stackable: true,
+            posXCm: null,
+            posYCm: null,
+            posZCm: null,
+            rotationDeg: 0,
+          },
+        ],
+      },
+    ],
+    layout: {
+      vehicle: {
+        type: 'Sattel',
+        lengthCm: 1360,
+        widthCm: 240,
+        heightCm: 270,
+      },
+      items: [],
+      totalLdm: 0,
+      totalWeight: 0,
+      utilizationPercent: 0,
+      warnings: [],
+    },
+    warnings: [],
+  };
+
+  it('FV: Cascade-Reorder mit Target — PATCH-Loop trifft mehrere dbItemIds', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockResolvedValue({ data: FV_CASCADE_FIXTURE });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnInsertAt).not.toBeNull();
+    });
+    // Sanity: alle 3 Pakete sind placed (kein unplaced-Filter
+    // entfernt sie aus dem 3D-Render).
+    const lastCall = lp3dProps.mock.calls[lp3dProps.mock.calls.length - 1][0];
+    expect(lastCall.packages.length).toBe(3);
+    // pi-C an die Stelle von pi-A bringen → Reorder + Re-Pack.
+    capturedOnInsertAt!('pi-C', 'pi-A', 0);
+    await vi.waitFor(() => {
+      // Mindestens 2 PATCHes (pi-A muss sich verschieben, pi-C
+      // bekommt neue Position; pi-B kann je nach Algorithmus auch
+      // patchen).
+      expect(apiPatch.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    // Alle PATCH-URLs treffen das korrekte Endpoint-Schema und
+    // adressieren reale dbItemIds aus { pi-A, pi-B, pi-C }.
+    const urls = apiPatch.mock.calls.map((c: unknown[]) => c[0] as string);
+    for (const url of urls) {
+      expect(url).toMatch(
+        /^\/loading\/package-item\/(pi-A|pi-B|pi-C)\/position$/,
+      );
+    }
+    // Mindestens 2 distinkte dbItemIds wurden gepatcht.
+    const itemIds = new Set(
+      urls.map((u: string) => {
+        const m = u.match(/package-item\/([^/]+)\/position/);
+        return m ? m[1] : '';
+      }),
+    );
+    expect(itemIds.size).toBeGreaterThanOrEqual(2);
+    // PATCH-Body-Shape: jedes hat posXCm/posYCm/posZCm/rotationDeg.
+    for (const c of apiPatch.mock.calls) {
+      const body = c[1] as Record<string, unknown>;
+      expect(body).toHaveProperty('posXCm');
+      expect(body).toHaveProperty('posYCm');
+      expect(body).toHaveProperty('posZCm');
+      expect(body).toHaveProperty('rotationDeg');
+    }
+  });
 });
 
 describe('LoadingPlanPanel D3c — Insert-Mode (NV: deaktiviert)', () => {

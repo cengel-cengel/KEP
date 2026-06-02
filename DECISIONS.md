@@ -45,12 +45,21 @@ Daten-Realität (live gemessen, hat den ursprünglichen Plan überworfen):
   Dock-Panel bearbeiten (embedded) ODER in eigenem Fenster (Popout) — NICHT als
   dockview-FloatingGroup-Overlay (Float). dockview-Portal sorgt dafür, dass
   Popout dasselbe Panel rendert -> embedded-Drag gilt auch im Popout.
-- **NV-Insert bleibt Vollansicht-only** (bewusste Asymmetrie zu Regel #1):
-  NV-Insert verschiebt Cascade-Items; im Vollansicht-Pfad schützt der
-  Sandbox-Reducer ("alles oder nichts" via Übernehmen) vor Partial-Failure.
-  Eine Direct-PATCH-Loop im embedded ohne Sandbox wäre bei einem Fehler mitten
-  in der Loop inkonsistent. FV hat **nie** Sandbox (akzeptiertes Risiko), darum
-  bekommt FV-embedded Insert, NV nicht. **Nicht "vergessen" — dokumentiert.**
+- **NV-Insert läuft im embedded seit Stufe 1 Direct** (analog FV) — gleiche
+  Crash-Toleranz wie FV (Partial-Failure-Risiko akzeptiert; try/catch +
+  invalidate-Re-Fetch korrigieren). KEIN Sandbox-Reducer im embedded. Sandbox/
+  Eject/Cascade-Shift bleiben weiterhin nur in der Vollansicht /nv-loading/
+  :tourId — die bietet Undo + "alles oder nichts" via Übernehmen-Button.
+  (Vorher: NV-Insert war Vollansicht-only — Stufe 1 hat das aufgehoben, Carlos-
+  Entscheidung. Wenn ein Crash im Cascade-Loop UX-Probleme macht, ist der
+  Rollback klein: useInsertMode + handleInsertAt im NvBody aus dem Render
+  nehmen, Sandbox-Pfad bleibt unberührt.)
+- **Repack-Optimal + Reset-Positions im embedded** (Stufe 1): FV nutzt die
+  bestehenden BE-Endpoints (POST /loading/tour/:id/reset-positions + Repack-
+  Mutation); loading.service ist FV-zentriert (prisma.tours, nicht nv_touren),
+  darum bekommt NV beide Funktionen FE-side per Per-Item-PATCH-Loop. Kein
+  neuer BE-Endpoint. Trade-off: N HTTP-Roundtrips statt 1 SQL — für typische
+  NV-Tours (4–20 Items) unkritisch.
 - **NV-Remove via DELETE /nv-touren/:tourId/stops/:stopId**, NICHT
   POST /tours/:id/remove-shipment (das ist FV-only, sucht über shipments.tour_id;
   NV nutzt die nv_tour_stops-Junction).

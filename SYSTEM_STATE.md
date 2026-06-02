@@ -39,15 +39,18 @@ DispositionPage · Touch-DnD-Polyfill · Auth · CI.
 Höhe: LoadingPlan3D = `h-full min-h-[200px]`; Vollansicht-Routen wrappen
 explizit in `h-[480px]` (Layout unverändert); embedded/Popout füllen via flex.
 
-## Embedded-Funktions-Parität (nach D3)
-| Feature              | Vollansicht | Embedded            |
-|----------------------|-------------|---------------------|
-| Drag/Position-PATCH  | ja          | ja                  |
-| AxleLoadPanel        | ja          | ja (unter dem 3D)   |
-| ContextMenu (Direct) | ja          | ja                  |
-| Insert-Mode FV       | ja          | ja                  |
-| Insert-Mode NV       | ja          | — (Sandbox-Pflicht) |
-| Sandbox/Eject NV     | ja          | — (Vollansicht-only)|
+## Embedded-Funktions-Parität (nach Stufe 1)
+| Feature                    | Vollansicht | Embedded            |
+|----------------------------|-------------|---------------------|
+| Drag/Position-PATCH        | ja          | ja                  |
+| AxleLoadPanel              | ja          | ja (unter dem 3D)   |
+| ContextMenu (Direct)       | ja          | ja                  |
+| Insert-Mode FV             | ja          | ja                  |
+| Insert-Mode NV             | ja          | ja (Direct, kein Sandbox) |
+| Live-Auslastung im Header  | —           | ja (NV + FV)        |
+| Repack-Optimal             | nur FV      | ja (NV + FV)        |
+| Reset-Positions            | nur FV      | ja (NV + FV)        |
+| Sandbox/Eject/Cascade NV   | ja          | — (Vollansicht-only)|
 
 ## Hof-Pool-Filter (tour-gebunden, NICHT 20-km-Radius)
 Lib `tms-backend/src/lib/poolShipments.lib.ts` -> `resolvePool(prisma,tourId,mode)`.

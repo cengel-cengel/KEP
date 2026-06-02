@@ -84,6 +84,23 @@ interface Props {
     rotationDeg?: number,
   ) => void;
   /**
+   * Stufe 2 (Live-AchsLast): wird pro Drag-Frame mit der aktuellen
+   * Override-Position des gedraggten Pakets gerufen. Caller darf
+   * hieraus seine Live-Render-Layer aktualisieren (z.B. AxleLoad-
+   * Panel). NICHT persistierend — Persist passiert weiterhin im
+   * onPositionChange beim Drop. Optional + additiv; bestehende
+   * Konsumenten ohne diesen Prop bleiben unveraendert.
+   *
+   * id ist die LP3D-Paket-id (kann synth oder dbItem sein —
+   * Caller filtert).
+   */
+  onDragMove?: (
+    id: string,
+    posXCm: number,
+    posYCm: number,
+    posZCm: number,
+  ) => void;
+  /**
    * B-1: Right-Click auf Packstück-Mesh.
    * Caller bekommt Pkg-ID + Viewport-Coords (clientX/clientY) und
    * rendert eigenen ContextMenu absolut darüber.
@@ -139,6 +156,7 @@ export default function LoadingPlan3D({
   frameloop = 'always',
   readOnly = false,
   onPositionChange,
+  onDragMove,
   onPackageContextMenu,
   insertMode = false,
   onInsertAt,
@@ -845,6 +863,15 @@ export default function LoadingPlan3D({
                 return m;
               });
               setDragValid(resolveDrop(ePkg, newPosX, newPosY).valid);
+              // Stufe 2: Live-Override an Parent fuer Live-AchsLast.
+              // Caller drosselt selbst (rAF) — wir feuern pro Pointer-
+              // Move (Browser bündelt schon pro Frame).
+              onDragMove?.(
+                dragActive,
+                newPosX,
+                newPosY,
+                cur?.posZ ?? pkg.posZ,
+              );
             }}
             onPointerUp={() => {
               const pkg = packages.find((p) => p.id === dragActive);

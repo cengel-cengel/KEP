@@ -26,7 +26,7 @@
  * Wird auch nach D2 als "voller Funktionsumfang"-Einstieg gerendert
  * (Sandbox, Achslast, Insert-Mode, ContextMenu).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Maximize2 } from 'lucide-react';
@@ -73,6 +73,54 @@ interface PositionMutationVars {
   posYCm: number;
   posZCm: number;
   rotationDeg?: number;
+}
+
+/** Stufe 2: Live-Drag-Override (rAF-throttled). */
+interface LiveDrag {
+  id: string;
+  posX: number;
+  posY: number;
+  posZ: number;
+}
+
+/**
+ * Hook: rAF-gedrosselter Live-Drag-Setter. onMove kann pro Pointer-
+ * Frame gerufen werden — wir bündeln auf 1 setState pro Animation-
+ * Frame. Beim Drag-Ende ruft der Caller reset() via onPositionChange.
+ */
+function useLiveDragThrottle(): {
+  liveDrag: LiveDrag | null;
+  onMove: (id: string, posX: number, posY: number, posZ: number) => void;
+  reset: () => void;
+} {
+  const [liveDrag, setLiveDrag] = useState<LiveDrag | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const pendingRef = useRef<LiveDrag | null>(null);
+
+  const onMove = (id: string, posX: number, posY: number, posZ: number) => {
+    pendingRef.current = { id, posX, posY, posZ };
+    if (rafRef.current != null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      if (pendingRef.current) setLiveDrag(pendingRef.current);
+    });
+  };
+  const reset = () => {
+    pendingRef.current = null;
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    setLiveDrag(null);
+  };
+  // Cleanup beim Unmount.
+  useEffect(() => {
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  return { liveDrag, onMove, reset };
 }
 
 export default function LoadingPlanPanel() {
@@ -134,6 +182,14 @@ function NvBody({
     x: number;
     y: number;
   } | null>(null);
+  // Stufe 2: Live-Drag-Override fuer AchsLast-Live-Anzeige (rAF-
+  // gedrosselt). Wird waehrend des Drags vom LoadingPlan3D.onDragMove
+  // gefuettert; beim Drop ruft onPositionChange den Reset.
+  const {
+    liveDrag,
+    onMove: onLiveDragMove,
+    reset: resetLiveDrag,
+  } = useLiveDragThrottle();
 
   const tourQ = useQuery<NvLoadingDetail | null>({
     queryKey: ['nv-loading', tourId],
@@ -549,7 +605,11 @@ function NvBody({
             frameloop={frameloop}
             insertMode={insertMode.active}
             onInsertAt={handleInsertAt}
+            onDragMove={onLiveDragMove}
             onPositionChange={(id, posXCm, posYCm, posZCm, rotationDeg) => {
+              // Stufe 2: Drop räumt den Live-Drag-Override auf (invalidate
+              // bringt dann die persistierte Position).
+              resetLiveDrag();
               // D2: synth-Filter via dbItemId. Quantity-Klone q>0 + synth
               // ":pkg:"-Fallbacks haben kein dbItemId und sind BE-seitig
               // nicht persistierbar (1 Row pro line_index).
@@ -586,8 +646,11 @@ function NvBody({
             Tonnen-Typen falsch auf "Koffer 7t" zurueckfallen. */}
         <div className="px-3 pb-3 shrink-0 overflow-y-auto">
           <AxleLoadPanel
+            // Stufe 2: posY-Override fuer das gedraggte Paket aus
+            // liveDrag (rAF-gedrosselt). Andere Pakete unveraendert.
             packages={renderedPackages.map((p) => ({
-              posY: p.posY,
+              posY:
+                liveDrag && liveDrag.id === p.id ? liveDrag.posY : p.posY,
               weightKg: Number(p.weightKg) || 0,
             }))}
             vehicleType={
@@ -665,9 +728,14 @@ function FvBody({
 }) {
   const queryClient = useQueryClient();
   // D3c: Insert-Mode — page-local State, Hotkey 'i'/Esc.
-  // FV-only: NV-Insert ist Sandbox-Pflicht (Partial-Failure-
-  // Schutz), bleibt der Vollansicht vorbehalten.
   const insertMode = useInsertMode();
+  // Stufe 2: Live-Drag-Override fuer AchsLast-Live-Anzeige (rAF-
+  // gedrosselt, Mirror NvBody).
+  const {
+    liveDrag,
+    onMove: onLiveDragMove,
+    reset: resetLiveDrag,
+  } = useLiveDragThrottle();
   // D3b: ContextMenu-State. shipmentId fuer Stapelbar-Toggle +
   // Remove. isStackable kommt aus loadingOrder (Shipment-Ebene).
   const [ctxMenu, setCtxMenu] = useState<{
@@ -1072,7 +1140,9 @@ function FvBody({
             frameloop={frameloop}
             insertMode={insertMode.active}
             onInsertAt={handleInsertAt}
+            onDragMove={onLiveDragMove}
             onPositionChange={(id, posXCm, posYCm, posZCm, rotationDeg) => {
+              resetLiveDrag();
               // D2: synth-Filter via dbItemId. Quantity-Klone q>0 +
               // synth ":pkg:"-Fallbacks (siehe loadingFv.expandPackages-
               // FromOrder L229-244) haben dbItemId=undefined und sind
@@ -1106,10 +1176,13 @@ function FvBody({
             aus expandPackagesFromOrder), unplaced gefiltert. */}
         <div className="px-3 pb-3 shrink-0 overflow-y-auto">
           <AxleLoadPanel
+            // Stufe 2: posY-Override fuer das gedraggte Paket aus
+            // liveDrag (Mirror NvBody).
             packages={placedPackages
               .filter((p) => !p.unplaced)
               .map((p) => ({
-                posY: p.posY,
+                posY:
+                  liveDrag && liveDrag.id === p.id ? liveDrag.posY : p.posY,
                 weightKg: Number(p.weightKg) || 0,
               }))}
             vehicleType={vehicleType}

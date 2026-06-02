@@ -22,6 +22,7 @@ import type { ReactNode } from 'react';
 // D3b: onPackageContextMenu-Prop ebenfalls captured fuer Rechtsklick-
 //      Simulation.
 // D3c: onInsertAt + insertMode-Prop captured (Insert-Mode FV-only).
+// Stufe 2: onDragMove-Prop captured (Live-AchsLast).
 type OnPositionChange = (
   id: string,
   posXCm: number,
@@ -35,10 +36,17 @@ type OnInsertAt = (
   targetId: string | null,
   dropPosY: number,
 ) => void;
+type OnDragMove = (
+  id: string,
+  posXCm: number,
+  posYCm: number,
+  posZCm: number,
+) => void;
 const lp3dProps = vi.fn();
 let capturedOnPositionChange: OnPositionChange | null = null;
 let capturedOnPackageContextMenu: OnPackageContextMenu | null = null;
 let capturedOnInsertAt: OnInsertAt | null = null;
+let capturedOnDragMove: OnDragMove | null = null;
 vi.mock('../../components/LoadingPlan3D', () => ({
   default: ({
     vehicle,
@@ -47,6 +55,7 @@ vi.mock('../../components/LoadingPlan3D', () => ({
     onPackageContextMenu,
     insertMode,
     onInsertAt,
+    onDragMove,
   }: {
     vehicle: { lengthCm: number; widthCm: number; heightCm: number };
     packages: Array<{ id: string; unplaced?: boolean }>;
@@ -54,6 +63,7 @@ vi.mock('../../components/LoadingPlan3D', () => ({
     onPackageContextMenu?: OnPackageContextMenu;
     insertMode?: boolean;
     onInsertAt?: OnInsertAt;
+    onDragMove?: OnDragMove;
   }) => {
     lp3dProps({
       vehicle,
@@ -62,10 +72,12 @@ vi.mock('../../components/LoadingPlan3D', () => ({
       onPackageContextMenu,
       insertMode,
       onInsertAt,
+      onDragMove,
     });
     capturedOnPositionChange = onPositionChange ?? null;
     capturedOnPackageContextMenu = onPackageContextMenu ?? null;
     capturedOnInsertAt = onInsertAt ?? null;
+    capturedOnDragMove = onDragMove ?? null;
     return (
       <div
         data-testid="lp3d-stub"
@@ -76,6 +88,7 @@ vi.mock('../../components/LoadingPlan3D', () => ({
         data-has-drag={onPositionChange ? '1' : '0'}
         data-has-ctxmenu={onPackageContextMenu ? '1' : '0'}
         data-insert-mode={insertMode ? '1' : '0'}
+        data-has-dragmove={onDragMove ? '1' : '0'}
       />
     );
   },
@@ -138,6 +151,7 @@ beforeEach(() => {
   capturedOnPositionChange = null;
   capturedOnPackageContextMenu = null;
   capturedOnInsertAt = null;
+  capturedOnDragMove = null;
   workspaceMock.mode = 'nv';
   // window.confirm fuer Remove-Action — Tests bestaetigen
   // standardmaessig. Per-Test ueberschreibbar.
@@ -1325,5 +1339,72 @@ describe('LoadingPlanPanel Stufe-1b — NV Repack + Reset (FE-side)', () => {
     btn.click();
     await new Promise((r) => setTimeout(r, 10));
     expect(apiPatch).not.toHaveBeenCalled();
+  });
+});
+
+// Stufe 2 — Live-AchsLast waehrend Drag. onDragMove-Prop feuert
+// pro Pointer-Move; via rAF-Throttle bündelt der Parent auf 1
+// setState pro Frame; AxleLoadPanel bekommt den live-Override.
+describe('LoadingPlanPanel Stufe-2 — Live-AchsLast (onDragMove)', () => {
+  it('NV: onDragMove-Prop ist gesetzt (Live-AchsLast verkabelt)', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnDragMove).not.toBeNull();
+    });
+  });
+
+  it('FV: onDragMove-Prop ist gesetzt (Live-AchsLast verkabelt)', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnDragMove).not.toBeNull();
+    });
+  });
+
+  it('NV: onDragMove triggert Re-Render mit rAF (Live-Override-Flow)', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnDragMove).not.toBeNull();
+    });
+    const callsBefore = lp3dProps.mock.calls.length;
+    capturedOnDragMove!('pi-A', 0, 500, 0);
+    // rAF schedules setLiveDrag → naechster Frame → Re-Render →
+    // lp3dProps wird erneut aufgerufen. waitFor poll'd das.
+    await vi.waitFor(() => {
+      expect(lp3dProps.mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+  });
+
+  it('NV: onPositionChange (Drop) → Flow konsistent (resetLiveDrag intern)', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    await vi.waitFor(() => {
+      expect(capturedOnDragMove).not.toBeNull();
+      expect(capturedOnPositionChange).not.toBeNull();
+    });
+    // Drag-Move setzt Override, Drop räumt auf — kein Crash.
+    capturedOnDragMove!('pi-A', 0, 100, 0);
+    capturedOnPositionChange!('pi-A', 0, 100, 0);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(capturedOnPositionChange).not.toBeNull();
   });
 });

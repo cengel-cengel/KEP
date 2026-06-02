@@ -236,3 +236,175 @@ describe('nvExpandPackages — isStackable per-Sendung', () => {
     expect(out.every((p) => p.isStackable === false)).toBe(true);
   });
 });
+
+// H4: Per-Klon storedPos aus positions[].
+describe('nvExpandPackages H4 — per-Klon storedPos aus positions[]', () => {
+  it('positions[] gesetzt: jeder Klon q∈[0,quantity-1] liest paletteIndex===q', () => {
+    const tour: NvExpandInput = {
+      stops: [
+        {
+          shipment: {
+            id: 's1',
+            shipment_package_items: [
+              {
+                id: 'pi-1',
+                quantity: 3,
+                length_cm: 100,
+                width_cm: 100,
+                height_cm: 100,
+                weight_kg: 50,
+                stackable: true,
+                // Legacy pos_*-Felder ignoriert wenn positions[] da:
+                pos_x_cm: 999,
+                pos_y_cm: 999,
+                pos_z_cm: 999,
+                rotation_deg: 0,
+                positions: [
+                  {
+                    paletteIndex: 0,
+                    posXCm: 10,
+                    posYCm: 20,
+                    posZCm: 0,
+                    rotationDeg: 0,
+                  },
+                  {
+                    paletteIndex: 1,
+                    posXCm: 110,
+                    posYCm: 220,
+                    posZCm: 0,
+                    rotationDeg: 90,
+                  },
+                  // paletteIndex 2 fehlt → Klon q=2 = Auto-Placer
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const out = nvExpandPackages(tour);
+    expect(out).toHaveLength(3);
+    expect(out[0].storedPosX).toBe(10);
+    expect(out[0].storedPosY).toBe(20);
+    expect(out[0].rotationDeg).toBe(0);
+    expect(out[1].storedPosX).toBe(110);
+    expect(out[1].storedPosY).toBe(220);
+    expect(out[1].rotationDeg).toBe(90);
+    // q=2 hat keinen positions-Eintrag → null (Auto-Placer)
+    expect(out[2].storedPosX).toBeNull();
+    expect(out[2].storedPosY).toBeNull();
+  });
+
+  it('Reihenfolge der positions egal — find via paletteIndex (robust gegen Sortierung)', () => {
+    const tour: NvExpandInput = {
+      stops: [
+        {
+          shipment: {
+            id: 's1',
+            shipment_package_items: [
+              {
+                id: 'pi-1',
+                quantity: 2,
+                length_cm: 100,
+                width_cm: 100,
+                height_cm: 100,
+                weight_kg: 50,
+                stackable: true,
+                positions: [
+                  // out-of-order:
+                  {
+                    paletteIndex: 1,
+                    posXCm: 99,
+                    posYCm: 88,
+                    posZCm: 0,
+                    rotationDeg: 0,
+                  },
+                  {
+                    paletteIndex: 0,
+                    posXCm: 11,
+                    posYCm: 22,
+                    posZCm: 0,
+                    rotationDeg: 0,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const out = nvExpandPackages(tour);
+    expect(out[0].storedPosX).toBe(11);
+    expect(out[1].storedPosX).toBe(99);
+  });
+
+  it('OHNE positions[]: Fallback auf legacy pos_*-Spalten als pIdx=0 (q≥1 Auto)', () => {
+    const tour: NvExpandInput = {
+      stops: [
+        {
+          shipment: {
+            id: 's1',
+            shipment_package_items: [
+              {
+                id: 'pi-1',
+                quantity: 2,
+                length_cm: 100,
+                width_cm: 100,
+                height_cm: 100,
+                weight_kg: 50,
+                stackable: true,
+                pos_x_cm: 55,
+                pos_y_cm: 66,
+                pos_z_cm: 0,
+                rotation_deg: 0,
+                // positions UNDEFINED → Legacy-Pfad
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const out = nvExpandPackages(tour);
+    expect(out).toHaveLength(2);
+    expect(out[0].storedPosX).toBe(55);
+    expect(out[0].storedPosY).toBe(66);
+    expect(out[1].storedPosX).toBeNull();
+    expect(out[1].storedPosY).toBeNull();
+  });
+
+  it('positions mit null-pos (Reset) → storedPos null fuer den Klon', () => {
+    const tour: NvExpandInput = {
+      stops: [
+        {
+          shipment: {
+            id: 's1',
+            shipment_package_items: [
+              {
+                id: 'pi-1',
+                quantity: 1,
+                length_cm: 100,
+                width_cm: 100,
+                height_cm: 100,
+                weight_kg: 50,
+                stackable: true,
+                positions: [
+                  {
+                    paletteIndex: 0,
+                    posXCm: null,
+                    posYCm: null,
+                    posZCm: null,
+                    rotationDeg: 0,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const out = nvExpandPackages(tour);
+    expect(out).toHaveLength(1);
+    expect(out[0].storedPosX).toBeNull();
+    expect(out[0].storedPosY).toBeNull();
+  });
+});

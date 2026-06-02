@@ -64,6 +64,15 @@ export interface NvExpandInput {
         pos_y_cm?: number | null;
         pos_z_cm?: number | null;
         rotation_deg?: number | null;
+        /** H4: Per-Palette-Positionen aus BE (H2 liefert das Array
+         *  mit Fallback auf legacy pos_*-Spalten als pIdx=0). */
+        positions?: Array<{
+          paletteIndex: number;
+          posXCm: number | null;
+          posYCm: number | null;
+          posZCm: number | null;
+          rotationDeg: number;
+        }>;
       }>;
     };
   }>;
@@ -122,11 +131,25 @@ export function nvExpandPackages(
       const widthCm = Number(it.width_cm) || 0;
       const heightCm = Number(it.height_cm) || 0;
       const weightKg = Number(it.weight_kg) || 0;
-      const dbPosX = it.pos_x_cm == null ? null : Number(it.pos_x_cm);
-      const dbPosY = it.pos_y_cm == null ? null : Number(it.pos_y_cm);
-      const dbPosZ = it.pos_z_cm == null ? null : Number(it.pos_z_cm);
-      const hasDbPos = dbPosX != null && dbPosY != null;
-      const rotationDeg = Number(it.rotation_deg ?? 0) || 0;
+      // H4: Legacy-Fallback fuer item ohne positions[] (alter BE-
+      // Stand). Wir bauen ein synthetisches pIdx=0-Entry aus den
+      // alten pos_*-Spalten, damit der per-Klon-Loop unten den
+      // gleichen Pfad nimmt.
+      const legacyHasPos = it.pos_x_cm != null && it.pos_y_cm != null;
+      const legacyRotation = Number(it.rotation_deg ?? 0) || 0;
+      const positionsRaw = Array.isArray(it.positions)
+        ? it.positions
+        : legacyHasPos
+          ? [
+              {
+                paletteIndex: 0,
+                posXCm: Number(it.pos_x_cm),
+                posYCm: Number(it.pos_y_cm),
+                posZCm: it.pos_z_cm != null ? Number(it.pos_z_cm) : 0,
+                rotationDeg: legacyRotation,
+              },
+            ]
+          : [];
       const isStackable = shipFullyStackable && it.stackable !== false;
 
       for (let q = 0; q < qty; q++) {
@@ -134,11 +157,19 @@ export function nvExpandPackages(
         // Synth-ID nur fuer Quantity-Klone > 0; bestehender Pattern
         // ":pkg:N" bleibt, damit URL-Parameter / Logs unveraendert.
         const id = qty === 1 ? it.id : `${it.id}:pkg:${q}`;
+        // H4: Per-Klon storedPos via positions.find(paletteIndex===q).
+        // KEIN Index-Lookup [q] — robust gegen Luecken/Reihenfolge.
+        // Kein Eintrag → null → placePackages Phase 2 (Auto-Placer).
+        // Rotation: Klon-spezifisch wenn positions-Eintrag vorhanden,
+        // sonst Legacy-Rotation (Item-Level).
+        const klonPos = positionsRaw.find((p) => p.paletteIndex === q);
+        const klonHasPos =
+          !!klonPos && klonPos.posXCm != null && klonPos.posYCm != null;
         out.push({
           id,
-          // Nur erster Klon persistierbar (BE-Schema hat 1 Row pro
-          // line_index). Andere Klone tragen kein dbItemId →
-          // Drag-Handler skippen sie beim Persist.
+          // Nur erster Klon persistierbar als pIdx=0 (alter BE-Pfad).
+          // Per-Palette-PATCH (H3) verwendet item-id + paletteIndex.
+          // Drag-Handler in H5 erweitern den Persist-Pfad fuer q>=1.
           dbItemId: isFirst ? it.id : undefined,
           shipmentId: ship.id,
           lengthCm,
@@ -147,14 +178,16 @@ export function nvExpandPackages(
           weightKg,
           isStackable,
           color,
-          rotationDeg,
-          // storedPos NUR fuer q==0 (= echte DB-Position der line_index-
-          // Row). Andere Klone bekommen null → placePackages Phase 2
-          // platziert sie automatisch row-bin oder im Stack-Slot.
-          storedPosX: isFirst && hasDbPos ? (dbPosX as number) : null,
-          storedPosY: isFirst && hasDbPos ? (dbPosY as number) : null,
+          rotationDeg:
+            klonPos != null ? klonPos.rotationDeg : legacyRotation,
+          storedPosX: klonHasPos ? (klonPos!.posXCm as number) : null,
+          storedPosY: klonHasPos ? (klonPos!.posYCm as number) : null,
           storedPosZ:
-            isFirst && hasDbPos ? (dbPosZ != null ? dbPosZ : 0) : null,
+            klonHasPos
+              ? klonPos!.posZCm != null
+                ? klonPos!.posZCm
+                : 0
+              : null,
         });
       }
     }

@@ -234,12 +234,39 @@ export function expandPackagesFromOrder(order: ShipmentLoad[]): Package[] {
         const widthCm = Number(it.widthCm) || 80;
         const heightCm = Number(it.heightCm) || 120;
         const weightPerUnit = qty > 0 ? Number(it.weightKg) / qty : Number(it.weightKg);
+        // H4: Per-Palette-Positionen aus BE (H2 liefert das Array
+        // mit Fallback auf legacy posXCm als pIdx=0). Wenn das Feld
+        // fehlt (alter BE-Stand), bauen wir ein synthetisches
+        // pIdx=0-Entry aus den Legacy-Item-Feldern.
+        const legacyHasPos = it.posXCm != null && it.posYCm != null;
+        const positionsRaw = Array.isArray(it.positions)
+          ? it.positions
+          : legacyHasPos
+            ? [
+                {
+                  paletteIndex: 0,
+                  posXCm: it.posXCm,
+                  posYCm: it.posYCm,
+                  posZCm: it.posZCm,
+                  rotationDeg: Number(it.rotationDeg) || 0,
+                },
+              ]
+            : [];
         for (let q = 1; q <= qty; q++) {
+          // H4: paletteIndex 0..quantity-1 (BE-Konvention). Lookup
+          // via find — robust gegen Luecken/Reihenfolge.
+          const paletteIndex = q - 1;
+          const klonPos = positionsRaw.find(
+            (p) => p.paletteIndex === paletteIndex,
+          );
+          const klonHasPos =
+            !!klonPos && klonPos.posXCm != null && klonPos.posYCm != null;
           list.push({
             id: qty === 1 ? it.id : `${it.id}:q${q}`,
-            // Nur das ERSTE der Quantity-Klone bekommt die echte DB-id
-            // (PATCH /shipment-package-items/:id fuer Position).
-            // Die anderen sind logische Duplikate ohne separater DB-Pos.
+            // Nur das ERSTE der Quantity-Klone (q===1, paletteIndex=0)
+            // traegt die DB-id als dbItemId — alte Konvention. Per-
+            // Palette-PATCH (H3) verwendet item.id + paletteIndex.
+            // Drag-Handler in H5 erweitern den Persist-Pfad fuer q>=2.
             dbItemId: q === 1 ? it.id : undefined,
             shipmentId: s.id,
             shipmentNumber: s.shipmentNumber,
@@ -251,10 +278,13 @@ export function expandPackagesFromOrder(order: ShipmentLoad[]): Package[] {
             isStackable: it.stackable !== false,
             color,
             stopOrder,
-            // storedPos nur fuer ersten Quantity-Klon
-            storedPosX: q === 1 ? it.posXCm : null,
-            storedPosY: q === 1 ? it.posYCm : null,
-            storedPosZ: q === 1 ? it.posZCm : null,
+            storedPosX: klonHasPos ? (klonPos!.posXCm as number) : null,
+            storedPosY: klonHasPos ? (klonPos!.posYCm as number) : null,
+            storedPosZ: klonHasPos
+              ? klonPos!.posZCm != null
+                ? klonPos!.posZCm
+                : 0
+              : null,
           });
         }
       });

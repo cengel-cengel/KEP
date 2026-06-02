@@ -260,6 +260,39 @@ function NvBody({
     [packages],
   );
 
+  // TEIL A: Live-Aggregat fuer Header-Anzeige. Reagiert auf
+  // renderedPackages-Updates (nach Insert/Remove + Re-Fetch);
+  // NICHT live waehrend Drag (kommt mit B fuer AchsLast).
+  // LDM = sum(L * W) / trailerWidthM — "alle auf Boden"-Approx,
+  // ausreichend fuer Header-Aggregat-Anzeige.
+  const usage = useMemo(() => {
+    const trailerWidthM = capacity.widthCm / 100;
+    const trailerVolM3 =
+      (capacity.lengthCm * capacity.widthCm * capacity.heightCm) / 1e6;
+    let totalLdm = 0;
+    let totalWeightKg = 0;
+    let totalVolM3 = 0;
+    for (const p of renderedPackages) {
+      const lM = p.lengthCm / 100;
+      const wM = p.widthCm / 100;
+      const hM = p.heightCm / 100;
+      const kg = Number((p as { weightKg?: number }).weightKg) || 0;
+      totalLdm += trailerWidthM > 0 ? (lM * wM) / trailerWidthM : 0;
+      totalWeightKg += kg;
+      totalVolM3 += lM * wM * hM;
+    }
+    return {
+      totalLdm,
+      totalWeightKg,
+      utilizationPct: trailerVolM3 > 0 ? (totalVolM3 / trailerVolM3) * 100 : 0,
+    };
+  }, [
+    renderedPackages,
+    capacity.lengthCm,
+    capacity.widthCm,
+    capacity.heightCm,
+  ]);
+
   const code = tourQ.data?.nv_stamm_tour?.code ?? '—';
   // Display-Label: fahrzeug_typ aus Tour/Sub bevorzugt (zeigt z.B.
   // "12T"); Fallback auf maxLdm-Approximation wenn keine Beschriftung.
@@ -273,6 +306,7 @@ function NvBody({
       title={`NV-Beladeplan · ${code}`}
       vehicleInfo={`${typLabel} · ${(capacity.lengthCm / 100).toFixed(1)}×${(capacity.widthCm / 100).toFixed(2)}×${(capacity.heightCm / 100).toFixed(2)} m`}
       pkgCount={packages.length}
+      usage={usage}
       unplacedShipmentCount={unplacedShipmentCount}
       fullViewHref={`/nv-loading/${tourId}`}
       isLoading={tourQ.isLoading}
@@ -495,6 +529,34 @@ function FvBody({
     [placedPackages],
   );
 
+  // TEIL A: Live-Aggregat (Mirror NvBody). Operiert auf
+  // placedPackages.filter(!unplaced) — Paketliste mit weightKg
+  // aus expandPackagesFromOrder. Reagiert auf Insert/Remove.
+  const usage = useMemo(() => {
+    const trailerWidthM = vehicleDims.widthCm / 100;
+    const trailerVolM3 =
+      (vehicleDims.lengthCm * vehicleDims.widthCm * vehicleDims.heightCm) /
+      1e6;
+    let totalLdm = 0;
+    let totalWeightKg = 0;
+    let totalVolM3 = 0;
+    for (const p of placedPackages) {
+      if (p.unplaced) continue;
+      const lM = p.lengthCm / 100;
+      const wM = p.widthCm / 100;
+      const hM = p.heightCm / 100;
+      const kg = Number(p.weightKg) || 0;
+      totalLdm += trailerWidthM > 0 ? (lM * wM) / trailerWidthM : 0;
+      totalWeightKg += kg;
+      totalVolM3 += lM * wM * hM;
+    }
+    return {
+      totalLdm,
+      totalWeightKg,
+      utilizationPct: trailerVolM3 > 0 ? (totalVolM3 / trailerVolM3) * 100 : 0,
+    };
+  }, [placedPackages, vehicleDims]);
+
   const persistMutation = useMutation({
     mutationFn: async (vars: PositionMutationVars) => {
       const body: Record<string, number> = {
@@ -664,6 +726,7 @@ function FvBody({
       title={`FV-Beladeplan`}
       vehicleInfo={`${vehicleType} · ${(vehicleDims.lengthCm / 100).toFixed(1)}×${(vehicleDims.widthCm / 100).toFixed(2)}×${(vehicleDims.heightCm / 100).toFixed(2)} m`}
       pkgCount={renderedPackages.length}
+      usage={usage}
       unplacedShipmentCount={unplacedShipmentCount}
       fullViewHref={`/loading/${tourId}`}
       isLoading={tourQ.isLoading}
@@ -790,6 +853,7 @@ function PanelShell({
   title,
   vehicleInfo,
   pkgCount,
+  usage,
   unplacedShipmentCount,
   fullViewHref,
   isLoading,
@@ -799,6 +863,14 @@ function PanelShell({
   title: string;
   vehicleInfo: string;
   pkgCount: number;
+  /** TEIL A: Live-Aggregat fuer Header-Anzeige (LDM/kg/Vol-%).
+   *  Reagiert auf renderedPackages-Updates (Insert/Remove); NICHT
+   *  live waehrend Drag (kommt mit TEIL B fuer AchsLast). */
+  usage?: {
+    totalLdm: number;
+    totalWeightKg: number;
+    utilizationPct: number;
+  };
   unplacedShipmentCount: number;
   fullViewHref: string;
   isLoading: boolean;
@@ -810,7 +882,19 @@ function PanelShell({
       <div className="flex items-center gap-2 px-3 py-1.5 border-b bg-white text-xs">
         <span className="font-semibold text-gray-800">{title}</span>
         <span className="text-gray-500">· {vehicleInfo}</span>
-        <span className="ml-auto text-gray-400">{pkgCount} Packstücke</span>
+        {usage ? (
+          <span
+            className="ml-auto text-gray-600 font-mono"
+            data-testid="panel-usage"
+            title={`${pkgCount} Packstuecke · ${usage.totalLdm.toFixed(1)} ldm · ${Math.round(usage.totalWeightKg)} kg · ${usage.utilizationPct.toFixed(0)}% Vol`}
+          >
+            {pkgCount} Pk · {usage.totalLdm.toFixed(1)} ldm ·{' '}
+            {Math.round(usage.totalWeightKg)} kg ·{' '}
+            {usage.utilizationPct.toFixed(0)}% Vol
+          </span>
+        ) : (
+          <span className="ml-auto text-gray-400">{pkgCount} Packstücke</span>
+        )}
         <Link
           to={fullViewHref}
           className="inline-flex items-center gap-1 px-2 py-0.5 border border-gray-300 rounded hover:bg-gray-50 text-gray-700"

@@ -1067,3 +1067,46 @@ describe('LoadingPlanPanel D3a — AxleLoadPanel im embedded', () => {
     expect(await findByText(/Sattel · 13\.6 m/)).toBeInTheDocument();
   });
 });
+
+// TEIL A: Live-Aggregat-Header (LDM/kg/Vol-%) in PanelShell.
+// Reagiert auf renderedPackages-Updates; data-testid="panel-usage".
+describe('LoadingPlanPanel TEIL A — Live-Aggregat-Header', () => {
+  it('NV: Header zeigt LDM/kg/Vol-% Aggregat (TOUR_12T)', async () => {
+    apiGet.mockResolvedValue({ data: TOUR_12T });
+    const { findByTestId } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    const usageEl = await findByTestId('panel-usage');
+    // TOUR_12T: 12 placed Pakete (pi-A 1 + pi-D 7 + pi-B 2 + pi-C 2),
+    // jede Sendung weight_kg=100; nvExpand setzt weightKg=it.weight_kg
+    // (NICHT durch qty geteilt) → Summe 12 × 100 = 1200 kg.
+    // Aggregat-useMemo rendert nach async Query → vi.waitFor.
+    await vi.waitFor(() => {
+      expect(usageEl.textContent).toMatch(/12 Pk · /);
+    });
+    expect(usageEl.textContent).toMatch(/ ldm · /);
+    expect(usageEl.textContent).toMatch(/ kg · /);
+    expect(usageEl.textContent).toMatch(/% Vol/);
+    expect(usageEl.textContent).toContain('1200 kg');
+  });
+
+  it('FV: Header zeigt LDM/kg/Vol-% Aggregat (FV_OPTIMIZE_FIXTURE)', async () => {
+    workspaceMock.mode = 'fv';
+    apiGet.mockResolvedValue({ data: FV_OPTIMIZE_FIXTURE });
+    const { findByTestId } = render(
+      <Wrapper>
+        <LoadingPlanPanel />
+      </Wrapper>,
+    );
+    const usageEl = await findByTestId('panel-usage');
+    // FV_OPTIMIZE_FIXTURE: ship-fv-1 qty=1 (100kg) + ship-fv-2 qty=2
+    // (200kg/2=100kg pro Palette × 2). 3 placed Pakete, total 300kg.
+    await vi.waitFor(() => {
+      expect(usageEl.textContent).toContain('3 Pk');
+    });
+    expect(usageEl.textContent).toContain('300 kg');
+    expect(usageEl.textContent).toMatch(/% Vol/);
+  });
+});

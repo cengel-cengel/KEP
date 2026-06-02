@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { buildPositionsArray } from '../lib/packageItemPositions.lib';
 import {
   LoadingLayout,
   LoadingOptimizerService,
@@ -30,10 +31,23 @@ export class LoadingService {
           heightCm: Number(it.height_cm) || 0,
           weightKg: Number(it.weight_kg) || 0,
           stackable: it.stackable !== false,
+          // Legacy-Felder (palette_index=0-Spiegel) — bleiben fuer
+          // bestehende Konsumenten unveraendert.
           posXCm: it.pos_x_cm == null ? null : Number(it.pos_x_cm),
           posYCm: it.pos_y_cm == null ? null : Number(it.pos_y_cm),
           posZCm: it.pos_z_cm == null ? null : Number(it.pos_z_cm),
           rotationDeg: Number(it.rotation_deg) || 0,
+          // H2: Per-Palette-Positionen mit Fallback auf alte
+          // pos_*-Spalten (palette_index=0). Bestand merkt nichts —
+          // wenn positions-Relation nicht included ist, liefert
+          // buildPositionsArray 1 Eintrag aus legacy. Mit H3
+          // (Write-Layer) bekommt der Reader echte per-Palette-Rows.
+          positions: buildPositionsArray(it.positions, {
+            pos_x_cm: it.pos_x_cm,
+            pos_y_cm: it.pos_y_cm,
+            pos_z_cm: it.pos_z_cm,
+            rotation_deg: Number(it.rotation_deg) || 0,
+          }),
         }))
       : undefined;
     return {
@@ -106,6 +120,20 @@ export class LoadingService {
                 pos_y_cm: true,
                 pos_z_cm: true,
                 rotation_deg: true,
+                // H2: per-Palette-Positionen aus
+                // shipment_package_item_positions (additiv,
+                // Tabelle aus H1). Bestand ohne Eintraege →
+                // buildPositionsArray faellt auf legacy zurueck.
+                positions: {
+                  orderBy: { palette_index: 'asc' as const },
+                  select: {
+                    palette_index: true,
+                    pos_x_cm: true,
+                    pos_y_cm: true,
+                    pos_z_cm: true,
+                    rotation_deg: true,
+                  },
+                },
               },
             },
           },

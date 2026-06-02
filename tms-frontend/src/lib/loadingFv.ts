@@ -125,10 +125,23 @@ export type ShipmentPackageItemLoad = {
   heightCm: number;
   weightKg: number;
   stackable: boolean;
+  /** Legacy (palette_index=0-Spiegel). Bleibt fuer Konsumenten —
+   *  H4 wird auf positions[] umschalten. */
   posXCm: number | null;
   posYCm: number | null;
   posZCm: number | null;
   rotationDeg: number;
+  /** H2: Per-Palette-Positionen vom BE (mit Fallback auf legacy
+   *  fuer palette_index=0). Optional, weil aelterer BE-Stand
+   *  das Feld nicht liefert; aktueller BE (H2) garantiert
+   *  mindestens 1 Eintrag. H4 wird darauf umstellen. */
+  positions?: Array<{
+    paletteIndex: number;
+    posXCm: number | null;
+    posYCm: number | null;
+    posZCm: number | null;
+    rotationDeg: number;
+  }>;
 };
 
 /** Sendungs-Level aus BE-Optimize-Response. */

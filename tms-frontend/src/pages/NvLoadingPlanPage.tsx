@@ -44,10 +44,22 @@ export interface NvPackageItem {
   height_cm: number;
   weight_kg: string | number;
   stackable: boolean;
+  /** Legacy: Position des Bundles (=palette_index=0-Spiegel).
+   *  Bleibt fuer Konsumenten — H4 schaltet auf positions[] um. */
   pos_x_cm?: number | null;
   pos_y_cm?: number | null;
   pos_z_cm?: number | null;
   rotation_deg?: number | null;
+  /** H2: Per-Palette-Positionen vom BE (camelCase, mit Fallback
+   *  auf legacy). Mindestens 1 Eintrag (paletteIndex=0).
+   *  H4 wird das konsumieren. */
+  positions?: Array<{
+    paletteIndex: number;
+    posXCm: number | null;
+    posYCm: number | null;
+    posZCm: number | null;
+    rotationDeg: number;
+  }>;
 }
 
 export interface NvShipment {

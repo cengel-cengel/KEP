@@ -64,6 +64,7 @@ import {
   resolvePool,
   type ShipmentPoolItem,
 } from '../lib/poolShipments.lib';
+import { buildPositionsArray } from '../lib/packageItemPositions.lib';
 
 function timeToDate(hhmm?: string | null): Date | null | undefined {
   if (hhmm === undefined) return undefined;
@@ -1141,6 +1142,18 @@ export class NvTourenService {
                     pos_y_cm: true,
                     pos_z_cm: true,
                     rotation_deg: true,
+                    // H2: per-Palette-Positionen aus
+                    // shipment_package_item_positions (additiv).
+                    positions: {
+                      orderBy: { palette_index: 'asc' as const },
+                      select: {
+                        palette_index: true,
+                        pos_x_cm: true,
+                        pos_y_cm: true,
+                        pos_z_cm: true,
+                        rotation_deg: true,
+                      },
+                    },
                   },
                 },
               },
@@ -1163,13 +1176,34 @@ export class NvTourenService {
       });
       stammSet = new Set(stamm.map((r) => r.customer_id));
     }
-    const stopsWithFlag = (tour as any).stops.map((s: any) => ({
-      ...s,
-      is_stamm_kunde:
-        !!stammSet &&
-        !!s.shipment?.customer_id &&
-        stammSet.has(s.shipment.customer_id),
-    }));
+    const stopsWithFlag = (tour as any).stops.map((s: any) => {
+      // H2: shipment_package_items.positions (snake_case aus Prisma)
+      // → zusaetzliches positions-Array in camelCase pro item, mit
+      // Fallback auf alte pos_*-Spalten wenn keine H1-Row vorhanden.
+      // Die bestehenden Felder (pos_x_cm etc.) bleiben unveraendert
+      // — Bestand merkt nichts.
+      const items = Array.isArray(s.shipment?.shipment_package_items)
+        ? s.shipment.shipment_package_items.map((it: any) => ({
+            ...it,
+            positions: buildPositionsArray(it.positions, {
+              pos_x_cm: it.pos_x_cm,
+              pos_y_cm: it.pos_y_cm,
+              pos_z_cm: it.pos_z_cm,
+              rotation_deg: Number(it.rotation_deg) || 0,
+            }),
+          }))
+        : s.shipment?.shipment_package_items;
+      return {
+        ...s,
+        shipment: s.shipment
+          ? { ...s.shipment, shipment_package_items: items }
+          : s.shipment,
+        is_stamm_kunde:
+          !!stammSet &&
+          !!s.shipment?.customer_id &&
+          stammSet.has(s.shipment.customer_id),
+      };
+    });
     return { ...tour, stops: stopsWithFlag };
   }
 

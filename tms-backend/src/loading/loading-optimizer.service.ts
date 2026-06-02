@@ -10,10 +10,23 @@ export interface ShipmentPackageItem {
   heightCm: number;
   weightKg: number;
   stackable: boolean;
+  /** Legacy: Position des Bundles (= palette_index=0-Spiegel).
+   *  Bleibt fuer bestehende Konsumenten — H4 schaltet auf
+   *  positions[] um. */
   posXCm: number | null;
   posYCm: number | null;
   posZCm: number | null;
   rotationDeg: number;
+  /** H2: Per-Palette-Positionen. Array hat mindestens 1 Eintrag
+   *  (paletteIndex=0 als Fallback aus den Legacy-Spalten, wenn
+   *  noch keine H1-Tabelle-Rows existieren). */
+  positions?: Array<{
+    paletteIndex: number;
+    posXCm: number | null;
+    posYCm: number | null;
+    posZCm: number | null;
+    rotationDeg: number;
+  }>;
 }
 
 export interface ShipmentLoad {

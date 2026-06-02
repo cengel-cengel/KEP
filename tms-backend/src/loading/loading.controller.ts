@@ -69,6 +69,10 @@ export class LoadingController {
       posYCm?: number | null;
       posZCm?: number | null;
       rotationDeg?: number | null;
+      /** H3: 0..quantity-1. Default 0 → bestehende Aufrufer
+       *  unveraendert. Bei paletteIndex=0 werden zusaetzlich die
+       *  alten pos_*-Spalten synchron gepflegt. */
+      paletteIndex?: number;
     },
   ) {
     return this.loadingService.setPackageItemPosition(itemId, body);

@@ -290,7 +290,12 @@ export class LoadingService {
     return { success: true };
   }
 
-  /** Setzt Position eines einzelnen package items. NULL = unsetzen. */
+  /** Setzt Position eines einzelnen package items. NULL = unsetzen.
+   *  H3: + body.paletteIndex (default 0). Per-Palette-Position
+   *  wird in shipment_package_item_positions geupsertet. Fuer
+   *  paletteIndex=0 wird zusaetzlich die alte pos_*-Spalte synchron
+   *  gepflegt (bis Phase 2 Drop). paletteIndex>=1 → nur neue Tabelle.
+   *  Bestehende Aufrufer ohne paletteIndex laufen unveraendert. */
   async setPackageItemPosition(
     itemId: string,
     body: {
@@ -298,33 +303,105 @@ export class LoadingService {
       posYCm?: number | null;
       posZCm?: number | null;
       rotationDeg?: number | null;
+      paletteIndex?: number;
     },
   ) {
     const item = await this.prisma.shipment_package_items.findUnique({
       where: { id: itemId },
-      select: { id: true },
+      select: { id: true, rotation_deg: true },
     });
     if (!item) throw new NotFoundException(`Package item ${itemId} nicht gefunden`);
-    const data: Record<string, number | null> = {};
-    if (body.posXCm !== undefined) data.pos_x_cm = body.posXCm;
-    if (body.posYCm !== undefined) data.pos_y_cm = body.posYCm;
-    if (body.posZCm !== undefined) data.pos_z_cm = body.posZCm;
-    if (body.rotationDeg !== undefined && body.rotationDeg !== null) {
-      data.rotation_deg = body.rotationDeg;
-    }
-    return this.prisma.shipment_package_items.update({
-      where: { id: itemId },
-      data,
+    const paletteIndex =
+      body.paletteIndex == null || body.paletteIndex < 0
+        ? 0
+        : Math.floor(body.paletteIndex);
+    // Effektive Werte: undefined = nicht setzen (bestehender Wert
+    // bleibt); null = explizit unsetzen.
+    const posX = body.posXCm === undefined ? undefined : body.posXCm;
+    const posY = body.posYCm === undefined ? undefined : body.posYCm;
+    const posZ = body.posZCm === undefined ? undefined : body.posZCm;
+    const rot =
+      body.rotationDeg === undefined || body.rotationDeg === null
+        ? undefined
+        : body.rotationDeg;
+
+    // H3: Upsert in shipment_package_item_positions (additiv).
+    // Wenn fuer paletteIndex noch keine Row existiert, lege sie mit
+    // den uebergebenen Werten an (fehlende = null). Wenn sie existiert,
+    // patche nur die uebergebenen Felder; rotation_deg auf 0 default
+    // beim CREATE.
+    await this.prisma.shipment_package_item_positions.upsert({
+      where: {
+        item_id_palette_index: {
+          item_id: itemId,
+          palette_index: paletteIndex,
+        },
+      },
+      create: {
+        item_id: itemId,
+        palette_index: paletteIndex,
+        pos_x_cm: posX === undefined ? null : posX,
+        pos_y_cm: posY === undefined ? null : posY,
+        pos_z_cm: posZ === undefined ? null : posZ,
+        rotation_deg: rot ?? 0,
+        updated_at: new Date(),
+      },
+      update: {
+        ...(posX !== undefined ? { pos_x_cm: posX } : {}),
+        ...(posY !== undefined ? { pos_y_cm: posY } : {}),
+        ...(posZ !== undefined ? { pos_z_cm: posZ } : {}),
+        ...(rot !== undefined ? { rotation_deg: rot } : {}),
+        updated_at: new Date(),
+      },
     });
+
+    // H3 Sync: paletteIndex=0 pflegt zusaetzlich die alten pos_*-
+    // Spalten auf shipment_package_items (Phase-2-Backlog: Spalten
+    // droppen). paletteIndex>=1 NICHT — Bestand-Spalten halten dann
+    // nur die pIdx=0-Position.
+    if (paletteIndex === 0) {
+      const data: Record<string, number | null> = {};
+      if (body.posXCm !== undefined) data.pos_x_cm = body.posXCm;
+      if (body.posYCm !== undefined) data.pos_y_cm = body.posYCm;
+      if (body.posZCm !== undefined) data.pos_z_cm = body.posZCm;
+      if (body.rotationDeg !== undefined && body.rotationDeg !== null) {
+        data.rotation_deg = body.rotationDeg;
+      }
+      return this.prisma.shipment_package_items.update({
+        where: { id: itemId },
+        data,
+      });
+    }
+    return item;
   }
 
-  /** Setzt alle Paket-Positionen einer Tour auf NULL (Auto-Placer aktiv). */
+  /** Setzt alle Paket-Positionen einer Tour auf NULL (Auto-Placer aktiv).
+   *  H3: + DELETE alle shipment_package_item_positions-Rows der Tour-
+   *  Items (per-Palette zurueck auf Auto). Alte pos_*-Spalten weiterhin
+   *  null setzen (Sync). */
   async resetTourPositions(tourId: string) {
     const tour = await this.prisma.tours.findUnique({
       where: { id: tourId },
       select: { id: true },
     });
     if (!tour) throw new NotFoundException(`Tour ${tourId} nicht gefunden`);
+
+    // H3: per-Palette-Positionen der Tour-Items entfernen.
+    // CASCADE auf item-Delete wuerde greifen, aber wir wollen die
+    // items selbst behalten — daher gezielter DELETE via Lookup.
+    const tourItemIds = await this.prisma.shipment_package_items.findMany({
+      where: {
+        shipments: { tour_id: tourId, deleted_at: null },
+      },
+      select: { id: true },
+    });
+    if (tourItemIds.length > 0) {
+      await this.prisma.shipment_package_item_positions.deleteMany({
+        where: { item_id: { in: tourItemIds.map((it) => it.id) } },
+      });
+    }
+
+    // Alte pos_*-Spalten weiterhin null (Sync bis Phase 2).
     const result = await this.prisma.shipment_package_items.updateMany({
       where: {
         shipments: { tour_id: tourId, deleted_at: null },

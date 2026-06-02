@@ -1,5 +1,9 @@
 # Projekt-Notizen für Claude Code
 
+## Session-Onboarding
+
+- **Zu Session-Beginn SYSTEM_STATE.md, DECISIONS.md, BACKLOG.md lesen.**
+
 ## Antwort-Format
 
 - **Zusammenfassungen IMMER als Code-Block ausgeben** (```...```), nicht als Fließtext oder Markdown-Liste außerhalb eines Blocks. Gilt für Status-Reports, Sprint-Zusammenfassungen, Übersichten, Diagnose-Resultate.

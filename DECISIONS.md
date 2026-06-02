@@ -1,0 +1,80 @@
+# DECISIONS
+
+> Das **Warum** hinter dem Code — Entscheidungen, die man aus den Files allein
+> nicht rekonstruieren kann. Vor größeren Änderungen lesen, damit bewusste
+> Asymmetrien nicht "aufgeräumt" werden.
+
+## Verbindliche Arbeitsregeln
+1. **Dispo parallel NV + FV** (ab 23.05): JEDE Änderung am Dispo-Tool wird
+   grundsätzlich in NV-Dispo UND FV-Dispo umgesetzt — nicht "wo anwendbar",
+   sondern beide. Gilt für Bugfix, Feature, Cleanup.
+2. **Ganze Sendungen** (ab 24.05): Im Dispo/Swap/Verteil-Tool bewegen sich
+   IMMER ganze Sendungen (shipmentId, alle package_items zusammen). Sendungen
+   werden NIE auf Packstück-/Paletten-Ebene getrennt. Die Paletten-Aufteilung
+   im 3D-Beladeplan ist **reine Visualisierung** und trennt nichts (= Variante A:
+   per-Packstück VISUELL umsortieren ok, Sendung bleibt atomar).
+3. **Token-/Workflow-Effizienz**: Claude-Code-Limit ist oft ~4/7 Tage leer.
+   Hauptverbrauch = Rehydrierung + lange Status-Reports + viele Sprint-Stufen,
+   NICHT Code-Gen. Hebel: (a) diese Repo-Docs zu Beginn lesen; (b) relevante
+   Files im Auftrag nennen statt breit explorieren; (c) triviale/Move-Changes
+   ohne volle Inspektion->Diff->Review; (d) Reports knapp. Volle Stufen nur bei
+   riskanten/großen Changes.
+
+## Hof-Pool-Filter — warum tour-gebunden + Depot-Match
+Der Hof zeigt den **Pool der gewählten Tour**, nicht einen 20-km-Radius.
+Daten-Realität (live gemessen, hat den ursprünglichen Plan überworfen):
+- **"Depots" sind NICHT hall_locations**, sondern ~1037 `network_partner`
+  (business_partners, partner_type=NETWORK_PARTNER) via
+  shipments.relation_id -> relations.network_partner_id. **Kein** lat/lng,
+  **keine** PLZ; Stadt nur manchmal im Namen. -> deshalb FV-Filter = exakter
+  Depot-Match per ID, KEINE Geo-Distanz.
+- **SAMMELGUT ist internationaler Export** (IT/IE/CH/GB) — delivery.zip ist
+  Fremd-Format, loading.zip = Stuttgart. Deshalb kein Zustell-PLZ-Cluster für FV.
+- transport_types real: SAMMELGUT, DIREKT, DIREKT_UMSCHLAG, ABHOLUNG_UMSCHLAG,
+  SONDER. **TEILLADUNG/KOMPLETTLADUNG existieren NICHT** als Typ — würden aus
+  ldm abgeleitet (Volltruck ca. 13,6 ldm).
+- Business-Logik (Carlos): DIREKT (ohne Umschlag) = nie auf dem Hof.
+  DIREKT_UMSCHLAG = auf dem Hof; Teilladung (hat Platz) zeigen, Komplett (voll)
+  nicht. Sammelgut bündelt nach Ziel-Depot. Sammelgut ohne Depot -> Fallback
+  Zustelladresse 100 km, "wird ein Charter".
+- **Geo-Fälle (FV-Direkt_Umschlag-Teilladung 50 km, Sammelgut-ohne-Depot 100 km)
+  = Stufe 2**, braucht Geocoding auf business_partner/network_partner — Backlog.
+
+## Beladeplan-Darstellung — warum so
+- **Float raus, Popout + Embedded rein**: Carlos will den Beladeplan direkt im
+  Dock-Panel bearbeiten (embedded) ODER in eigenem Fenster (Popout) — NICHT als
+  dockview-FloatingGroup-Overlay (Float). dockview-Portal sorgt dafür, dass
+  Popout dasselbe Panel rendert -> embedded-Drag gilt auch im Popout.
+- **NV-Insert bleibt Vollansicht-only** (bewusste Asymmetrie zu Regel #1):
+  NV-Insert verschiebt Cascade-Items; im Vollansicht-Pfad schützt der
+  Sandbox-Reducer ("alles oder nichts" via Übernehmen) vor Partial-Failure.
+  Eine Direct-PATCH-Loop im embedded ohne Sandbox wäre bei einem Fehler mitten
+  in der Loop inkonsistent. FV hat **nie** Sandbox (akzeptiertes Risiko), darum
+  bekommt FV-embedded Insert, NV nicht. **Nicht "vergessen" — dokumentiert.**
+- **NV-Remove via DELETE /nv-touren/:tourId/stops/:stopId**, NICHT
+  POST /tours/:id/remove-shipment (das ist FV-only, sucht über shipments.tour_id;
+  NV nutzt die nv_tour_stops-Junction).
+
+## Popout-Bugs — Root-Causes (zweimal korrigiert per Messung)
+- "Popout lädt nicht / No routes matched /popout.html": fehlte schlicht die
+  Datei `public/popout.html` -> SPA-Fallback bootete die ganze App. NICHT
+  WebGL-Context-Loss, NICHT fehlender Provider.
+- "Maximize -> alles leer, CPU 0%": dockview-Popout hört nur auf window-`resize`
+  -> group.layout; der Container kollabiert auf 0x0, wenn body keine 100%-Höhe
+  hat. Fix: body 100% + synthetischer Resize-Relay.
+
+## Workflow / Claude-Chat-Rolle
+Carlos <-> Claude-Chat (schreibt KOMPAKT-Sprintprompts, reviewt Diffs, gibt
+GO/PUSH, schiebt ehrlich zurück) <-> Claude Code (lokale Impl, KEIN Browser/
+API-Egress). Stufen: INSPEKTION->STOP->GO->BUILD->Diff->STOP->GO PUSH; Carlos
+liefert Hash zurück. Claude-Chat **kann** headless verifizieren: API-Payloads/
+Shapes, Endpoint-Existenz, Bundle-Hash-Poll, Status-Verteilungen (bash +
+Playwright). Claude-Chat **kann nicht**: R3F/WebGL/Canvas, Drag, Layout/Flexbox,
+iOS-Touch, und schreibt **keine** destruktiven Prod-Daten zur Verifikation.
+-> das verifiziert Carlos per Smoke. (Prod-console.log ist gestript.)
+
+## Lektion (mehrfach bestätigt)
+**Messen vor Fixen.** Die Daten-Discovery hat fast jede FV-Sammelgut-Annahme
+überworfen (Depots, Export, transport_types); der Popout-Root-Cause wurde
+zweimal korrigiert. Der "offensichtliche" Fix war 3+ mal falsch — die Live-
+Messung war jedes Mal entscheidend.

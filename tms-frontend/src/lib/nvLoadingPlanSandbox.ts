@@ -1,14 +1,16 @@
 /**
- * NV-Beladeplan Sandbox-Fundament (Schritt 2 + Schritt 3).
+ * NV-Beladeplan Sandbox-Fundament (Schritt 2 + Schritt 3 + H5b).
  *
  * Carlos-Spec: alle Aenderungen sind EPHEMER bis "Übernehmen". Reset
  * bei Component-Unmount (React drop). Kein Auto-PATCH waehrend
  * "Spielens". Einziger DB-Write-Pfad: explizite Übernehmen-Action.
  *
  * Was im Sandbox-State liegt
- *   · positionOverrides: per-Package (dbItemId) Position-Override
- *     fuer Drag im 3D. Bei Reset → Map-Entry entfernt (faellt auf
- *     BE-Pos zurueck).
+ *   · positionOverrides: per-Klon (dbItemId, paletteIndex) Position-
+ *     Override fuer Drag im 3D. H5b: Key ist `${dbItemId}|${paletteIndex}`
+ *     (vorher nur dbItemId — kollidierte zwischen Klonen einer Sendung,
+ *     nachdem H5a dbItemId fuer ALLE Klone setzt). Bei Reset → Map-Entry
+ *     entfernt (faellt auf BE-Pos zurueck).
  *   · ejectedShipmentIds: per-Sendung (shipmentId) "aus Tour
  *     entfernen". Übernehmen → BE-DELETE des zugehoerigen Stops.
  *   · insertedShipmentIds (Schritt 3): per-Sendung (shipmentId) "in
@@ -16,14 +18,16 @@
  *     nearby-Pool (Page-seitige Lookup). Übernehmen → BE-POST eines
  *     Stops pro inserted shipmentId.
  *
- * Render-Anwendung
+ * Render-Anwendung (H5b)
  *   patchedTour = tour
  *     mit Stops gefiltert (ejected raus)
- *     + Position-Overrides auf shipment_package_items
+ *     + Position-Overrides per paletteIndex in shipment_package_items.
+ *       positions[] injizieren (nvExpand liest positions.find(paletteIndex))
  *     + synthetische Stops fuer inserted (package_items aus nearby-Pool)
  *
  * Übernehmen-Reihenfolge (Schritt 3 erweitert)
  *   1. Position-Overrides: api.patch /loading/package-item/:id/position
+ *      Body enthaelt paletteIndex (H3-API) — parseKey aus Map-Key.
  *   2. Inserted Shipments:  api.post /nv-touren/:id/stops { shipment_id }
  *   3. Ejected Stops:       api.delete /nv-touren/:id/stops/:stopId
  *   (Inserts vor Ejects: falls eine Tour-Re-Plan beide hat, will man
@@ -38,8 +42,27 @@ export interface SandboxPositionOverride {
   rotationDeg?: number;
 }
 
+/** H5b: Composite-Key fuer per-Klon-Persistenz. */
+export function makeKey(dbItemId: string, paletteIndex: number): string {
+  return `${dbItemId}|${paletteIndex}`;
+}
+
+/** H5b: parseKey — robust gegen "|"-haltige dbItemIds (rsplit auf
+ *  letzten "|"). dbItemIds sind UUIDs ohne "|", aber defensiv. */
+export function parseKey(key: string): {
+  dbItemId: string;
+  paletteIndex: number;
+} {
+  const idx = key.lastIndexOf('|');
+  if (idx < 0) return { dbItemId: key, paletteIndex: 0 };
+  return {
+    dbItemId: key.slice(0, idx),
+    paletteIndex: Number(key.slice(idx + 1)) || 0,
+  };
+}
+
 export interface SandboxState {
-  /** key = dbItemId (= persist-fähige Package-ID). */
+  /** H5b: key = `${dbItemId}|${paletteIndex}` (vorher nur dbItemId). */
   positionOverrides: Map<string, SandboxPositionOverride>;
   /** Set von shipmentIds die aus der Tour ausgeworfen wurden. */
   ejectedShipmentIds: Set<string>;
@@ -50,8 +73,13 @@ export interface SandboxState {
 }
 
 export type SandboxAction =
-  | { type: 'setPosition'; dbItemId: string; pos: SandboxPositionOverride }
-  | { type: 'clearPosition'; dbItemId: string }
+  | {
+      type: 'setPosition';
+      dbItemId: string;
+      paletteIndex: number;
+      pos: SandboxPositionOverride;
+    }
+  | { type: 'clearPosition'; dbItemId: string; paletteIndex: number }
   | { type: 'eject'; shipmentId: string }
   | { type: 'restore'; shipmentId: string }
   | { type: 'insert'; shipmentId: string }
@@ -70,14 +98,16 @@ export function sandboxReducer(
 ): SandboxState {
   switch (action.type) {
     case 'setPosition': {
+      const key = makeKey(action.dbItemId, action.paletteIndex);
       const m = new Map(state.positionOverrides);
-      m.set(action.dbItemId, action.pos);
+      m.set(key, action.pos);
       return { ...state, positionOverrides: m };
     }
     case 'clearPosition': {
-      if (!state.positionOverrides.has(action.dbItemId)) return state;
+      const key = makeKey(action.dbItemId, action.paletteIndex);
+      if (!state.positionOverrides.has(key)) return state;
       const m = new Map(state.positionOverrides);
-      m.delete(action.dbItemId);
+      m.delete(key);
       return { ...state, positionOverrides: m };
     }
     case 'eject': {

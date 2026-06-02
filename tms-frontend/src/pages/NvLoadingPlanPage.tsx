@@ -25,6 +25,8 @@ import {
   sandboxReducer,
   sandboxChangeCount,
   isSandboxEmpty,
+  makeKey,
+  parseKey,
 } from '../lib/nvLoadingPlanSandbox';
 
 /**
@@ -185,10 +187,13 @@ export default function NvLoadingPlanPage() {
   // NV-RC: Right-Click ContextMenu state (Symmetrie zu FV).
   const [ctxMenu, setCtxMenu] = useState<{
     pkgId: string;
-    /** dbItemId = persist-fähige Package-ID. Bei Quantity-Klonen
-     *  (q>0) leer → ContextMenu-Actions disabled. Schritt 2:
-     *  Sandbox-Reducer indexiert by dbItemId. */
+    /** dbItemId = persist-fähige Package-ID. H5a: ALLE Klone tragen
+     *  dbItemId; Sandbox-Reducer indexiert by (dbItemId, paletteIndex). */
     dbItemId?: string;
+    /** H5b: Klon-spezifischer Index (0..quantity-1). Reset-Aktion
+     *  bleibt aber Item-Level (paletteIndex=0); Per-Klon-Reset =
+     *  Backlog. */
+    paletteIndex: number;
     shipmentId: string;
     x: number;
     y: number;
@@ -267,15 +272,18 @@ export default function NvLoadingPlanPage() {
     initialSandboxState,
   );
 
-  // Fix-C: Sandbox-Overrides werden VOR flattenPackages angewandt
-  // (statt im renderedPackages-Mapper). Hintergrund: Quantity-Klone
-  // q>0 haben dbItemId=undefined (nvExpand L142) und werden via
-  // Phase-2 placePackages um die q===0-Position herum auto-platziert.
-  // Override im Mapper traf nur q===0 → q>0 blieben an alten Positionen
-  // stehen ("verschachtelt" auf Touren mit Mehrfach-Paletten wie N050).
-  // Lösung: positionOverrides ersetzen pos_x_cm/y/z auf der q===0-Row
-  // VOR flattenPackages → Phase-2 plaziert Klone wieder mit auto-Slot.
-  // Ejected Shipments werden hier ebenfalls rausgefiltert.
+  // H5b: Per-Klon-Overrides werden in positions[] injiziert (nvExpand
+  // liest positions.find(paletteIndex===q)). Vorher schrieb der Memo
+  // nur pos_x_cm/y/z auf der Item-Row — das traf alle Klone gleich
+  // (Quantity-Klone q>=1 verloren ihre eigene Override-Identitaet).
+  //
+  // Strategie:
+  //   1. Per-Item Override-Set aus sandbox.positionOverrides aufbauen
+  //      (Map<itemId, Map<paletteIndex, override>>).
+  //   2. Fuer jedes Item mit Overrides: existing positions[] (oder
+  //      Legacy-Fallback aus pos_*) als Basis; Overrides per paletteIndex
+  //      mergen → neues positions[].
+  //   3. Ejected Stops werden hier ebenfalls rausgefiltert.
   const patchedTour = useMemo<NvLoadingDetail | null>(() => {
     if (!tourQ.data) return null;
     if (
@@ -284,6 +292,20 @@ export default function NvLoadingPlanPage() {
       sandbox.insertedShipmentIds.size === 0
     ) {
       return tourQ.data;
+    }
+    // 1. Per-Item Override-Set.
+    const overridesByItem = new Map<
+      string,
+      Map<number, { posXCm: number; posYCm: number; posZCm: number; rotationDeg?: number }>
+    >();
+    for (const [key, ov] of sandbox.positionOverrides) {
+      const { dbItemId, paletteIndex } = parseKey(key);
+      let m = overridesByItem.get(dbItemId);
+      if (!m) {
+        m = new Map();
+        overridesByItem.set(dbItemId, m);
+      }
+      m.set(paletteIndex, ov);
     }
     const baseStops = tourQ.data.stops
       .filter((s) => !sandbox.ejectedShipmentIds.has(s.shipment.id))
@@ -294,17 +316,53 @@ export default function NvLoadingPlanPage() {
           shipment_package_items: (
             s.shipment.shipment_package_items ?? []
           ).map((it) => {
-            const override = sandbox.positionOverrides.get(it.id);
-            if (!override) return it;
+            const itOverrides = overridesByItem.get(it.id);
+            if (!itOverrides || itOverrides.size === 0) return it;
+            // Basis: existierende positions[] oder Legacy-Fallback.
+            const legacyHasPos =
+              it.pos_x_cm != null && it.pos_y_cm != null;
+            const basePositions = Array.isArray(it.positions)
+              ? it.positions
+              : legacyHasPos
+                ? [
+                    {
+                      paletteIndex: 0,
+                      posXCm: Number(it.pos_x_cm),
+                      posYCm: Number(it.pos_y_cm),
+                      posZCm:
+                        it.pos_z_cm != null ? Number(it.pos_z_cm) : 0,
+                      rotationDeg: Number(it.rotation_deg ?? 0),
+                    },
+                  ]
+                : [];
+            const merged = new Map<
+              number,
+              {
+                paletteIndex: number;
+                posXCm: number | null;
+                posYCm: number | null;
+                posZCm: number | null;
+                rotationDeg: number;
+              }
+            >();
+            for (const p of basePositions) merged.set(p.paletteIndex, p);
+            for (const [pIdx, ov] of itOverrides) {
+              merged.set(pIdx, {
+                paletteIndex: pIdx,
+                posXCm: Math.round(ov.posXCm),
+                posYCm: Math.round(ov.posYCm),
+                posZCm: Math.round(ov.posZCm),
+                rotationDeg:
+                  ov.rotationDeg !== undefined
+                    ? Math.round(ov.rotationDeg)
+                    : 0,
+              });
+            }
             return {
               ...it,
-              pos_x_cm: Math.round(override.posXCm),
-              pos_y_cm: Math.round(override.posYCm),
-              pos_z_cm: Math.round(override.posZCm),
-              rotation_deg:
-                override.rotationDeg !== undefined
-                  ? Math.round(override.rotationDeg)
-                  : (it.rotation_deg ?? null),
+              positions: Array.from(merged.values()).sort(
+                (a, b) => a.paletteIndex - b.paletteIndex,
+              ),
             };
           }),
         },
@@ -475,9 +533,12 @@ export default function NvLoadingPlanPage() {
   const uebernehmenMut = useMutation({
     mutationFn: async () => {
       const errors: string[] = [];
-      // 1. Position-Overrides
-      for (const [dbItemId, posOv] of sandbox.positionOverrides) {
+      // 1. Position-Overrides — H5b: parseKey aus composite-key,
+      //    paletteIndex in Body (H3-API).
+      for (const [key, posOv] of sandbox.positionOverrides) {
+        const { dbItemId, paletteIndex } = parseKey(key);
         const body: Record<string, number> = {
+          paletteIndex,
           posXCm: Math.round(posOv.posXCm),
           posYCm: Math.round(posOv.posYCm),
           posZCm: Math.round(posOv.posZCm),
@@ -493,7 +554,7 @@ export default function NvLoadingPlanPage() {
         } catch (e: unknown) {
           const status =
             (e as { response?: { status?: number } })?.response?.status ?? '?';
-          errors.push(`Position ${dbItemId}: ${status}`);
+          errors.push(`Position ${dbItemId}#${paletteIndex}: ${status}`);
         }
       }
       // 2. Inserted Shipments — POST /nv-touren/:id/stops {shipment_id}.
@@ -545,8 +606,11 @@ export default function NvLoadingPlanPage() {
     },
   });
 
-  // Schritt 2: handlePosition leitet jetzt in den Sandbox-Reducer um —
-  // KEIN direkter BE-Write. Persistenz erst via "Übernehmen".
+  // Schritt 2 + H5b: handlePosition leitet in den Sandbox-Reducer um —
+  // KEIN direkter BE-Write. Persistenz erst via "Übernehmen". H5b:
+  // jeder Klon adressiert seine eigene Position via (dbItemId,
+  // paletteIndex). Alle Klone haben jetzt dbItemId (H5a) → kein Klon-
+  // Filter mehr.
   const handlePosition = (
     id: string,
     posXCm: number,
@@ -555,13 +619,12 @@ export default function NvLoadingPlanPage() {
     rotationDeg?: number,
   ) => {
     if (!id) return;
-    // Synth-Filter: quantity-Klone q>0 haben kein dbItemId und sind
-    // BE-seitig nicht persistierbar (1 Row pro line_index).
     const pkg = packages.find((p) => p.id === id);
     if (!pkg || !pkg.dbItemId) return;
     sandboxDispatch({
       type: 'setPosition',
       dbItemId: pkg.dbItemId,
+      paletteIndex: pkg.paletteIndex ?? 0,
       pos: { posXCm, posYCm, posZCm, rotationDeg },
     });
   };
@@ -576,10 +639,16 @@ export default function NvLoadingPlanPage() {
     targetId: string | null,
     dropPosY: number,
   ) => {
-    // Synth-Filter via dbItemId (Quantity-Klone q>0 sind nicht
-    // persistierbar — sie haben kein dbItemId).
+    // H5b: Insert-Anker bleibt Item-Level (paletteIndex===0). Klone
+    // q>=1 sind keine Insert-Anker — Per-Palette-Cascade ist Backlog.
+    // (H5a: ALLE Klone haben dbItemId → Filter via paletteIndex statt
+    // dbItemId.)
     const dragged = renderedPackages.find((p) => p.id === draggedId);
-    if (!dragged || !dragged.dbItemId) {
+    if (
+      !dragged ||
+      !dragged.dbItemId ||
+      (dragged.paletteIndex ?? 0) !== 0
+    ) {
       insertMode.cancel();
       return;
     }
@@ -602,10 +671,11 @@ export default function NvLoadingPlanPage() {
     }
     // B-2.2: shared Helper für Cascade-Shift mit row-wrap.
     // BUG-F-PACK: unplaced ausschliessen — Phantom-Pos (0/0/0) wuerde
-    // Cascade-Shift verfaelschen. Synth-Klone (kein dbItemId) raus.
+    // Cascade-Shift verfaelschen. H5b: Klone q>=1 raus (Cascade ist
+    // Item-Level; ueber paletteIndex===0 filtern statt dbItemId).
     const actions = planNvInsertShift({
       packages: renderedPackages
-        .filter((p) => !!p.dbItemId)
+        .filter((p) => !!p.dbItemId && (p.paletteIndex ?? 0) === 0)
         .map((p) => ({
           id: p.id,
           posX: p.posX,
@@ -622,13 +692,14 @@ export default function NvLoadingPlanPage() {
       trailerLengthCm: capacity.lengthCm,
       trailerWidthCm: capacity.widthCm,
     });
-    // Schritt 2: Cascade-Aktionen → Sandbox-Reducer (batch dispatch).
-    // BE-Persist erst via "Übernehmen". planNvInsertShift liefert
-    // itemId = dbItemId (Persist-fähig), also direkt verwendbar.
+    // Schritt 2 + H5b: Cascade-Aktionen → Sandbox-Reducer (batch
+    // dispatch). BE-Persist erst via "Übernehmen". planNvInsertShift
+    // ist Item-Level → alle Aktionen treffen paletteIndex=0.
     for (const a of actions) {
       sandboxDispatch({
         type: 'setPosition',
         dbItemId: a.itemId,
+        paletteIndex: 0,
         pos: {
           posXCm: a.posXCm,
           posYCm: a.posYCm,
@@ -936,7 +1007,11 @@ export default function NvLoadingPlanPage() {
                 setCtxMenu({
                   pkgId,
                   // Schritt 2: dbItemId fuer Sandbox-Reducer-Lookup.
+                  // H5b: paletteIndex mitfuehren (fuer kuenftige Klon-
+                  // spezifische Aktionen). Reset bleibt Item-Level.
                   dbItemId: (pkg as { dbItemId?: string }).dbItemId,
+                  paletteIndex:
+                    (pkg as { paletteIndex?: number }).paletteIndex ?? 0,
                   shipmentId:
                     (pkg as { shipmentId?: string }).shipmentId ?? '',
                   x,
@@ -1000,14 +1075,18 @@ export default function NvLoadingPlanPage() {
             {
               label: 'Position zurücksetzen (Sandbox)',
               icon: <RotateCcw size={12} />,
+              // H5b: Reset bleibt Item-Level (paletteIndex=0). Per-Klon-
+              // Reset ist Backlog. Disabled, wenn keine pIdx=0-Override
+              // existiert.
               disabled:
                 !ctxMenu.dbItemId ||
-                !sandbox.positionOverrides.has(ctxMenu.dbItemId),
+                !sandbox.positionOverrides.has(makeKey(ctxMenu.dbItemId, 0)),
               onClick: () => {
                 if (!ctxMenu.dbItemId) return;
                 sandboxDispatch({
                   type: 'clearPosition',
                   dbItemId: ctxMenu.dbItemId,
+                  paletteIndex: 0,
                 });
               },
               separator: true,

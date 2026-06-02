@@ -283,10 +283,11 @@ describe('NvLoadingPlanPage Übernehmen-Mutation (Schritt 2)', () => {
     const deleteOrder = apiDelete.mock.invocationCallOrder[0];
     expect(patchOrder).toBeLessThan(deleteOrder);
 
-    // PATCH-Inhalt: korrekte URL + body.
+    // PATCH-Inhalt: korrekte URL + body. H5b: body enthaelt paletteIndex
+    // (parsed aus Sandbox-Key `${dbItemId}|${paletteIndex}`).
     expect(apiPatch.mock.calls[0]).toEqual([
       '/loading/package-item/pi-1/position',
-      { posXCm: 100, posYCm: 200, posZCm: 0 },
+      { paletteIndex: 0, posXCm: 100, posYCm: 200, posZCm: 0 },
     ]);
     // DELETE: korrekte stop-id (lookup ueber tour.stops).
     expect(apiDelete.mock.calls[0][0]).toBe(

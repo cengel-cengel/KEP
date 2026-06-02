@@ -899,7 +899,11 @@ export default function NvLoadingPlanPage() {
                 showToast(`Sendung in Sandbox eingefügt — übernehmen?`);
               }}
             >
+            {/* LoadingPlan3D fuellt jetzt h-full (Eltern bestimmt
+                Hoehe). Vollansicht-Default = 480px-Wrapper damit
+                das bisherige Layout unveraendert bleibt. */}
             <div
+              className="h-[480px]"
               style={{
                 pointerEvents: isDndActive ? 'none' : 'auto',
               }}

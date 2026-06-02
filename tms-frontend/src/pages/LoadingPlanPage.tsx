@@ -857,42 +857,47 @@ export default function LoadingPlanPage() {
                             : '↺ Auto-Placement neu berechnen'}
                         </button>
                       </div>
-                      <LoadingPlan3D
-                        vehicle={{
-                          lengthCm: vehicleDims.lengthCm,
-                          widthCm: vehicleDims.widthCm,
-                          heightCm: vehicleDims.heightCm,
-                        }}
-                        vehicleType={selectedVehicle?.type ?? selectedVehicleType}
-                        onPositionChange={handlePackagePosition}
-                        insertMode={insertMode.active}
-                        onInsertAt={handleInsertAt}
-                        onPackageContextMenu={(pkgId, x, y) => {
-                          const pkg = renderedPackages.find((p) => p.id === pkgId);
-                          if (!pkg) return;
-                          setCtxMenu({
-                            shipmentId: pkg.shipmentId,
-                            x,
-                            y,
-                          });
-                        }}
-                        packages={renderedPackages.map((p) => ({
-                          id: p.id,
-                          lengthCm: p.lengthCm,
-                          widthCm: p.widthCm,
-                          heightCm: p.heightCm,
-                          posX: p.posX,
-                          posY: p.posY,
-                          posZ: p.posZ,
-                          weightKg: p.weightKg,
-                          color:
-                            SHIPMENT_COLORS[
-                              (shipIdx.get(p.shipmentId) ?? 0) % SHIPMENT_COLORS.length
-                            ],
-                          isStackable: p.isStackable,
-                          rotationDeg: p.rotationDeg,
-                        }))}
-                      />
+                      {/* LoadingPlan3D fuellt jetzt h-full (Eltern bestimmt
+                          Hoehe). Vollansicht-Default = 480px-Wrapper damit
+                          das bisherige Layout unveraendert bleibt. */}
+                      <div className="h-[480px]">
+                        <LoadingPlan3D
+                          vehicle={{
+                            lengthCm: vehicleDims.lengthCm,
+                            widthCm: vehicleDims.widthCm,
+                            heightCm: vehicleDims.heightCm,
+                          }}
+                          vehicleType={selectedVehicle?.type ?? selectedVehicleType}
+                          onPositionChange={handlePackagePosition}
+                          insertMode={insertMode.active}
+                          onInsertAt={handleInsertAt}
+                          onPackageContextMenu={(pkgId, x, y) => {
+                            const pkg = renderedPackages.find((p) => p.id === pkgId);
+                            if (!pkg) return;
+                            setCtxMenu({
+                              shipmentId: pkg.shipmentId,
+                              x,
+                              y,
+                            });
+                          }}
+                          packages={renderedPackages.map((p) => ({
+                            id: p.id,
+                            lengthCm: p.lengthCm,
+                            widthCm: p.widthCm,
+                            heightCm: p.heightCm,
+                            posX: p.posX,
+                            posY: p.posY,
+                            posZ: p.posZ,
+                            weightKg: p.weightKg,
+                            color:
+                              SHIPMENT_COLORS[
+                                (shipIdx.get(p.shipmentId) ?? 0) % SHIPMENT_COLORS.length
+                              ],
+                            isStackable: p.isStackable,
+                            rotationDeg: p.rotationDeg,
+                          }))}
+                        />
+                      </div>
                       <AxleLoadPanel
                         packages={renderedPackages.map((p) => ({
                           posY: p.posY,

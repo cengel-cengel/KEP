@@ -278,53 +278,56 @@ function NvBody({
       isLoading={tourQ.isLoading}
       hasData={!!tourQ.data}
     >
-      {/* D3a: vertikaler Split — 3D oben (h-[480px] aus LoadingPlan3D
-          selbst), AchsLast-Panel unten. Container hat overflow-auto
-          damit der Inhalt scrollt wenn das Dock-Panel kleiner ist. */}
-      <div className="h-full overflow-auto">
-        <LoadingPlan3D
-          vehicle={{
-            lengthCm: capacity.lengthCm,
-            widthCm: capacity.widthCm,
-            heightCm: capacity.heightCm,
-          }}
-          packages={renderedPackages}
-          frameloop={frameloop}
-          onPositionChange={(id, posXCm, posYCm, posZCm, rotationDeg) => {
-            // D2: synth-Filter via dbItemId. Quantity-Klone q>0 + synth
-            // ":pkg:"-Fallbacks haben kein dbItemId und sind BE-seitig
-            // nicht persistierbar (1 Row pro line_index).
-            const pkg = renderedPackages.find((p) => p.id === id);
-            const dbItemId = (pkg as { dbItemId?: string } | undefined)
-              ?.dbItemId;
-            if (!dbItemId) return;
-            persistMutation.mutate({
-              itemId: dbItemId,
-              posXCm,
-              posYCm,
-              posZCm,
-              rotationDeg,
-            });
-          }}
-          onPackageContextMenu={(pkgId, x, y) => {
-            // D3b: Regel #2 (ganze Sendung) — Rechtsklick auf Palette
-            // liefert pkgId, wir loesen die shipmentId daraus auf und
-            // exponieren beide an die ContextMenu-Items. dbItemId
-            // ist optional (NUR q===0/Single-Paket → Position-Reset
-            // verfuegbar).
-            const pkg = renderedPackages.find((p) => p.id === pkgId);
-            if (!pkg) return;
-            const dbItemId = (pkg as { dbItemId?: string }).dbItemId;
-            const shipmentId =
-              (pkg as { shipmentId?: string }).shipmentId ?? '';
-            setCtxMenu({ pkgId, dbItemId, shipmentId, x, y });
-          }}
-        />
+      {/* D3a + Hoehen-Refactor: vertikaler flex-col Split. 3D-Wrapper
+          flex-1 (fuellt Rest-Hoehe), AxleLoadPanel shrink-0 (content-
+          basiert). LoadingPlan3D selbst hat seit dem Refactor h-full +
+          min-h-[200px] — Eltern bestimmt die Hoehe. */}
+      <div className="h-full flex flex-col min-h-0">
+        <div className="flex-1 min-h-0">
+          <LoadingPlan3D
+            vehicle={{
+              lengthCm: capacity.lengthCm,
+              widthCm: capacity.widthCm,
+              heightCm: capacity.heightCm,
+            }}
+            packages={renderedPackages}
+            frameloop={frameloop}
+            onPositionChange={(id, posXCm, posYCm, posZCm, rotationDeg) => {
+              // D2: synth-Filter via dbItemId. Quantity-Klone q>0 + synth
+              // ":pkg:"-Fallbacks haben kein dbItemId und sind BE-seitig
+              // nicht persistierbar (1 Row pro line_index).
+              const pkg = renderedPackages.find((p) => p.id === id);
+              const dbItemId = (pkg as { dbItemId?: string } | undefined)
+                ?.dbItemId;
+              if (!dbItemId) return;
+              persistMutation.mutate({
+                itemId: dbItemId,
+                posXCm,
+                posYCm,
+                posZCm,
+                rotationDeg,
+              });
+            }}
+            onPackageContextMenu={(pkgId, x, y) => {
+              // D3b: Regel #2 (ganze Sendung) — Rechtsklick auf Palette
+              // liefert pkgId, wir loesen die shipmentId daraus auf und
+              // exponieren beide an die ContextMenu-Items. dbItemId
+              // ist optional (NUR q===0/Single-Paket → Position-Reset
+              // verfuegbar).
+              const pkg = renderedPackages.find((p) => p.id === pkgId);
+              if (!pkg) return;
+              const dbItemId = (pkg as { dbItemId?: string }).dbItemId;
+              const shipmentId =
+                (pkg as { shipmentId?: string }).shipmentId ?? '';
+              setCtxMenu({ pkgId, dbItemId, shipmentId, x, y });
+            }}
+          />
+        </div>
         {/* D3a: AchsLast-Panel. vehicleType-Heuristik: maxLdm-Buckets
             wie in der NV-Vollansicht (NvLoadingPlanPage L949-953).
             BUG-V-Fix-Mirror: vehicle.type (getVehicleDims) wuerde fuer
             Tonnen-Typen falsch auf "Koffer 7t" zurueckfallen. */}
-        <div className="px-3 pb-3">
+        <div className="px-3 pb-3 shrink-0 overflow-y-auto">
           <AxleLoadPanel
             packages={renderedPackages.map((p) => ({
               posY: p.posY,
@@ -666,9 +669,9 @@ function FvBody({
       isLoading={tourQ.isLoading}
       hasData={!!tourQ.data}
     >
-      {/* D3a: vertikaler Split — 3D oben (h-[480px] aus LoadingPlan3D
-          selbst), AchsLast-Panel unten. Mirror NvBody. */}
-      <div className="h-full overflow-auto">
+      {/* D3a + Hoehen-Refactor: vertikaler flex-col Split. 3D-Wrapper
+          flex-1, AxleLoadPanel shrink-0. Mirror NvBody. */}
+      <div className="h-full flex flex-col min-h-0">
         {/* D3c: Insert-Mode-Banner (Hotkey 'i' aktiviert). Nur FV. */}
         {insertMode.active && (
           <div className="px-3 pt-3">
@@ -678,44 +681,46 @@ function FvBody({
             />
           </div>
         )}
-        <LoadingPlan3D
-          vehicle={vehicleDims}
-          packages={renderedPackages}
-          frameloop={frameloop}
-          insertMode={insertMode.active}
-          onInsertAt={handleInsertAt}
-          onPositionChange={(id, posXCm, posYCm, posZCm, rotationDeg) => {
-            // D2: synth-Filter via dbItemId. Quantity-Klone q>0 +
-            // synth ":pkg:"-Fallbacks (siehe loadingFv.expandPackages-
-            // FromOrder L229-244) haben dbItemId=undefined und sind
-            // nicht persistierbar (BE-Side: 1 Row pro line_index).
-            const pkg = placedPackages.find((p) => p.id === id);
-            if (!pkg?.dbItemId) return;
-            persistMutation.mutate({
-              itemId: pkg.dbItemId,
-              posXCm,
-              posYCm,
-              posZCm,
-              rotationDeg,
-            });
-          }}
-          onPackageContextMenu={(pkgId, x, y) => {
-            // D3b: Regel #2 — Aktion auf ganze Sendung.
-            const pkg = placedPackages.find((p) => p.id === pkgId);
-            if (!pkg) return;
-            setCtxMenu({
-              pkgId,
-              shipmentId: pkg.shipmentId,
-              x,
-              y,
-            });
-          }}
-        />
+        <div className="flex-1 min-h-0">
+          <LoadingPlan3D
+            vehicle={vehicleDims}
+            packages={renderedPackages}
+            frameloop={frameloop}
+            insertMode={insertMode.active}
+            onInsertAt={handleInsertAt}
+            onPositionChange={(id, posXCm, posYCm, posZCm, rotationDeg) => {
+              // D2: synth-Filter via dbItemId. Quantity-Klone q>0 +
+              // synth ":pkg:"-Fallbacks (siehe loadingFv.expandPackages-
+              // FromOrder L229-244) haben dbItemId=undefined und sind
+              // nicht persistierbar (BE-Side: 1 Row pro line_index).
+              const pkg = placedPackages.find((p) => p.id === id);
+              if (!pkg?.dbItemId) return;
+              persistMutation.mutate({
+                itemId: pkg.dbItemId,
+                posXCm,
+                posYCm,
+                posZCm,
+                rotationDeg,
+              });
+            }}
+            onPackageContextMenu={(pkgId, x, y) => {
+              // D3b: Regel #2 — Aktion auf ganze Sendung.
+              const pkg = placedPackages.find((p) => p.id === pkgId);
+              if (!pkg) return;
+              setCtxMenu({
+                pkgId,
+                shipmentId: pkg.shipmentId,
+                x,
+                y,
+              });
+            }}
+          />
+        </div>
         {/* D3a: AchsLast-Panel. vehicleType aus recommendedVehicle.type
             (FV-Vollansicht-Pattern: selectedVehicle?.type ?? Sattel).
             packages aus placedPackages (PlacedPackage hat weightKg
             aus expandPackagesFromOrder), unplaced gefiltert. */}
-        <div className="px-3 pb-3">
+        <div className="px-3 pb-3 shrink-0 overflow-y-auto">
           <AxleLoadPanel
             packages={placedPackages
               .filter((p) => !p.unplaced)

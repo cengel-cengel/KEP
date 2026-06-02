@@ -541,7 +541,7 @@ export default function LoadingPlan3D({
   ];
 
   return (
-    <div className="relative w-full h-[480px] rounded-lg border border-gray-200 bg-gradient-to-b from-slate-50 to-slate-100 overflow-hidden">
+    <div className="relative w-full h-full min-h-[200px] rounded-lg border border-gray-200 bg-gradient-to-b from-slate-50 to-slate-100 overflow-hidden">
       <div className="absolute top-2 left-2 z-20 flex gap-1 bg-white/95 rounded border border-gray-300 shadow-sm p-1">
         <button
           type="button"

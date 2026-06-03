@@ -64,6 +64,34 @@ Daten-Realität (live gemessen, hat den ursprünglichen Plan überworfen):
   POST /tours/:id/remove-shipment (das ist FV-only, sucht über shipments.tour_id;
   NV nutzt die nv_tour_stops-Junction).
 
+## Per-Palette-Persistenz (Sprint H) — Architektur-Entscheidungen
+- **Additive Tabelle statt Schema-Erweiterung quantity=1**: Variante (b)
+  gewählt. `shipment_package_item_positions` (item_id, palette_index,
+  pos_x/y/z_cm, rotation_deg) hält pro Palette eine Position; die alten
+  `pos_*`-Spalten auf `shipment_package_items` bleiben als Fallback.
+  Begründung: weniger invasiv, kein Daten-Re-Layout, Migration-Risiko
+  minimal, Phase-2-Rollback trivial (Tabelle DROP, alte Spalten gewinnen).
+- **Reader vor Writer (Etappen)**: H2 lieferte die Fallback-fähige Read-
+  API VOR H3 (Writer). Damit konnte FE schon mit der API arbeiten,
+  während BE-Writes noch nicht persistierten. Half beim Schritt-für-
+  Schritt-Smoke.
+- **Sandbox-Key `${dbItemId}|${paletteIndex}` (H5b)**: H5a setzt
+  `dbItemId` für ALLE Klone einer Sendung (für PATCH-Adressierung) —
+  der frühere Reducer-Key `dbItemId` allein kollidierte zwischen Klonen.
+  Composite-Key erlaubt eindeutige Per-Klon-Sandbox-Overrides ohne
+  Reducer-Re-Schreiben.
+- **Insert-Cascade + Reset bleiben Item-Level (`paletteIndex=0`)**:
+  bewusste Scope-Begrenzung in H5a/H5b. Folgt Regel #2 (Transport
+  atomar pro Sendung); die Paletten-Verteilung ist Visualisierung pro
+  Sendung. Per-Palette-Insert-Cascade + Per-Klon-Reset = Backlog.
+- **Phase 2 (alte Spalten droppen)**: Voraussetzung ist Backfill (H6
+  jetzt deployed). Reader bleibt vorerst Fallback-fähig — DROP läuft
+  als eigener Sprint nach Smoke und mind. einem Backup-Snapshot.
+- **Tür-Konvention `posY-max = Stop 1`** (aus G-Inspektion): die
+  letzte Be-/Entlade-Sendung sitzt nahe der Tür (hoher `posY`); Stop-1
+  ist die zuerst entladene. Pack-Algorithmus + AxleLoad rechnen entlang
+  dieser Achse — Reorder-Sprint G muss das konsistent halten.
+
 ## Popout-Bugs — Root-Causes (zweimal korrigiert per Messung)
 - "Popout lädt nicht / No routes matched /popout.html": fehlte schlicht die
   Datei `public/popout.html` -> SPA-Fallback bootete die ganze App. NICHT

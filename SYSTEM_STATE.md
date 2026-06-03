@@ -52,6 +52,38 @@ explizit in `h-[480px]` (Layout unverändert); embedded/Popout füllen via flex.
 | Reset-Positions            | nur FV      | ja (NV + FV)        |
 | Sandbox/Eject/Cascade NV   | ja          | — (Vollansicht-only)|
 
+## Per-Palette-Persistenz (Sprint H, umgesetzt H1–H5b + H6-Backfill)
+Bis H4 teilte sich eine Sendung mit `quantity > 1` EINE Position
+(`pos_x_cm/y_cm/z_cm` auf `shipment_package_items`) — einzelne Paletten
+konnten nicht vorn/hinten verteilt werden. Sprint H hebt das auf:
+
+- **Schema (H1)**: additive Tabelle `shipment_package_item_positions`
+  (item_id, palette_index, pos_x/y/z_cm, rotation_deg), UNIQUE(item_id,
+  palette_index). Alte `pos_*`-Spalten bleiben als Fallback.
+- **BE Read-Layer (H2)** mit Fallback: leer → virtueller `pIdx=0`-Eintrag
+  aus Legacy. Reader-Output unverändert.
+- **BE Write-Layer (H3)**: `PATCH /loading/package-item/:id/position`
+  akzeptiert `paletteIndex` (default 0); Upsert in
+  `shipment_package_item_positions`; Legacy-Sync nur für `pIdx=0`.
+  `POST /loading/tour/:id/reset-positions` löscht beide Quellen.
+- **FE Read (H4)**: `nvExpand` + `loadingFv.expandPackagesFromOrder`
+  lesen per-Klon `storedPos` via `positions.find(paletteIndex===q)`.
+- **FE Write Direct-Pfade (H5a)**: `dbItemId` für ALLE Klone (statt nur
+  `q===0`); Direct-PATCH-Pfade (Embedded NV+FV, FV-Vollansicht,
+  Repack-Optimal, handlePackagePosition) tragen `paletteIndex` im Body.
+  Insert-Cascade + ContextMenu-Reset bleiben Item-Level (`paletteIndex=0`).
+- **NV-Sandbox per-Palette (H5b)**: Reducer-Key
+  `${dbItemId}|${paletteIndex}`; `patchedTour`-Memo injiziert Overrides
+  in `positions[]` (statt nur `pos_*`); Übernehmen-Loop sendet
+  `paletteIndex`. Eject/Insert bleiben pro Sendung atomar (Regel #2).
+- **Backfill (H6)**: Migration `52_backfill_positions.sql` füllt
+  `pIdx=0`-Rows aus den Legacy-Spalten (`ON CONFLICT DO NOTHING`).
+  Voraussetzung für Phase 2 (Fallback raus + alte Spalten droppen).
+
+**Scope-Hinweis**: `Hof/Yard` rendert weiter auf Block-Ebene (nicht
+`positions[]`) — Hof-Render auf H4-Adapter ziehen ist Backlog.
+Per-Klon-Reset + Per-Palette-Insert-Cascade ebenfalls Backlog.
+
 ## Hof-Pool-Filter (tour-gebunden, NICHT 20-km-Radius)
 Lib `tms-backend/src/lib/poolShipments.lib.ts` -> `resolvePool(prisma,tourId,mode)`.
 Endpoints `/nv-touren/:id/pool-shipments?mode=` + `/tours/:id/pool-shipments?mode=`
@@ -64,6 +96,8 @@ Shared `POOL_ITEM_SELECT` + `mapShipmentToPoolItem` -> Shape-Paritaet mit /nearb
 strukturell garantiert.
 
 ## Status / offen
-Aktueller Arc (Hof-Filter + Beladeplan-Darstellung) ist **gebaut + gepusht**,
-aber noch **nicht gesmoked** (mehrere Pushes offen). Smoke-Schwerpunkte +
-Backlog: siehe BACKLOG.md. Entscheidungen + Warum: DECISIONS.md.
+Aktueller Arc (Hof-Filter + Beladeplan-Darstellung + Sprint H Per-Palette-
+Persistenz inkl. H6-Backfill) ist **gebaut + gepusht**, aber teilweise
+noch **nicht gesmoked** (NV-Sandbox per-Palette H5b live ungesmoked).
+Smoke-Schwerpunkte + Backlog: siehe BACKLOG.md. Entscheidungen + Warum:
+DECISIONS.md.

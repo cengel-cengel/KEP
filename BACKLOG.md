@@ -5,24 +5,31 @@
 
 ## Smoke-Schuld (zuerst, vor allem Irreversiblen)
 Mehrere Pushes wurden ohne Smoke gestapelt. Reihenfolge nach Risiko:
-1. **Insert-Cascade FV + NV** (riskantester Smoke-Punkt): in einer Tour `i` ->
+1. **NV-Sandbox per-Palette (H5b)** — neuester ungeschmokter Punkt:
+   in der NV-Vollansicht `/nv-loading/:tourId`: Eject einer Sendung,
+   Insert aus Hof-Pool, Drag einzelner Paletten einer `quantity>1`-
+   Sendung (verschiedene Klone), Übernehmen, Reload. Erwartung: jeder
+   Klon behält seine eigene Position; Hof-Pool aktualisiert nach POST/
+   DELETE; Sandbox-Badge leer nach Übernehmen.
+2. **Insert-Cascade FV + NV** (riskantester Smoke-Punkt): in einer Tour `i` ->
    Sendung zwischen zwei andere ziehen -> rücken die anderen sauber nach,
    konsistent nach Reload? PATCH-Loop darf nicht halb hängenbleiben.
    (Unit-Coverage seit 6ef777c (FV) + a85a95d (NV) vorhanden; echtes R3F-
    Drag noch ungesmoked. NV-Insert ist seit Stufe 1 Direct — Sandbox-
    Schutz nur in der Vollansicht.)
-2. **Embedded-Drag FV + NV**: Position bleibt nach Reload.
-3. **Repack-Optimal + Reset (NV + FV embedded)**: Stufe 1, neu —
+3. **Embedded-Drag FV + NV**: Position bleibt nach Reload. Insbesondere
+   FV-Klon q>=1 (war 404-Bug vor H5a — jetzt PATCH paletteIndex>=1).
+4. **Repack-Optimal + Reset (NV + FV embedded)**: Stufe 1, neu —
    "🔄 Optimal" und "↺ Reset" im Panel-Header. FV via BE-Endpoints,
    NV via FE-Per-Item-PATCH-Loop. Smoke: Klick → confirm → Positionen
    neu / null.
-4. **Live-Auslastung im Header** (Stufe 1): Header zeigt LDM/kg/Vol-%,
+5. **Live-Auslastung im Header** (Stufe 1): Header zeigt LDM/kg/Vol-%,
    reagiert auf Insert/Remove. Visuell prüfen.
-5. **Hof-Latenz**: lädt der gefilterte Pool leicht (gemessen 0–105 Items/Pool).
-6. **Popout-3D + Maximize**: 3D füllt Fenster, **verzerrt-frei** (Würfel bleiben
+6. **Hof-Latenz**: lädt der gefilterte Pool leicht (gemessen 0–105 Items/Pool).
+7. **Popout-3D + Maximize**: 3D füllt Fenster, **verzerrt-frei** (Würfel bleiben
    Würfel); Tab-Wechsel + zurück rendert mit aktueller Größe (sonst fehlt ein
    `invalidate()` beim Sichtbarwerden).
-7. Niedriger: ContextMenu-Aktionen, AxleLoadPanel-Anzeige, Float-Entfernung.
+8. Niedriger: ContextMenu-Aktionen, AxleLoadPanel-Anzeige, Float-Entfernung.
 
 ## Smoke-gebunden + irreversibel
 - **Vollansicht-Routen entfernen (D-Finale)**: löscht den funktionierenden
@@ -41,10 +48,14 @@ Mehrere Pushes wurden ohne Smoke gestapelt. Reihenfolge nach Risiko:
   Callback aus LoadingPlan3D → Parent-State → AxleLoadPanel-Live-Update.
   rAF-Throttle nötig (Pro-Frame-Stream wäre zu teuer).
 - OFFEN (G): Tour-Stop-Reorder via 3D-Drag — eigener UX-Sprint
-  (Routing-Reopt + Risk-Score-Konsequenz).
-- OFFEN (H): Echte per-Palette-Persistenz (Volumen-Verteilung einer
-  Sendung). BE-Schema-Erweiterung (Tabelle shipment_package_item_positions
-  bevorzugt, additiv). Mehrstufiger Sprint H1–H5.
+  (Routing-Reopt + Risk-Score-Konsequenz). **Geparkt** an OSRM-
+  Verfügbarkeit (siehe OSRM-Selfhost-Punkt unten).
+- ERLEDIGT (H1–H5b + H6-Backfill): Per-Palette-Persistenz.
+  shipment_package_item_positions additiv; Reader mit Fallback; Writer
+  mit paletteIndex (Legacy-Sync für pIdx=0); FE-Read+Write per-Klon;
+  NV-Sandbox-Key `dbItemId|paletteIndex`; Backfill aus Legacy-Spalten
+  (ON CONFLICT DO NOTHING). Phase 2 (Fallback raus + alte Spalten
+  droppen) jetzt eingerahmt — eigener Sprint.
 - GEKLÄRT, kein Fix: Render-Spike (grey-spike) ist KEINE kaputte Box-Skalierung
   (shipBoxDims clampt alle Pfade), sondern die designte Pack-Cap-Visualisierung
   in YardScene3D (graue Geister-LKW-Wireframes ab Pos. 6/Lane, wenn Pool >600
@@ -63,6 +74,34 @@ Mehrere Pushes wurden ohne Smoke gestapelt. Reihenfolge nach Risiko:
 - Braucht Geocoding auf business_partner/network_partner (haben kein lat/lng).
 - (Migration 50 "hall_locations.zip" ist OBSOLET — Depots != hall_locations;
   seed-depot-plz.ts ungenutzt. Geo müsste am network_partner ansetzen.)
+
+## Nächste Sprints (eingerahmt aus H6)
+- **Hof↔Beladeplan-Konsistenz + Überlauf-Visualisierung (EIN Feature)**:
+  Hof-Render auf den H4-`positions[]`-Adapter ziehen (heute Block-Ebene
+  → Klone teilen sich die Block-Position, inkonsistent mit Beladeplan).
+  Nicht-platzierbare Sendungen (über Kapazität) bekommen einen eigenen
+  Stellplatz **neben dem LKW** in BEIDEN Ansichten (NV + FV) — sichtbar
+  statt versteckt. Karten-Punkt → Reopt-Hook: die am wenigsten optimale
+  Sendung wandert auf den Überlauf-Stellplatz, bis die Tour realistisch
+  ist. Berührt Hof + Beladeplan + Karte → eigener Sprint mit Smoke je
+  Modus (nv-pickup/nv-delivery/fv-sammelgut).
+- **Bug: Vehicle-Typ `SATTEL` unbekannt → 0 kg / kein Cost / Achslast tot**.
+  `resolveVehicleCapacity` fällt auf 0 zurück, alle abhängigen Metriken
+  (Cost-Engine, AxleLoadPanel) brechen still. Reparatur: SATTEL-Bucket in
+  `lib/vehicleTypes.ts` + Stammdaten-Defaults + Test.
+- **Sprint G (3D-LIFO→Reorder)** + **OSRM-Selfhost**: G ist an externem
+  OSRM geparkt — externer Endpoint flaky und nicht selbst-bestimmbar.
+  Selfhost-Plan: **Oracle Cloud Always-Free**, Region Frankfurt
+  (BW-nah), Container mit Deutschland-PBF, $0/Monat. Voraussetzung für
+  G + ehrliche ETA + Risk-Score; aktuell hängen all diese Features in
+  der Luft.
+- **Phase 2 Per-Palette**: alte `pos_*`-Spalten auf `shipment_package_items`
+  droppen + Reader-Fallback raus. Voraussetzung Backfill (H6) ✓ erfüllt;
+  blocker = Smoke des H-Sprints + Backup-Snapshot. Irreversibel.
+- **Per-Klon-Reset + Per-Palette-Insert-Cascade**: in H5a/H5b bewusst
+  als Backlog markiert. ContextMenu bekommt einen "nur diesen Klon"-
+  Reset; Insert-Cascade-Loop iteriert über positions[] statt nur
+  pIdx=0. Kein BE-Change nötig (H3-API trägt schon paletteIndex).
 
 ## Infrastruktur / Schulden
 - **dockview Major-Upgrade**: 6.5.0 -> neuer (Popout-Refactor + ResizeObserver).

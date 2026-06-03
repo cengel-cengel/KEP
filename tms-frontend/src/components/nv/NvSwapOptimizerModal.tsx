@@ -142,9 +142,12 @@ export default function NvSwapOptimizerModal({
 
   const capacity = useMemo(() => {
     const t = tourQ.data;
+    // NV-Tour-Detail expose t.recommendedVehicle heute nicht — passt
+    // leer durch (Folge-Sprint).
     return resolveVehicleCapacity(
       t ? { fahrzeug_typ: t.fahrzeug_typ ?? null } : null,
       t?.subunternehmer ?? null,
+      null,
     );
   }, [tourQ.data]);
 

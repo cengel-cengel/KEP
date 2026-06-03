@@ -26,6 +26,7 @@ import {
 } from '@tanstack/react-query';
 import { ArrowRight, Loader2, Sparkles, X } from 'lucide-react';
 import { api } from '../../lib/api';
+import { resolveVehicleCapacity } from '../../lib/vehicleTypes';
 import {
   findSwapPlan,
   isFixSendung,
@@ -178,17 +179,22 @@ export default function FvSwapOptimizerModal({
     staleTime: 10_000,
   });
 
-  // Capacity aus recommendedVehicle. Fallback auf Sattel-typische
-  // Werte falls Felder fehlen (defensive — Optimizer-Service liefert
-  // canonical Keys, sollte gepflegt sein).
+  // C1 (Sprint Geo-Hof): Capacity via resolveVehicleCapacity mit
+  // recommendedVehicle als Fallback. canonical-Match auf .type
+  // (z.B. 'Sattel') liefert vollstaendige Sattel-Box auch wenn
+  // BE-recommendedVehicle nur .type ohne Dims liefert. Hardcoded
+  // Sattel-Fallback bei fallback-unknown bleibt (FV-Swap-Optimizer
+  // ist Sattel-zentriert).
   const { maxVolM3, maxWeightKg } = useMemo(() => {
-    const v = tourQ.data?.recommendedVehicle;
-    const lengthCm = Number(v?.lengthCm) || 1360;
-    const widthCm = Number(v?.widthCm) || 240;
-    const heightCm = Number(v?.heightCm) || 270;
-    const vol = (lengthCm * widthCm * heightCm) / 1e6;
-    const weight = Number(v?.maxWeightKg) || 24000;
-    return { maxVolM3: vol, maxWeightKg: weight };
+    const cap = resolveVehicleCapacity(
+      null,
+      null,
+      tourQ.data?.recommendedVehicle ?? null,
+    );
+    if (cap.source === 'fallback-unknown') {
+      return { maxVolM3: (1360 * 240 * 270) / 1e6, maxWeightKg: 24000 };
+    }
+    return { maxVolM3: cap.maxVolM3, maxWeightKg: cap.maxWeightKg };
   }, [tourQ.data?.recommendedVehicle]);
 
   const {

@@ -50,7 +50,6 @@ import {
 } from '../../lib/loadingShared';
 import { ffdPackShipments } from '../../lib/yardFfd';
 import {
-  deriveBoxFromLdm,
   resolveVehicleCapacity,
   type ResolvedVehicleCapacity,
 } from '../../lib/vehicleTypes';
@@ -251,30 +250,44 @@ export default function YardPanel() {
   // (inner L/W/H), YardScene3D (Trailer-Box), Overflow-Diagnose.
   const capacity = useMemo<ResolvedVehicleCapacity>(() => {
     if (mode === 'nv' && nvTourQ.data) {
+      // NV-Pool-Tour expose heute kein recommendedVehicle — passt
+      // leer durch (Folge-Sprint).
       return resolveVehicleCapacity(
         { fahrzeug_typ: nvTourQ.data.fahrzeug_typ ?? null },
         nvTourQ.data.subunternehmer ?? null,
+        null,
       );
     }
     if (mode === 'fv') {
       // T1.6: FV-Cap = tour.max_ldm + tour.max_weight_kg (persistiert,
-      // selbe Quelle wie BE-Overload-Badge). Box-Dims via
-      // deriveBoxFromLdm(maxLdm) — NICHT recommendedVehicle (das ist
-      // ein Pack-Hint, keine Cap-Quelle). Fallback Sattel-Default
-      // 13.6/24000 wenn Query noch nicht da oder Tour ohne Werte.
+      // selbe Quelle wie BE-Overload-Badge). C1 (Sprint Geo-Hof):
+      // recommendedVehicle als Fallback durchgereicht — greift wenn
+      // tour ohne max_ldm/max_weight_kg + Optimizer-Hint vorhanden.
+      // Prio bleibt: sub (tour.max_ldm) > recommended > default.
       const t = fvTourCapQ.data;
-      const maxLdm = Number(t?.max_ldm) || 13.6;
-      const maxWeightKg = Number(t?.max_weight_kg) || 24000;
-      const box = deriveBoxFromLdm(maxLdm);
-      return {
-        source: 'sub',
-        maxLdm,
-        maxWeightKg,
-        maxVolM3: (box.lengthCm * box.widthCm * box.heightCm) / 1e6,
-        lengthCm: box.lengthCm,
-        widthCm: box.widthCm,
-        heightCm: box.heightCm,
-      };
+      const cap = resolveVehicleCapacity(
+        null,
+        {
+          max_ldm: t?.max_ldm ?? null,
+          max_gewicht_kg: t?.max_weight_kg ?? null,
+        },
+        fvTourQ.data?.recommendedVehicle ?? null,
+      );
+      // Wenn weder Tour-Cap noch recommendedVehicle Daten liefern,
+      // bleibt der FV-Hof beim Sattel-Default (T1.6-Verhalten) statt
+      // auf Koffer 7t zu fallen.
+      if (cap.source === 'fallback-unknown') {
+        return {
+          source: 'fallback-unknown',
+          maxLdm: 13.6,
+          maxWeightKg: 24000,
+          maxVolM3: (1360 * 240 * 270) / 1e6,
+          lengthCm: 1360,
+          widthCm: 240,
+          heightCm: 270,
+        };
+      }
+      return cap;
     }
     // Fallback Sattel — noch keine Tour-Daten geladen.
     return {

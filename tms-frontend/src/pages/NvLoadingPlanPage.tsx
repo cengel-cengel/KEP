@@ -252,9 +252,12 @@ export default function NvLoadingPlanPage() {
   // fuer "12T"/"18T"/"7_5T" auf Koffer 7t/6.2m zurueck → Falsch-Dims).
   const capacity = useMemo(
     () =>
+      // NV-Loading-Endpoint expose heute kein recommendedVehicle —
+      // passt leer durch (Folge-Sprint).
       resolveVehicleCapacity(
         tourQ.data ? { fahrzeug_typ: tourQ.data.fahrzeug_typ ?? null } : null,
         tourQ.data?.subunternehmer ?? null,
+        null,
       ),
     [
       tourQ.data?.fahrzeug_typ,

@@ -31,6 +31,7 @@ import {
   type PlacedPackage,
   type ShipmentLoad,
 } from '../lib/loadingFv';
+import { resolveVehicleCapacity } from '../lib/vehicleTypes';
 
 /** Sattelzug-Standard, Vehicle-List, Type-Definitions + expand-
  *  Helper sind nach lib/loadingFv.ts gewandert (F①-a). KEIN
@@ -113,11 +114,41 @@ export default function LoadingPlanPage() {
     [effectiveOrder, removedShipmentIds],
   );
 
+  // C1 (Sprint Geo-Hof): capacity via resolveVehicleCapacity mit
+  // recommendedVehicle als Fallback. Loest den SATTEL-Bug fuer
+  // Touren wo BE-recommendedVehicle nur .type ohne .lengthCm/.maxLdm
+  // liefert (canonical-Match aus VEHICLE_DIMS ergaenzt fehlende Dims).
+  // Tour/Sub bleiben null (FV-Vollansicht hat keine direkten
+  // fahrzeug_typ-Stammdaten — Kapazitaet kommt aus Optimizer-Hint).
+  const capacity = useMemo(
+    () =>
+      resolveVehicleCapacity(
+        null,
+        null,
+        optimizeQuery.data?.recommendedVehicle ?? null,
+      ),
+    [optimizeQuery.data?.recommendedVehicle],
+  );
+
   const selectedVehicle = useMemo(() => {
     const byType = VEHICLES.find((v) => v.type === selectedVehicleType);
     if (byType) return byType;
-    return optimizeQuery.data?.recommendedVehicle ?? VEHICLES[5];
-  }, [selectedVehicleType, optimizeQuery.data?.recommendedVehicle]);
+    // C1: capacity ist single source of truth fuer Fallback. Vorher
+    // recommendedVehicle direkt (Dims-Luecken) → jetzt resolveVehicle-
+    // Capacity (canonical-Match auf .type liefert Sattel-Vollbox).
+    // Wenn capacity 'fallback-unknown' wird (kein recommendedVehicle),
+    // bleibe beim Sattel-Default (VEHICLES[5]) — FV-Touren sind
+    // ueberwiegend Sattel-Klasse.
+    if (capacity.source === 'fallback-unknown') return VEHICLES[5];
+    return {
+      type: optimizeQuery.data?.recommendedVehicle?.type ?? VEHICLES[5].type,
+      lengthCm: capacity.lengthCm,
+      widthCm: capacity.widthCm,
+      heightCm: capacity.heightCm,
+      maxLdm: capacity.maxLdm,
+      maxWeightKg: capacity.maxWeightKg,
+    };
+  }, [selectedVehicleType, optimizeQuery.data?.recommendedVehicle, capacity]);
 
   const vehicleDims = useMemo(() => {
     const v = selectedVehicle;

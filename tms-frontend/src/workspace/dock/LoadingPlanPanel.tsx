@@ -277,9 +277,12 @@ function NvBody({
   // Vollansicht-Pattern (NvLoadingPlanPage L177-189).
   const capacity = useMemo(
     () =>
+      // NvBody: NV-Loading-Endpoint expose heute kein recommendedVehicle
+      // — passt leer durch (Folge-Sprint).
       resolveVehicleCapacity(
         tourQ.data ? { fahrzeug_typ: tourQ.data.fahrzeug_typ ?? null } : null,
         tourQ.data?.subunternehmer ?? null,
+        null,
       ),
     [
       tourQ.data?.fahrzeug_typ,
@@ -803,17 +806,28 @@ function FvBody({
     retry: 1,
   });
 
+  // C1 (Sprint Geo-Hof): FvBody-Capacity via resolveVehicleCapacity
+  // mit recommendedVehicle als Fallback. Loest den SATTEL-Bug wenn
+  // BE-recommendedVehicle nur .type ohne vollstaendige Dims liefert
+  // (canonical-Match aus VEHICLE_DIMS fuellt fehlende lengthCm/widthCm/
+  // heightCm + maxLdm + maxWeightKg).
+  const fvCapacity = useMemo(
+    () =>
+      resolveVehicleCapacity(
+        null,
+        null,
+        tourQ.data?.recommendedVehicle ?? null,
+      ),
+    [tourQ.data?.recommendedVehicle],
+  );
   const vehicleDims = useMemo(() => {
-    const v = tourQ.data?.recommendedVehicle;
-    if (!v || !v.lengthCm || !v.widthCm || !v.heightCm) {
-      return DEFAULT_TRAILER_CM;
-    }
+    if (fvCapacity.source === 'fallback-unknown') return DEFAULT_TRAILER_CM;
     return {
-      lengthCm: v.lengthCm,
-      widthCm: v.widthCm,
-      heightCm: v.heightCm,
+      lengthCm: fvCapacity.lengthCm,
+      widthCm: fvCapacity.widthCm,
+      heightCm: fvCapacity.heightCm,
     };
-  }, [tourQ.data?.recommendedVehicle]);
+  }, [fvCapacity]);
 
   // D2: expandPackagesFromOrder (F①-a-Lib) + placePackages (shared lib)
   // — gleicher Pfad wie Vollansicht. Packages tragen dbItemId, sodass

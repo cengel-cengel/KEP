@@ -120,7 +120,7 @@ function tonnenCapacity(tons: number): {
 
 export interface ResolvedVehicleCapacity {
   /** Quelle (fuers UI-Badge / Logging). */
-  source: 'sub' | 'tonnen' | 'vehicle-dims' | 'fallback-unknown';
+  source: 'sub' | 'tonnen' | 'vehicle-dims' | 'recommended' | 'fallback-unknown';
   maxLdm: number;
   /** T1: NUTZLAST (kg) — nicht zulaessiges Gesamtgewicht (zGG).
    *  Sattel ≈ 24000, 18T ≈ 10000, 12T ≈ 6000, 7,5T ≈ 3000. */
@@ -169,10 +169,14 @@ function calcVolM3(lengthCm: number, widthCm: number, heightCm: number): number 
 }
 
 /**
- * F1.a-Fix Cascade fuer NV-Beladeplan-Kapazitaet:
+ * Cascade fuer Beladeplan-Kapazitaet (Sprint Geo-Hof C1 erweitert):
  *   PRIMAER:  sub.max_ldm > 0 → { sub.max_ldm, sub.max_gewicht_kg ?? 0 }
  *   FALLBACK: Tonnen-Parsing (tour-first, dann sub) → TONNEN_CAPACITY
  *   DANN:     getVehicleDims(typ) wenn canonical-Match
+ *   DANN:     recommendedVehicle (Optimizer-Hint) — entweder canonical
+ *             via .type ODER explizite Dims/Kapazitaet. Loest den
+ *             SATTEL-Bug fuer Touren ohne fahrzeug_typ/sub, wo
+ *             Cost+AxleLoad sonst still auf Koffer 7t fielen.
  *   LETZTER:  VEHICLE_DEFAULT, source 'fallback-unknown' (UI markiert).
  */
 export function resolveVehicleCapacity(
@@ -185,6 +189,16 @@ export function resolveVehicleCapacity(
       }
     | null
     | undefined,
+  recommendedVehicle?:
+    | {
+        type?: string | null;
+        lengthCm?: number | null;
+        widthCm?: number | null;
+        heightCm?: number | null;
+        maxLdm?: number | null;
+        maxWeightKg?: number | null;
+      }
+    | null,
 ): ResolvedVehicleCapacity {
   const tourTyp = (tour?.fahrzeug_typ ?? '').trim();
   const subTyp = (sub?.fahrzeug_typ ?? '').trim();
@@ -258,6 +272,53 @@ export function resolveVehicleCapacity(
       widthCm: canonicalDims.widthCm,
       heightCm: canonicalDims.heightCm,
     };
+  }
+
+  // DANN: recommendedVehicle (Optimizer-Hint). Erlaubt zwei Eingabe-
+  // formen:
+  //   (a) .type matcht canonical VEHICLE_DIMS → Cap aus VEHICLE_DIMS
+  //   (b) .maxLdm explizit gesetzt → Box aus .lengthCm/widthCm/heightCm
+  //       wenn alle drei vorhanden, sonst deriveBoxFromLdm.
+  // Beides bevor wir auf den lauten Default-Fallback fallen.
+  if (recommendedVehicle) {
+    const recType = (recommendedVehicle.type ?? '').trim();
+    if (recType) {
+      const hit = VEHICLE_DIMS.find(
+        (v) => v.type.toLowerCase() === recType.toLowerCase(),
+      );
+      if (hit) {
+        return {
+          source: 'recommended',
+          maxLdm: hit.maxLdm,
+          maxWeightKg: hit.maxWeightKg,
+          maxVolM3: calcVolM3(hit.lengthCm, hit.widthCm, hit.heightCm),
+          lengthCm: hit.lengthCm,
+          widthCm: hit.widthCm,
+          heightCm: hit.heightCm,
+        };
+      }
+    }
+    const recMaxLdm = Number(recommendedVehicle.maxLdm ?? 0);
+    if (Number.isFinite(recMaxLdm) && recMaxLdm > 0) {
+      const recLen = Number(recommendedVehicle.lengthCm ?? 0);
+      const recWid = Number(recommendedVehicle.widthCm ?? 0);
+      const recHei = Number(recommendedVehicle.heightCm ?? 0);
+      const explicitBox =
+        recLen > 0 && recWid > 0 && recHei > 0
+          ? { lengthCm: recLen, widthCm: recWid, heightCm: recHei }
+          : null;
+      const box = explicitBox ?? deriveBoxFromLdm(recMaxLdm);
+      const recKg = Number(recommendedVehicle.maxWeightKg ?? 0);
+      return {
+        source: 'recommended',
+        maxLdm: recMaxLdm,
+        maxWeightKg: Number.isFinite(recKg) && recKg > 0 ? recKg : 0,
+        maxVolM3: calcVolM3(box.lengthCm, box.widthCm, box.heightCm),
+        lengthCm: box.lengthCm,
+        widthCm: box.widthCm,
+        heightCm: box.heightCm,
+      };
+    }
   }
 
   // LETZTER: Default-Fallback, source-markiert damit UI badge zeigen

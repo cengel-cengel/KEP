@@ -90,6 +90,108 @@ describe('resolveVehicleCapacity — T1 Kapazität pro Typ', () => {
   });
 });
 
+describe('resolveVehicleCapacity — Sprint Geo-Hof C1: recommendedVehicle-Fallback', () => {
+  it('SATTEL-Bug fix: Tour ohne fahrzeug_typ/sub + recommendedVehicle.type=Sattel → Sattel-Cap', () => {
+    // Carlos-Case: Tour 2d1976a6, fahrzeug_typ=null + sub=null,
+    // recommendedVehicle aus FV-Optimizer. Vor C1: stiller Fallback
+    // auf Koffer 7t (6 ldm/3.5t). Nach C1: SATTEL 13.6 ldm/24t.
+    const c = resolveVehicleCapacity(null, null, { type: 'Sattel' });
+    expect(c.source).toBe('recommended');
+    expect(c.maxLdm).toBe(13.6);
+    expect(c.maxWeightKg).toBe(24000);
+    expect(c.lengthCm).toBe(1360);
+    expect(c.maxVolM3).toBeCloseTo(88.13, 1);
+  });
+
+  it('recommendedVehicle.maxLdm explizit (kein canonical .type) → deriveBoxFromLdm', () => {
+    const c = resolveVehicleCapacity(null, null, {
+      maxLdm: 10,
+      maxWeightKg: 7000,
+    });
+    expect(c.source).toBe('recommended');
+    expect(c.maxLdm).toBe(10);
+    expect(c.maxWeightKg).toBe(7000);
+    // deriveBoxFromLdm(10) → lengthCm=1000, widthCm=240, heightCm=240
+    expect(c.lengthCm).toBe(1000);
+    expect(c.heightCm).toBe(240);
+  });
+
+  it('recommendedVehicle mit expliziten Box-Dims → Box statt deriveBoxFromLdm', () => {
+    const c = resolveVehicleCapacity(null, null, {
+      maxLdm: 12,
+      maxWeightKg: 18000,
+      lengthCm: 1200,
+      widthCm: 245,
+      heightCm: 260,
+    });
+    expect(c.source).toBe('recommended');
+    expect(c.maxLdm).toBe(12);
+    expect(c.lengthCm).toBe(1200);
+    expect(c.widthCm).toBe(245);
+    expect(c.heightCm).toBe(260);
+    expect(c.maxVolM3).toBeCloseTo((1200 * 245 * 260) / 1e6, 1);
+  });
+
+  it('Prio: tour-canonical (Sattel) > recommendedVehicle (Sprinter)', () => {
+    const c = resolveVehicleCapacity(
+      { fahrzeug_typ: 'Sattel' },
+      null,
+      { type: 'Sprinter' },
+    );
+    expect(c.source).toBe('vehicle-dims');
+    expect(c.maxLdm).toBe(13.6);
+  });
+
+  it('Prio: sub.max_ldm > recommendedVehicle', () => {
+    const c = resolveVehicleCapacity(
+      null,
+      { max_ldm: 7, max_gewicht_kg: 3000 },
+      { type: 'Sattel' },
+    );
+    expect(c.source).toBe('sub');
+    expect(c.maxLdm).toBe(7);
+  });
+
+  it('Prio: Tonnen-Parse > recommendedVehicle', () => {
+    const c = resolveVehicleCapacity(
+      { fahrzeug_typ: '12T' },
+      null,
+      { type: 'Sattel' },
+    );
+    expect(c.source).toBe('tonnen');
+    expect(c.maxLdm).toBeCloseTo(8.7, 1);
+  });
+
+  it('recommendedVehicle leer/null → bisheriges Verhalten (fallback-unknown)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const c = resolveVehicleCapacity(null, null, null);
+    expect(c.source).toBe('fallback-unknown');
+    expect(c.maxLdm).toBe(6);
+    warnSpy.mockRestore();
+  });
+
+  it('recommendedVehicle ohne nutzbare Daten (kein type, kein maxLdm) → fallback', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const c = resolveVehicleCapacity(null, null, {
+      type: null,
+      maxLdm: null,
+    });
+    expect(c.source).toBe('fallback-unknown');
+    warnSpy.mockRestore();
+  });
+
+  it('recommendedVehicle.type unbekannt + maxLdm vorhanden → maxLdm-Pfad', () => {
+    const c = resolveVehicleCapacity(null, null, {
+      type: 'Bullshit-Vehicle',
+      maxLdm: 8.7,
+      maxWeightKg: 6000,
+    });
+    expect(c.source).toBe('recommended');
+    expect(c.maxLdm).toBeCloseTo(8.7, 1);
+    expect(c.maxWeightKg).toBe(6000);
+  });
+});
+
 describe('resolveFahrzeugTyp', () => {
   it('tour-override hat Vorrang', () => {
     expect(resolveFahrzeugTyp('Sattel', 'Sprinter')).toBe('Sattel');

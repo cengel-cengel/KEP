@@ -41,6 +41,8 @@
  * kein Rueckbau noetig.
  */
 
+import { haversineKm } from './geo.lib';
+
 export type PoolMode = 'nv-pickup' | 'nv-delivery' | 'fv-sammelgut';
 
 export const NV_PREFIX_DIGITS_DEFAULT = 3;
@@ -64,6 +66,10 @@ export interface ShipmentPoolItem {
   width_cm: number | null;
   height_cm: number | null;
   effective_pallets: number | null;
+  /** C2 (Sprint Geo-Hof): direkt verfuegbar fuer clusterByCustomerId.
+   *  Vorher nur via .customer_name lesbar; jetzt explizit fuer
+   *  Empfaenger-Buendel. Optional (Stammdaten-Luecken). */
+  customer_id: string | null;
   customer_name: string | null;
   /** Anker-Adresse: nv-pickup → loading, nv-delivery → delivery,
    *  fv-sammelgut → loading. Falls Adresse fehlt 0/null. */
@@ -119,6 +125,8 @@ export const POOL_ITEM_SELECT = {
   loading_date: true,
   transport_type: true,
   relation_id: true,
+  // C2: customer_id direkt — Voraussetzung fuer clusterByCustomerId.
+  customer_id: true,
   customers: { select: { id: true, name: true } },
   addresses_shipments_loading_address_idToaddresses: {
     select: {
@@ -197,6 +205,7 @@ export function mapShipmentToPoolItem(
     height_cm: c.height_cm ?? null,
     effective_pallets:
       c.effective_pallets != null ? Number(c.effective_pallets) : null,
+    customer_id: c.customer_id ?? c.customers?.id ?? null,
     customer_name: c.customers?.name ?? null,
     lat,
     lng,
@@ -234,6 +243,82 @@ function plzPrefix(zip: string | null | undefined, digits: number): string | nul
   const s = String(zip).trim();
   if (!s) return null;
   return s.slice(0, Math.max(1, digits));
+}
+
+/* ─── C2 (Sprint Geo-Hof): Cluster-Helper ─────────────────────────
+ * Reine Pure-Functions auf ShipmentPoolItem[]. Werden in C3 von
+ * resolvePool konsumiert; hier additiv vorbereitet (kein Caller). */
+
+/**
+ * Gruppiert Items nach customer_id. Items ohne customer_id landen
+ * unter dem speziellen Key `__no_customer__` (statt verloren zu gehen).
+ * Reihenfolge innerhalb einer Gruppe = Reihenfolge im Input.
+ */
+export function clusterByCustomerId(
+  items: ShipmentPoolItem[],
+): Map<string, ShipmentPoolItem[]> {
+  const out = new Map<string, ShipmentPoolItem[]>();
+  for (const it of items) {
+    const key = it.customer_id ?? '__no_customer__';
+    const bucket = out.get(key);
+    if (bucket) bucket.push(it);
+    else out.set(key, [it]);
+  }
+  return out;
+}
+
+/**
+ * Gruppiert Items nach Zip-Prefix der Anker-Adresse (it.zip). Items
+ * ohne Zip landen unter `__no_zip__`. digits begrenzt durch plzPrefix
+ * (mindestens 1).
+ */
+export function clusterByZip(
+  items: ShipmentPoolItem[],
+  digits: number,
+): Map<string, ShipmentPoolItem[]> {
+  const out = new Map<string, ShipmentPoolItem[]>();
+  for (const it of items) {
+    const key = plzPrefix(it.zip, digits) ?? '__no_zip__';
+    const bucket = out.get(key);
+    if (bucket) bucket.push(it);
+    else out.set(key, [it]);
+  }
+  return out;
+}
+
+/**
+ * Filtert Items, deren Anker-Koordinaten innerhalb radiusKm um
+ * (anchorLat, anchorLng) liegen. Items ohne lat/lng (oder 0/0,
+ * was im Mapper als "Adresse fehlt" gesetzt wird) werden sauber
+ * aussortiert — KEIN NaN-Vergleich, kein false-positive bei
+ * 0,0-Koordinaten. Items mit gueltigen Koordinaten bekommen
+ * .distance_km mit der Haversine-Distanz gesetzt (sonst 0).
+ */
+export function clusterByRadius(
+  items: ShipmentPoolItem[],
+  anchorLat: number,
+  anchorLng: number,
+  radiusKm: number,
+): ShipmentPoolItem[] {
+  if (!Number.isFinite(anchorLat) || !Number.isFinite(anchorLng)) return [];
+  if (!Number.isFinite(radiusKm) || radiusKm <= 0) return [];
+  const anchor = { lat: anchorLat, lng: anchorLng };
+  const out: ShipmentPoolItem[] = [];
+  for (const it of items) {
+    // null-safe: 0/0 = Mapper-Sentinel "Adresse fehlt" → ausschliessen.
+    if (
+      !Number.isFinite(it.lat) ||
+      !Number.isFinite(it.lng) ||
+      (it.lat === 0 && it.lng === 0)
+    ) {
+      continue;
+    }
+    const d = haversineKm(anchor, { lat: it.lat, lng: it.lng });
+    if (d <= radiusKm) {
+      out.push({ ...it, distance_km: d });
+    }
+  }
+  return out;
 }
 
 /**

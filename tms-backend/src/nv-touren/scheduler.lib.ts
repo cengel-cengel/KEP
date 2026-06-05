@@ -17,10 +17,11 @@
  *   - nach reorderStops, batchStops, createStop, removeStop
  */
 
+import { haversineKm } from '../lib/geo.lib';
+
 const DEFAULT_START_HHMM = '08:00';
 const DEFAULT_SERVICEZEIT_MIN = 30;
 const AVG_SPEED_KMH = 40;
-const EARTH_R_KM = 6371;
 
 export interface SchedulerStopInput {
   id: string;
@@ -47,20 +48,7 @@ export interface SchedulerStopOutput {
 
 export type RiskSeverity = 'ok' | 'warning' | 'critical' | 'unknown';
 
-function haversineKm(
-  a: { lat: number; lng: number },
-  b: { lat: number; lng: number },
-): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const sa =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(a.lat)) *
-      Math.cos(toRad(b.lat)) *
-      Math.sin(dLng / 2) ** 2;
-  return 2 * EARTH_R_KM * Math.asin(Math.sqrt(sa));
-}
+// C2: haversineKm aus ../lib/geo.lib importiert (war hier dupliziert).
 
 /** parse 'HH:MM' to {h, m}. Null bei invalid. */
 function parseHHMM(raw?: string | null): { h: number; m: number } | null {

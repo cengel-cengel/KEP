@@ -15,12 +15,16 @@
  *   · isNvPoolMode / isFvPoolMode Helper.
  */
 import {
+  clusterByCustomerId,
+  clusterByRadius,
+  clusterByZip,
   isFvPoolMode,
   isNvPoolMode,
   mapShipmentToPoolItem,
   NV_PREFIX_DIGITS_DEFAULT,
   POOL_CAP_DEFAULT,
   resolvePool,
+  type ShipmentPoolItem,
 } from './poolShipments.lib';
 
 function makeShipmentRow(overrides: Partial<any> = {}) {
@@ -506,3 +510,209 @@ function mkStop(
     },
   };
 }
+
+// ─── C2 (Sprint Geo-Hof): Cluster-Helper-Tests ─────────────────
+
+function mkItem(overrides: Partial<ShipmentPoolItem> = {}): ShipmentPoolItem {
+  return {
+    id: 'i-' + Math.random().toString(36).slice(2, 8),
+    shipment_number: 'S-X',
+    weight_kg: 100,
+    ldm: 1,
+    volume_m3: 1,
+    length_cm: 100,
+    width_cm: 80,
+    height_cm: 100,
+    effective_pallets: 1,
+    customer_id: null,
+    customer_name: null,
+    lat: 0,
+    lng: 0,
+    zip: null,
+    city: null,
+    loading_street: null,
+    loading_country: null,
+    distance_km: 0,
+    package_items: [],
+    transport_type: null,
+    delivery_zip: null,
+    delivery_city: null,
+    delivery_country: null,
+    relation_id: null,
+    relation_code: null,
+    depot_label: null,
+    ...overrides,
+  };
+}
+
+describe('C2 clusterByCustomerId', () => {
+  it('gruppiert nach customer_id', () => {
+    const items = [
+      mkItem({ id: 'a', customer_id: 'c1' }),
+      mkItem({ id: 'b', customer_id: 'c2' }),
+      mkItem({ id: 'c', customer_id: 'c1' }),
+    ];
+    const m = clusterByCustomerId(items);
+    expect(m.size).toBe(2);
+    expect(m.get('c1')?.map((x) => x.id)).toEqual(['a', 'c']);
+    expect(m.get('c2')?.map((x) => x.id)).toEqual(['b']);
+  });
+
+  it('null customer_id landet unter __no_customer__ (kein Verlust)', () => {
+    const items = [
+      mkItem({ id: 'a', customer_id: null }),
+      mkItem({ id: 'b', customer_id: 'c1' }),
+      mkItem({ id: 'c', customer_id: null }),
+    ];
+    const m = clusterByCustomerId(items);
+    expect(m.get('__no_customer__')?.map((x) => x.id)).toEqual(['a', 'c']);
+    expect(m.get('c1')?.map((x) => x.id)).toEqual(['b']);
+  });
+
+  it('leere Eingabe → leere Map', () => {
+    expect(clusterByCustomerId([]).size).toBe(0);
+  });
+});
+
+describe('C2 clusterByZip', () => {
+  it('gruppiert nach Zip-Prefix (digits)', () => {
+    const items = [
+      mkItem({ id: 'a', zip: '70435' }),
+      mkItem({ id: 'b', zip: '70439' }),
+      mkItem({ id: 'c', zip: '80331' }),
+    ];
+    const m = clusterByZip(items, 3);
+    expect(m.size).toBe(2);
+    expect(m.get('704')?.map((x) => x.id)).toEqual(['a', 'b']);
+    expect(m.get('803')?.map((x) => x.id)).toEqual(['c']);
+  });
+
+  it('digits=5 → exakte Zip; jede unique Zip eigene Gruppe', () => {
+    const items = [
+      mkItem({ id: 'a', zip: '70435' }),
+      mkItem({ id: 'b', zip: '70439' }),
+    ];
+    const m = clusterByZip(items, 5);
+    expect(m.size).toBe(2);
+  });
+
+  it('null/leerer Zip landet unter __no_zip__', () => {
+    const items = [
+      mkItem({ id: 'a', zip: null }),
+      mkItem({ id: 'b', zip: '' }),
+      mkItem({ id: 'c', zip: '70435' }),
+    ];
+    const m = clusterByZip(items, 3);
+    expect(m.get('__no_zip__')?.map((x) => x.id)).toEqual(['a', 'b']);
+    expect(m.get('704')?.map((x) => x.id)).toEqual(['c']);
+  });
+
+  it('digits < 1 wird auf 1 normalisiert (plzPrefix-Min)', () => {
+    const items = [mkItem({ id: 'a', zip: '70435' })];
+    const m = clusterByZip(items, 0);
+    expect(m.get('7')?.map((x) => x.id)).toEqual(['a']);
+  });
+});
+
+describe('C2 clusterByRadius', () => {
+  // Stuttgart-Hbf
+  const stgtLat = 48.7758;
+  const stgtLng = 9.1829;
+
+  it('Items innerhalb Radius bleiben, ausserhalb fliegen raus', () => {
+    const items = [
+      // Esslingen (~10 km)
+      mkItem({ id: 'esslingen', lat: 48.7406, lng: 9.31 }),
+      // Karlsruhe (~64 km)
+      mkItem({ id: 'karlsruhe', lat: 49.0069, lng: 8.4037 }),
+      // Muenchen (~192 km)
+      mkItem({ id: 'muenchen', lat: 48.1351, lng: 11.582 }),
+    ];
+    const r20 = clusterByRadius(items, stgtLat, stgtLng, 20);
+    expect(r20.map((x) => x.id)).toEqual(['esslingen']);
+    const r100 = clusterByRadius(items, stgtLat, stgtLng, 100);
+    expect(r100.map((x) => x.id).sort()).toEqual([
+      'esslingen',
+      'karlsruhe',
+    ]);
+  });
+
+  it('setzt distance_km auf den gefilterten Items', () => {
+    const items = [mkItem({ id: 'esslingen', lat: 48.7406, lng: 9.31 })];
+    const r = clusterByRadius(items, stgtLat, stgtLng, 20);
+    expect(r).toHaveLength(1);
+    expect(r[0].distance_km).toBeGreaterThan(0);
+    expect(r[0].distance_km).toBeLessThan(20);
+  });
+
+  it('Items ohne lat/lng (0/0 Sentinel) sauber raus, KEIN NaN/false-Hit', () => {
+    const items = [
+      mkItem({ id: 'fehlend', lat: 0, lng: 0 }),
+      mkItem({ id: 'fehlend-explizit', lat: NaN as unknown as number, lng: NaN as unknown as number }),
+      mkItem({ id: 'gueltig', lat: 48.7406, lng: 9.31 }),
+    ];
+    const r = clusterByRadius(items, stgtLat, stgtLng, 5000);
+    expect(r.map((x) => x.id)).toEqual(['gueltig']);
+  });
+
+  it('radius<=0 → leere Liste', () => {
+    const items = [mkItem({ id: 'a', lat: 48.7406, lng: 9.31 })];
+    expect(clusterByRadius(items, stgtLat, stgtLng, 0)).toEqual([]);
+    expect(clusterByRadius(items, stgtLat, stgtLng, -5)).toEqual([]);
+  });
+
+  it('Anchor mit NaN/Infinity → leere Liste (kein Crash)', () => {
+    const items = [mkItem({ id: 'a', lat: 48.7406, lng: 9.31 })];
+    expect(clusterByRadius(items, NaN, 9, 50)).toEqual([]);
+    expect(clusterByRadius(items, 48, Infinity, 50)).toEqual([]);
+  });
+
+  it('mutiert die Original-Items NICHT (immutable Output)', () => {
+    const orig = mkItem({ id: 'a', lat: 48.7406, lng: 9.31, distance_km: 99 });
+    const r = clusterByRadius([orig], stgtLat, stgtLng, 50);
+    expect(orig.distance_km).toBe(99);
+    expect(r[0].distance_km).not.toBe(99);
+  });
+});
+
+describe('C2 customer_id im POOL_ITEM_SELECT/Mapper', () => {
+  it('mapShipmentToPoolItem zieht customer_id direkt + fallback auf customers.id', () => {
+    const row1 = {
+      id: 's1',
+      shipment_number: 'S-1',
+      weight_kg: 100,
+      ldm: 1,
+      volume_m3: 1,
+      length_cm: 100,
+      width_cm: 80,
+      height_cm: 100,
+      effective_pallets: 1,
+      customer_id: 'cust-direct',
+      customers: { id: 'cust-via-rel', name: 'Test' },
+      addresses_shipments_loading_address_idToaddresses: {
+        zip: '70435', city: 'S', lat: 48.78, lng: 9.18,
+        street: 'X', country_code: 'DE',
+      },
+      addresses_shipments_delivery_address_idToaddresses: {
+        zip: '80331', city: 'M', lat: 48.13, lng: 11.58,
+        street: 'Y', country_code: 'DE',
+      },
+      relation_id: null,
+      relation: null,
+      shipment_package_items: [],
+      transport_type: null,
+    };
+    const m1 = mapShipmentToPoolItem(row1, { anchor: 'loading' });
+    expect(m1.customer_id).toBe('cust-direct');
+
+    // Fallback: customer_id null, aber customers.id da.
+    const row2 = { ...row1, customer_id: null };
+    const m2 = mapShipmentToPoolItem(row2, { anchor: 'loading' });
+    expect(m2.customer_id).toBe('cust-via-rel');
+
+    // Beides null → null.
+    const row3 = { ...row1, customer_id: null, customers: { name: 'X' } };
+    const m3 = mapShipmentToPoolItem(row3, { anchor: 'loading' });
+    expect(m3.customer_id).toBeNull();
+  });
+});

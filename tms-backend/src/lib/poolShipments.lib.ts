@@ -48,11 +48,20 @@ export type PoolMode = 'nv-pickup' | 'nv-delivery' | 'fv-sammelgut';
 export const NV_PREFIX_DIGITS_DEFAULT = 3;
 export const POOL_CAP_DEFAULT = 500;
 
+/** C3 (Sprint Geo-Hof): Default-Radien pro Modus.
+ *  NV ~ prefix3-aequivalent; FV deutlich groesser (Sammelgut bringt
+ *  100-km-Bullets nach Depot). Override via PoolOpts.radiusKm. */
+export const NV_RADIUS_KM_DEFAULT = 20;
+export const FV_RADIUS_KM_DEFAULT = 100;
+
 export interface PoolOpts {
   /** PLZ-Praefix-Tiefe (NV-Modi). Default 3 (~20km Cluster). */
   prefixDigits?: number;
   /** Max Sendungen im Output (Schutz). Default 500. */
   cap?: number;
+  /** C3: Geo-Radius in km. Default je Modus
+   *  (NV=20, FV=100). 0 deaktiviert den Radius-Pfad. */
+  radiusKm?: number;
 }
 
 /** Item-Shape entspricht 1:1 der nearby-Shape (NV + FV-extras). */
@@ -336,14 +345,91 @@ export async function resolvePool(
 ): Promise<ShipmentPoolItem[]> {
   const prefixDigits = opts?.prefixDigits ?? NV_PREFIX_DIGITS_DEFAULT;
   const cap = opts?.cap ?? POOL_CAP_DEFAULT;
+  // C3: mode-default-Radius mit Override.
+  const defaultRadius =
+    mode === 'fv-sammelgut'
+      ? FV_RADIUS_KM_DEFAULT
+      : NV_RADIUS_KM_DEFAULT;
+  const radiusKm = opts?.radiusKm ?? defaultRadius;
 
   if (mode === 'nv-pickup' || mode === 'nv-delivery') {
-    return resolveNvPool(prisma, tourId, mode, prefixDigits, cap);
+    return resolveNvPool(prisma, tourId, mode, prefixDigits, cap, radiusKm);
   }
   if (mode === 'fv-sammelgut') {
-    return resolveFvSammelgutPool(prisma, tourId, cap);
+    return resolveFvSammelgutPool(
+      prisma,
+      tourId,
+      cap,
+      prefixDigits,
+      radiusKm,
+    );
   }
   throw new Error(`Unbekannter pool mode: ${String(mode)}`);
+}
+
+/* ─── C3 Geo-Helfer fuer Anchor-Aufbau ──────────────────────────── */
+
+interface AnchorCoord {
+  lat: number;
+  lng: number;
+}
+
+/** Berechnet eine Bounding-Box um ein Anchor-Coord mit Radius-Padding
+ *  in km. Pro Latitude-Grad ~111 km; Longitude skaliert mit cos(lat).
+ *  cos-Cap bei 0.01 schuetzt nahe den Polen vor Division durch 0. */
+function bboxFor(
+  c: AnchorCoord,
+  radiusKm: number,
+): { latMin: number; latMax: number; lngMin: number; lngMax: number } {
+  const dLat = radiusKm / 111;
+  const cosLat = Math.cos((c.lat * Math.PI) / 180);
+  const dLng = radiusKm / (111 * Math.max(cosLat, 0.01));
+  return {
+    latMin: c.lat - dLat,
+    latMax: c.lat + dLat,
+    lngMin: c.lng - dLng,
+    lngMax: c.lng + dLng,
+  };
+}
+
+/** Liest die Anker-Adresse einer Tour-Stop-Shipment je nach Mode. */
+function pickAnchorAddress(
+  shipment: any,
+  anchor: 'loading' | 'delivery',
+): { zip: string | null; country: string; lat: number | null; lng: number | null } {
+  const a =
+    anchor === 'loading'
+      ? shipment?.addresses_shipments_loading_address_idToaddresses
+      : shipment?.addresses_shipments_delivery_address_idToaddresses;
+  return {
+    zip: a?.zip ?? null,
+    country: (a?.country_code ?? 'DE').toUpperCase(),
+    lat: a?.lat != null ? Number(a.lat) : null,
+    lng: a?.lng != null ? Number(a.lng) : null,
+  };
+}
+
+/** Pruef-Hilfe: hat ein POOL_ITEM_SELECT-row eine Tour-Anker-Adresse
+ *  innerhalb radiusKm zu MINDESTENS EINEM ankerCoord? */
+function rowMatchesRadius(
+  row: any,
+  anchor: 'loading' | 'delivery',
+  ankerCoords: AnchorCoord[],
+  radiusKm: number,
+): boolean {
+  if (radiusKm <= 0 || ankerCoords.length === 0) return false;
+  const a =
+    anchor === 'loading'
+      ? row?.addresses_shipments_loading_address_idToaddresses
+      : row?.addresses_shipments_delivery_address_idToaddresses;
+  const lat = a?.lat != null ? Number(a.lat) : NaN;
+  const lng = a?.lng != null ? Number(a.lng) : NaN;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  for (const c of ankerCoords) {
+    const d = haversineKm({ lat, lng }, c);
+    if (d <= radiusKm) return true;
+  }
+  return false;
 }
 
 // ─── NV (pickup | delivery) ───────────────────────────────────
@@ -354,12 +440,19 @@ async function resolveNvPool(
   mode: 'nv-pickup' | 'nv-delivery',
   prefixDigits: number,
   cap: number,
+  radiusKm: number,
 ): Promise<ShipmentPoolItem[]> {
   const stopTypeFilter = mode === 'nv-pickup' ? 'PICKUP' : 'DELIVERY';
   const status = mode === 'nv-pickup' ? 'new' : 'in_warehouse';
   const anchor: 'loading' | 'delivery' =
     mode === 'nv-pickup' ? 'loading' : 'delivery';
+  const anchorAddrField =
+    anchor === 'loading'
+      ? 'addresses_shipments_loading_address_idToaddresses'
+      : 'addresses_shipments_delivery_address_idToaddresses';
 
+  // C3: Tour-Query holt zusaetzlich customer_id + lat/lng der
+  // Anker-Adresse fuer customerId-Match + Radius-Match.
   const tour = await prisma.nv_touren.findUnique({
     where: { id: tourId },
     select: {
@@ -370,11 +463,12 @@ async function resolveNvPool(
           stop_type: true,
           shipment: {
             select: {
+              customer_id: true,
               addresses_shipments_loading_address_idToaddresses: {
-                select: { zip: true, country_code: true },
+                select: { zip: true, country_code: true, lat: true, lng: true },
               },
               addresses_shipments_delivery_address_idToaddresses: {
-                select: { zip: true, country_code: true },
+                select: { zip: true, country_code: true, lat: true, lng: true },
               },
             },
           },
@@ -384,40 +478,86 @@ async function resolveNvPool(
   });
   if (!tour) throw new Error('Tour nicht gefunden');
 
-  const ankerSet = new Set<string>();
+  const ankerPrefixSet = new Set<string>();
+  const ankerCustomerIds = new Set<string>();
+  const ankerCoords: AnchorCoord[] = [];
   for (const s of tour.stops ?? []) {
-    const addr =
-      anchor === 'loading'
-        ? s.shipment?.addresses_shipments_loading_address_idToaddresses
-        : s.shipment?.addresses_shipments_delivery_address_idToaddresses;
-    const prefix = plzPrefix(addr?.zip, prefixDigits);
-    const country = (addr?.country_code ?? 'DE').toUpperCase();
-    if (!prefix) continue;
-    ankerSet.add(`${country}|${prefix}`);
+    const a = pickAnchorAddress(s.shipment, anchor);
+    const prefix = plzPrefix(a.zip, prefixDigits);
+    if (prefix) ankerPrefixSet.add(`${a.country}|${prefix}`);
+    const cid: string | null = s.shipment?.customer_id ?? null;
+    if (cid) ankerCustomerIds.add(cid);
+    if (a.lat != null && a.lng != null && Number.isFinite(a.lat) && Number.isFinite(a.lng)) {
+      ankerCoords.push({ lat: a.lat, lng: a.lng });
+    }
   }
-  if (ankerSet.size === 0) return [];
 
-  type AnkerOr = { country_code: string; zip: { startsWith: string } };
-  const anchorOrs: AnkerOr[] = [];
-  for (const key of ankerSet) {
+  // C3: DB-WHERE OR-Cascade — zip-Prefix (bestehend) OR customerId
+  // OR Bounding-Box pro Anker-Coord (Radius vor-filter; Haversine-
+  // refine im Post-Filter unten).
+  const orClauses: any[] = [];
+  for (const key of ankerPrefixSet) {
     const [country, prefix] = key.split('|');
-    anchorOrs.push({ country_code: country, zip: { startsWith: prefix } });
+    orClauses.push({
+      [anchorAddrField]: {
+        country_code: country,
+        zip: { startsWith: prefix },
+      },
+    });
   }
-  const addressFilter = { OR: anchorOrs };
+  if (ankerCustomerIds.size > 0) {
+    orClauses.push({ customer_id: { in: Array.from(ankerCustomerIds) } });
+  }
+  if (radiusKm > 0) {
+    for (const c of ankerCoords) {
+      const bb = bboxFor(c, radiusKm);
+      orClauses.push({
+        [anchorAddrField]: {
+          lat: { gte: bb.latMin, lte: bb.latMax },
+          lng: { gte: bb.lngMin, lte: bb.lngMax },
+        },
+      });
+    }
+  }
+  if (orClauses.length === 0) return [];
+
   const where: Record<string, unknown> = {
     deleted_at: null,
     tour_id: null,
     status,
-    ...(anchor === 'loading'
-      ? { addresses_shipments_loading_address_idToaddresses: addressFilter }
-      : { addresses_shipments_delivery_address_idToaddresses: addressFilter }),
+    OR: orClauses,
   };
   const rows = await prisma.shipments.findMany({
     where,
     take: cap,
     select: POOL_ITEM_SELECT,
   });
-  return rows.map((r: any) => mapShipmentToPoolItem(r, { anchor }));
+
+  // C3: Post-Filter — Bounding-Box im SQL ist nur grobe Vorauswahl;
+  // Haversine-refine schliesst Ecken der BBox aus. Items, die ueber
+  // zip-Prefix ODER customerId reinkamen, bleiben unabhaengig vom
+  // Radius — additive OR-Regel.
+  const filtered = rows.filter((r: any) => {
+    const a =
+      anchor === 'loading'
+        ? r?.addresses_shipments_loading_address_idToaddresses
+        : r?.addresses_shipments_delivery_address_idToaddresses;
+    const country = (a?.country_code ?? 'DE').toUpperCase();
+    const zip = a?.zip ?? null;
+    // (a) zip-Prefix-Match
+    for (const key of ankerPrefixSet) {
+      const [c, p] = key.split('|');
+      if (c === country && typeof zip === 'string' && zip.startsWith(p)) {
+        return true;
+      }
+    }
+    // (b) customerId-Match
+    if (r.customer_id && ankerCustomerIds.has(r.customer_id)) return true;
+    // (c) Radius-Match (Haversine refine)
+    return rowMatchesRadius(r, anchor, ankerCoords, radiusKm);
+  });
+
+  return filtered.map((r: any) => mapShipmentToPoolItem(r, { anchor }));
 }
 
 // ─── FV-Sammelgut ─────────────────────────────────────────────
@@ -426,7 +566,14 @@ async function resolveFvSammelgutPool(
   prisma: any,
   tourId: string,
   cap: number,
+  prefixDigits: number,
+  radiusKm: number,
 ): Promise<ShipmentPoolItem[]> {
+  // C3: zusaetzlich customer_id + delivery_address (zip, country, lat,
+  // lng) je Tour-Sendung — Anker fuer customerId-Match + zip-Prefix
+  // (FV neu) + Radius-Match. Item-Mapping anchor bleibt 'loading'
+  // (FV-Konvention), aber der TOUR-Anker fuer Geo ist DELIVERY-seitig
+  // (Sammelgut-Cluster ist Empfaenger-zentriert).
   const tour = await prisma.tours.findUnique({
     where: { id: tourId },
     select: {
@@ -434,7 +581,11 @@ async function resolveFvSammelgutPool(
       shipments: {
         where: { deleted_at: null },
         select: {
+          customer_id: true,
           relation: { select: { network_partner_id: true } },
+          addresses_shipments_delivery_address_idToaddresses: {
+            select: { zip: true, country_code: true, lat: true, lng: true },
+          },
         },
       },
     },
@@ -442,11 +593,54 @@ async function resolveFvSammelgutPool(
   if (!tour) throw new Error('Tour nicht gefunden');
 
   const depotSet = new Set<string>();
+  const ankerPrefixSet = new Set<string>();
+  const ankerCustomerIds = new Set<string>();
+  const ankerCoords: AnchorCoord[] = [];
   for (const sh of tour.shipments ?? []) {
     const npid = sh.relation?.network_partner_id;
     if (npid) depotSet.add(npid);
+    const cid: string | null = sh.customer_id ?? null;
+    if (cid) ankerCustomerIds.add(cid);
+    const a = pickAnchorAddress(sh, 'delivery');
+    const prefix = plzPrefix(a.zip, prefixDigits);
+    if (prefix) ankerPrefixSet.add(`${a.country}|${prefix}`);
+    if (a.lat != null && a.lng != null && Number.isFinite(a.lat) && Number.isFinite(a.lng)) {
+      ankerCoords.push({ lat: a.lat, lng: a.lng });
+    }
   }
-  if (depotSet.size === 0) return [];
+
+  // C3: OR-Cascade — bestehender Depot-Match + customerId + zip-Prefix
+  // (NEU) + Radius-BBox. Carlos-Annahme (a): Geo ERGAENZT Depot-Match.
+  const orClauses: any[] = [];
+  if (depotSet.size > 0) {
+    orClauses.push({
+      relation: { network_partner_id: { in: Array.from(depotSet) } },
+    });
+  }
+  if (ankerCustomerIds.size > 0) {
+    orClauses.push({ customer_id: { in: Array.from(ankerCustomerIds) } });
+  }
+  for (const key of ankerPrefixSet) {
+    const [country, prefix] = key.split('|');
+    orClauses.push({
+      addresses_shipments_delivery_address_idToaddresses: {
+        country_code: country,
+        zip: { startsWith: prefix },
+      },
+    });
+  }
+  if (radiusKm > 0) {
+    for (const c of ankerCoords) {
+      const bb = bboxFor(c, radiusKm);
+      orClauses.push({
+        addresses_shipments_delivery_address_idToaddresses: {
+          lat: { gte: bb.latMin, lte: bb.latMax },
+          lng: { gte: bb.lngMin, lte: bb.lngMax },
+        },
+      });
+    }
+  }
+  if (orClauses.length === 0) return [];
 
   const rows = await prisma.shipments.findMany({
     where: {
@@ -454,12 +648,40 @@ async function resolveFvSammelgutPool(
       tour_id: null,
       status: 'in_warehouse',
       transport_type: 'SAMMELGUT',
-      relation: { network_partner_id: { in: Array.from(depotSet) } },
+      OR: orClauses,
     },
     take: cap,
     select: POOL_ITEM_SELECT,
   });
-  return rows.map((r: any) =>
+
+  // C3: Post-Filter — wie NV: BBox refinen, zip/customerId/Depot
+  // sind exakt; Items, die einen der vier Pfade treffen, bleiben drin.
+  const filtered = rows.filter((r: any) => {
+    // (1) Depot-Match
+    if (
+      r.relation_id &&
+      r.relation?.network_partner_id &&
+      depotSet.has(r.relation.network_partner_id)
+    ) {
+      return true;
+    }
+    // (2) customerId-Match
+    if (r.customer_id && ankerCustomerIds.has(r.customer_id)) return true;
+    // (3) zip-Prefix-Match (delivery)
+    const a = r?.addresses_shipments_delivery_address_idToaddresses;
+    const country = (a?.country_code ?? 'DE').toUpperCase();
+    const zip = a?.zip ?? null;
+    for (const key of ankerPrefixSet) {
+      const [c, p] = key.split('|');
+      if (c === country && typeof zip === 'string' && zip.startsWith(p)) {
+        return true;
+      }
+    }
+    // (4) Radius-Match (delivery)
+    return rowMatchesRadius(r, 'delivery', ankerCoords, radiusKm);
+  });
+
+  return filtered.map((r: any) =>
     mapShipmentToPoolItem(r, { anchor: 'loading', withFvFields: true }),
   );
 }

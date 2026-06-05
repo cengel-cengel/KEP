@@ -258,10 +258,20 @@ describe('poolShipments.lib — resolvePool (nv-pickup)', () => {
     const callArg = findManyMock.mock.calls[0][0];
     expect(callArg.where.status).toBe('new');
     expect(callArg.where.tour_id).toBeNull();
-    const addrFilter =
-      callArg.where.addresses_shipments_loading_address_idToaddresses;
-    expect(addrFilter.OR).toEqual([
-      { country_code: 'DE', zip: { startsWith: '704' } },
+    // C3: WHERE.OR enthaelt jetzt prefix-clauses (+ ggf. customer/
+    // BBox); Fixture ohne customer_id/lat/lng → nur prefix-clauses.
+    const prefixOrs = callArg.where.OR.filter(
+      (c: any) =>
+        c.addresses_shipments_loading_address_idToaddresses?.zip
+          ?.startsWith,
+    );
+    expect(prefixOrs).toEqual([
+      {
+        addresses_shipments_loading_address_idToaddresses: {
+          country_code: 'DE',
+          zip: { startsWith: '704' },
+        },
+      },
     ]);
     expect(callArg.take).toBe(POOL_CAP_DEFAULT);
   });
@@ -283,11 +293,18 @@ describe('poolShipments.lib — resolvePool (nv-pickup)', () => {
       shipments: { findMany: findManyMock },
     };
     await resolvePool(prisma as any, 't1', 'nv-pickup');
-    const or =
-      findManyMock.mock.calls[0][0].where
-        .addresses_shipments_loading_address_idToaddresses.OR;
-    expect(or).toHaveLength(3);
-    expect(or).toEqual(
+    const prefixOrs = findManyMock.mock.calls[0][0].where.OR.filter(
+      (c: any) =>
+        c.addresses_shipments_loading_address_idToaddresses?.zip
+          ?.startsWith,
+    );
+    expect(prefixOrs).toHaveLength(3);
+    expect(
+      prefixOrs.map(
+        (c: any) =>
+          c.addresses_shipments_loading_address_idToaddresses,
+      ),
+    ).toEqual(
       expect.arrayContaining([
         { country_code: 'DE', zip: { startsWith: '704' } },
         { country_code: 'DE', zip: { startsWith: '803' } },
@@ -321,10 +338,15 @@ describe('poolShipments.lib — resolvePool (nv-pickup)', () => {
       shipments: { findMany: findManyMock },
     };
     await resolvePool(prisma as any, 't1', 'nv-pickup', { prefixDigits: 2 });
-    const or =
-      findManyMock.mock.calls[0][0].where
-        .addresses_shipments_loading_address_idToaddresses.OR;
-    expect(or[0].zip.startsWith).toBe('70');
+    const prefixOrs = findManyMock.mock.calls[0][0].where.OR.filter(
+      (c: any) =>
+        c.addresses_shipments_loading_address_idToaddresses?.zip
+          ?.startsWith,
+    );
+    expect(
+      prefixOrs[0].addresses_shipments_loading_address_idToaddresses.zip
+        .startsWith,
+    ).toBe('70');
   });
 
   it('Tour nicht gefunden → Error', async () => {
@@ -340,9 +362,23 @@ describe('poolShipments.lib — resolvePool (nv-pickup)', () => {
 
 describe('poolShipments.lib — resolvePool (nv-delivery)', () => {
   it('Anker aus DELIVERY-Stops, status=in_warehouse, delivery-Adresse-Filter, anchor=delivery', async () => {
-    const findManyMock = jest
-      .fn()
-      .mockResolvedValue([makeShipmentRow({ id: 's3' })]);
+    const findManyMock = jest.fn().mockResolvedValue([
+      // C3-fix: delivery-zip muss zum Anker-Prefix ('603') passen,
+      // damit der neue Post-Filter (zip-prefix-Match auf anchor-Adresse)
+      // das Item durchlaesst. Vorher unbeachtet, weil nur der SQL-
+      // Mock zaehlte.
+      makeShipmentRow({
+        id: 's3',
+        addresses_shipments_delivery_address_idToaddresses: {
+          lat: 48.13,
+          lng: 11.58,
+          zip: '60311',
+          city: 'Frankfurt',
+          street: 'Marienpl. 1',
+          country_code: 'DE',
+        },
+      }),
+    ]);
     const prisma = {
       nv_touren: {
         findUnique: jest.fn().mockResolvedValue({
@@ -367,8 +403,8 @@ describe('poolShipments.lib — resolvePool (nv-delivery)', () => {
     expect(out).toHaveLength(1);
     // anchor=delivery: zip/city/lat/lng aus delivery-Adresse
     expect(out[0]).toMatchObject({
-      zip: '80331',
-      city: 'Muenchen',
+      zip: '60311',
+      city: 'Frankfurt',
       lat: 48.13,
       lng: 11.58,
       // loading_street bleibt loading
@@ -386,12 +422,26 @@ describe('poolShipments.lib — resolvePool (nv-delivery)', () => {
     );
     const callArg = findManyMock.mock.calls[0][0];
     expect(callArg.where.status).toBe('in_warehouse');
-    expect(
-      callArg.where.addresses_shipments_delivery_address_idToaddresses.OR,
-    ).toEqual([{ country_code: 'DE', zip: { startsWith: '603' } }]);
-    expect(
-      callArg.where.addresses_shipments_loading_address_idToaddresses,
-    ).toBeUndefined();
+    // C3: prefix-clauses sitzen in WHERE.OR und targeten delivery-Adresse.
+    const prefixOrs = callArg.where.OR.filter(
+      (c: any) =>
+        c.addresses_shipments_delivery_address_idToaddresses?.zip
+          ?.startsWith,
+    );
+    expect(prefixOrs).toEqual([
+      {
+        addresses_shipments_delivery_address_idToaddresses: {
+          country_code: 'DE',
+          zip: { startsWith: '603' },
+        },
+      },
+    ]);
+    // KEINE loading-Adresse-OR-Klausel im NV-delivery-Pfad.
+    const loadingOrs = callArg.where.OR.filter(
+      (c: any) =>
+        c.addresses_shipments_loading_address_idToaddresses != null,
+    );
+    expect(loadingOrs).toEqual([]);
   });
 });
 
@@ -451,7 +501,11 @@ describe('poolShipments.lib — resolvePool (fv-sammelgut)', () => {
     expect(callArg.where.status).toBe('in_warehouse');
     expect(callArg.where.transport_type).toBe('SAMMELGUT');
     expect(callArg.where.tour_id).toBeNull();
-    expect(callArg.where.relation.network_partner_id.in.sort()).toEqual(
+    // C3: Depot-Match sitzt jetzt als OR-Klausel.
+    const depotOr = callArg.where.OR.find(
+      (c: any) => c.relation?.network_partner_id?.in,
+    );
+    expect(depotOr.relation.network_partner_id.in.sort()).toEqual(
       ['np-A', 'np-B'].sort(),
     );
   });
@@ -714,5 +768,425 @@ describe('C2 customer_id im POOL_ITEM_SELECT/Mapper', () => {
     const row3 = { ...row1, customer_id: null, customers: { name: 'X' } };
     const m3 = mapShipmentToPoolItem(row3, { anchor: 'loading' });
     expect(m3.customer_id).toBeNull();
+  });
+});
+
+// ─── C3 (Sprint Geo-Hof): resolvePool Geo-Match-Cascade ─────────
+
+describe('C3 resolvePool NV — Geo-Match (customer/prefix/radius)', () => {
+  function nvTour(stops: any[]) {
+    return {
+      nv_touren: {
+        findUnique: jest.fn().mockResolvedValue({ id: 't1', stops }),
+      },
+    };
+  }
+  function pickupStop(
+    zip: string,
+    country = 'DE',
+    lat: number | null = null,
+    lng: number | null = null,
+    customer_id: string | null = null,
+  ) {
+    return {
+      stop_type: 'PICKUP',
+      shipment: {
+        customer_id,
+        addresses_shipments_loading_address_idToaddresses: {
+          zip,
+          country_code: country,
+          lat,
+          lng,
+        },
+        addresses_shipments_delivery_address_idToaddresses: null,
+      },
+    };
+  }
+
+  it('customerId-Match: Tour-Anker hat customer_id, Pool-Sendung gleicher customer_id → passt (auch ohne PLZ-Match)', async () => {
+    // Tour-Stop hat customer_id='c1', aber kein zip → KEIN prefix-Anker.
+    // Pool-Sendung weitab (delivery=70435 vs Tour-keine-zip), aber
+    // customer_id='c1' → matched.
+    const findMany = jest.fn().mockResolvedValue([
+      makeShipmentRow({
+        id: 's-cust',
+        customer_id: 'c1',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: 48.78, lng: 9.18, zip: '70435', city: 'S',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      ...nvTour([
+        // Stop ohne zip + ohne lat/lng + nur customer_id.
+        {
+          stop_type: 'PICKUP',
+          shipment: {
+            customer_id: 'c1',
+            addresses_shipments_loading_address_idToaddresses: {
+              zip: null,
+              country_code: 'DE',
+              lat: null,
+              lng: null,
+            },
+            addresses_shipments_delivery_address_idToaddresses: null,
+          },
+        },
+      ]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'nv-pickup');
+    expect(out.map((x) => x.id)).toEqual(['s-cust']);
+    // WHERE.OR enthaelt customer_id-clause.
+    const where = findMany.mock.calls[0][0].where;
+    const custOr = where.OR.find((c: any) => c.customer_id?.in);
+    expect(custOr.customer_id.in).toEqual(['c1']);
+  });
+
+  it('zip-Prefix bleibt NV-Pfad (prefix3 default)', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      makeShipmentRow({
+        id: 's-prefix',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: 48.78, lng: 9.18, zip: '70499', city: 'S',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      ...nvTour([pickupStop('70435')]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'nv-pickup');
+    expect(out.map((x) => x.id)).toEqual(['s-prefix']);
+  });
+
+  it('Radius-Match (NV 20 km default): Pool-Sendung weit weg → raus, in Radius → drin', async () => {
+    // Tour-Anker: Stuttgart-Hbf (48.7758, 9.1829).
+    // Pool: (a) Esslingen ~10 km → drin, (b) Karlsruhe ~64 km → raus.
+    const findMany = jest.fn().mockResolvedValue([
+      makeShipmentRow({
+        id: 's-esslingen',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: 48.7406, lng: 9.31, zip: '73728', city: 'Esslingen',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+      makeShipmentRow({
+        id: 's-karlsruhe',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: 49.0069, lng: 8.4037, zip: '76131', city: 'Karlsruhe',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      // Anker mit zip='9999' (kein Pool-Match darueber) + lat/lng.
+      ...nvTour([pickupStop('9999', 'DE', 48.7758, 9.1829)]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'nv-pickup');
+    expect(out.map((x) => x.id)).toEqual(['s-esslingen']);
+  });
+
+  it('Default-Radius greift: NV=20 km, FV=100 km (Karlsruhe ~64 km)', async () => {
+    // Setup wie zuvor; Karlsruhe sollte bei NV draussen, bei FV
+    // theoretisch drin sein (Test FV-Pfad separat unten).
+    const findMany = jest.fn().mockResolvedValue([
+      makeShipmentRow({
+        id: 's-karlsruhe',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: 49.0069, lng: 8.4037, zip: '76131', city: 'Karlsruhe',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      ...nvTour([pickupStop('9999', 'DE', 48.7758, 9.1829)]),
+      shipments: { findMany },
+    };
+    const outDefault = await resolvePool(prisma as any, 't1', 'nv-pickup');
+    expect(outDefault).toEqual([]); // 20 km Default schliesst aus.
+    // Mit radiusKm=100 → drin.
+    const out100 = await resolvePool(
+      prisma as any,
+      't1',
+      'nv-pickup',
+      { radiusKm: 100 },
+    );
+    expect(out100.map((x) => x.id)).toEqual(['s-karlsruhe']);
+  });
+
+  it('Radius-Pfad uebersprungen wenn Anker ohne lat/lng (kein NaN-Match)', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      makeShipmentRow({
+        id: 's-far',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: 48.7758, lng: 9.1829, zip: '76131', city: 'X',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      // Anker hat zip='704' (greift Prefix) + KEIN lat/lng → kein
+      // Radius-Pfad. Item-zip '76131' matcht prefix3='704' NICHT.
+      // customer_id beide null. → kein Pfad triggert → leer.
+      ...nvTour([pickupStop('70435', 'DE', null, null)]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'nv-pickup');
+    expect(out).toEqual([]);
+  });
+
+  it('OR-Kombi: customer_id OR prefix OR radius (1 trifft reicht)', async () => {
+    // 3 Pool-Sendungen, eine pro Pfad:
+    const findMany = jest.fn().mockResolvedValue([
+      // (a) Customer-Match
+      makeShipmentRow({
+        id: 's-c',
+        customer_id: 'c1',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: 50, lng: 5, zip: '99999', city: 'far',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+      // (b) Prefix-Match
+      makeShipmentRow({
+        id: 's-p',
+        customer_id: 'c-other',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: 50, lng: 5, zip: '70499', city: 'near-by-zip',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+      // (c) Radius-Match (Esslingen)
+      makeShipmentRow({
+        id: 's-r',
+        customer_id: 'c-other',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: 48.7406, lng: 9.31, zip: '99999', city: 'Esslingen',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+      // (d) NICHTS matcht → raus
+      makeShipmentRow({
+        id: 's-nope',
+        customer_id: 'c-other',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: 50, lng: 5, zip: '99999', city: 'nope',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      ...nvTour([pickupStop('70435', 'DE', 48.7758, 9.1829, 'c1')]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'nv-pickup');
+    expect(out.map((x) => x.id).sort()).toEqual(['s-c', 's-p', 's-r']);
+  });
+
+  it('Keine Anker (kein prefix + kein customer + kein lat/lng) → leerer Pool, KEINE shipments-Query', async () => {
+    const findMany = jest.fn();
+    const prisma = {
+      ...nvTour([
+        {
+          stop_type: 'PICKUP',
+          shipment: {
+            customer_id: null,
+            addresses_shipments_loading_address_idToaddresses: {
+              zip: null, country_code: 'DE', lat: null, lng: null,
+            },
+            addresses_shipments_delivery_address_idToaddresses: null,
+          },
+        },
+      ]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'nv-pickup');
+    expect(out).toEqual([]);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('C3 resolvePool FV-Sammelgut — Geo-Match', () => {
+  function fvTour(shipments: any[]) {
+    return {
+      tours: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 't1',
+          shipments,
+        }),
+      },
+    };
+  }
+  function fvAnkerShipment(opts: {
+    customer_id?: string | null;
+    network_partner_id?: string | null;
+    deliveryZip?: string | null;
+    deliveryCountry?: string;
+    deliveryLat?: number | null;
+    deliveryLng?: number | null;
+  }) {
+    return {
+      customer_id: opts.customer_id ?? null,
+      relation: opts.network_partner_id
+        ? { network_partner_id: opts.network_partner_id }
+        : null,
+      addresses_shipments_delivery_address_idToaddresses: {
+        zip: opts.deliveryZip ?? null,
+        country_code: opts.deliveryCountry ?? 'DE',
+        lat: opts.deliveryLat ?? null,
+        lng: opts.deliveryLng ?? null,
+      },
+    };
+  }
+
+  it('Depot-Match bleibt (FV-bestehende Regel) + zip-Prefix NEU als OR-Pfad', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      // Item via Depot
+      makeShipmentRow({
+        id: 's-depot',
+        transport_type: 'SAMMELGUT',
+        customer_id: 'c-other',
+        relation_id: 'r1',
+        relation: { code: 'X', network_partner_id: 'np-A' },
+        addresses_shipments_delivery_address_idToaddresses: {
+          lat: 50, lng: 5, zip: '99999', city: 'far-no-prefix',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+      // Item via delivery-zip-Prefix
+      makeShipmentRow({
+        id: 's-zip',
+        transport_type: 'SAMMELGUT',
+        customer_id: 'c-other',
+        relation_id: 'r-other',
+        relation: { code: 'X', network_partner_id: 'np-not-anker' },
+        addresses_shipments_delivery_address_idToaddresses: {
+          lat: 50, lng: 5, zip: '60311', city: 'Frankfurt',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      ...fvTour([
+        fvAnkerShipment({
+          network_partner_id: 'np-A',
+          deliveryZip: '60305',
+          deliveryCountry: 'DE',
+        }),
+      ]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'fv-sammelgut');
+    expect(out.map((x) => x.id).sort()).toEqual(['s-depot', 's-zip']);
+    // WHERE.OR enthaelt sowohl Depot-Klausel als auch zip-Prefix.
+    const where = findMany.mock.calls[0][0].where;
+    expect(where.OR.some((c: any) => c.relation?.network_partner_id?.in))
+      .toBe(true);
+    expect(
+      where.OR.some(
+        (c: any) =>
+          c.addresses_shipments_delivery_address_idToaddresses?.zip
+            ?.startsWith,
+      ),
+    ).toBe(true);
+  });
+
+  it('Radius-Pfad (FV Default 100 km, delivery-Adresse)', async () => {
+    // Tour-Anker delivery=Stuttgart. Pool Karlsruhe (~64 km) → drin.
+    // Muenchen (~192 km) → raus.
+    const findMany = jest.fn().mockResolvedValue([
+      makeShipmentRow({
+        id: 's-karlsruhe',
+        transport_type: 'SAMMELGUT',
+        customer_id: 'c-other',
+        relation_id: 'r-other',
+        relation: { code: 'X', network_partner_id: 'np-other' },
+        addresses_shipments_delivery_address_idToaddresses: {
+          lat: 49.0069, lng: 8.4037, zip: '76131', city: 'Karlsruhe',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+      makeShipmentRow({
+        id: 's-muenchen',
+        transport_type: 'SAMMELGUT',
+        customer_id: 'c-other',
+        relation_id: 'r-other',
+        relation: { code: 'X', network_partner_id: 'np-other' },
+        addresses_shipments_delivery_address_idToaddresses: {
+          lat: 48.1351, lng: 11.582, zip: '80331', city: 'Muenchen',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      ...fvTour([
+        // Tour-Anker: Stuttgart-Hbf delivery, keine network_partner_id
+        // damit depot-Pfad nicht greift, kein zip-Prefix-Match
+        // (anker-zip='9999').
+        fvAnkerShipment({
+          network_partner_id: null,
+          deliveryZip: '9999',
+          deliveryLat: 48.7758,
+          deliveryLng: 9.1829,
+        }),
+      ]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'fv-sammelgut');
+    expect(out.map((x) => x.id)).toEqual(['s-karlsruhe']);
+  });
+
+  it('customer_id-Pfad FV', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      makeShipmentRow({
+        id: 's-cust',
+        transport_type: 'SAMMELGUT',
+        customer_id: 'c1',
+        relation_id: 'r-other',
+        relation: { code: 'X', network_partner_id: 'np-other' },
+        addresses_shipments_delivery_address_idToaddresses: {
+          lat: 50, lng: 5, zip: '99999', city: 'far',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      ...fvTour([
+        fvAnkerShipment({
+          customer_id: 'c1',
+          network_partner_id: null,
+          deliveryZip: null,
+        }),
+      ]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'fv-sammelgut');
+    expect(out.map((x) => x.id)).toEqual(['s-cust']);
+  });
+
+  it('Keine Anker (kein Depot/customer/zip/lat-lng) → leerer Pool, KEINE shipments-Query', async () => {
+    const findMany = jest.fn();
+    const prisma = {
+      ...fvTour([fvAnkerShipment({})]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'fv-sammelgut');
+    expect(out).toEqual([]);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('C3 Defaults: Radius-Konstanten exportiert', () => {
+  it('NV_RADIUS_KM_DEFAULT = 20, FV_RADIUS_KM_DEFAULT = 100', async () => {
+    const {
+      NV_RADIUS_KM_DEFAULT,
+      FV_RADIUS_KM_DEFAULT,
+    } = await import('./poolShipments.lib');
+    expect(NV_RADIUS_KM_DEFAULT).toBe(20);
+    expect(FV_RADIUS_KM_DEFAULT).toBe(100);
   });
 });

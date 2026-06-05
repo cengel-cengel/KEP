@@ -951,12 +951,13 @@ describe('C3 resolvePool NV — Geo-Match (customer/prefix/radius)', () => {
           street: 'X', country_code: 'DE',
         },
       }),
-      // (b) Prefix-Match
+      // (b) Prefix-Match Fallback — C3b: nur ohne Geo greift prefix3.
+      // Item ohne lat/lng → minDistToAnkers=null → Fallback-Pfad.
       makeShipmentRow({
         id: 's-p',
         customer_id: 'c-other',
         addresses_shipments_loading_address_idToaddresses: {
-          lat: 50, lng: 5, zip: '70499', city: 'near-by-zip',
+          lat: null, lng: null, zip: '70499', city: 'no-geo-prefix',
           street: 'X', country_code: 'DE',
         },
       }),
@@ -1188,5 +1189,258 @@ describe('C3 Defaults: Radius-Konstanten exportiert', () => {
     } = await import('./poolShipments.lib');
     expect(NV_RADIUS_KM_DEFAULT).toBe(20);
     expect(FV_RADIUS_KM_DEFAULT).toBe(100);
+  });
+});
+
+// ─── C3b (NV-Nachbesserung): echter 20-km-Radius + distance_km ──
+
+describe('C3b NV resolvePool — echter Haversine-Radius + distance_km', () => {
+  function nvTour(stops: any[]) {
+    return {
+      nv_touren: {
+        findUnique: jest.fn().mockResolvedValue({ id: 't1', stops }),
+      },
+    };
+  }
+  function pickupStop(
+    zip: string | null,
+    country = 'DE',
+    lat: number | null = null,
+    lng: number | null = null,
+    customer_id: string | null = null,
+  ) {
+    return {
+      stop_type: 'PICKUP',
+      shipment: {
+        customer_id,
+        addresses_shipments_loading_address_idToaddresses: {
+          zip,
+          country_code: country,
+          lat,
+          lng,
+        },
+        addresses_shipments_delivery_address_idToaddresses: null,
+      },
+    };
+  }
+  // Stuttgart-Hbf
+  const stgt = { lat: 48.7758, lng: 9.1829 };
+
+  it('≤20km drin + distance_km = echte Haversine-Distanz', async () => {
+    // Esslingen ~10 km von Stuttgart-Hbf.
+    const findMany = jest.fn().mockResolvedValue([
+      makeShipmentRow({
+        id: 's-esslingen',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: 48.7406, lng: 9.31, zip: '73728', city: 'Esslingen',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      // Anker ohne PLZ-Treffer, NUR via Geo erreichbar.
+      ...nvTour([pickupStop('9999', 'DE', stgt.lat, stgt.lng)]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'nv-pickup');
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe('s-esslingen');
+    expect(out[0].distance_km).toBeGreaterThan(0);
+    expect(out[0].distance_km).toBeLessThan(20);
+  });
+
+  it('>20km raus AUCH wenn zip-Prefix matchen wuerde (Geo dominiert)', async () => {
+    // Item-Geo weit weg, aber zip='70499' matcht Anker-prefix '704'.
+    // C3b: weil Geo (item+anker) vorhanden ist, gilt strict Haversine
+    // → prefix-Match wird ignoriert → DROP.
+    const findMany = jest.fn().mockResolvedValue([
+      makeShipmentRow({
+        id: 's-far-but-prefix',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: 51.1657, lng: 10.4515, zip: '70499', city: 'far',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      ...nvTour([pickupStop('70435', 'DE', stgt.lat, stgt.lng)]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'nv-pickup');
+    expect(out).toEqual([]);
+  });
+
+  it('prefix3-Fallback NUR wenn Item KEINE Geo (anker hat Geo)', async () => {
+    // Item ohne lat/lng + zip='70499' → fallback prefix-Match (700 km
+    // entfernt wäre OK, Geo ist nicht verfuegbar).
+    const findMany = jest.fn().mockResolvedValue([
+      makeShipmentRow({
+        id: 's-no-geo-prefix',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: null, lng: null, zip: '70499', city: 'no-geo',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      ...nvTour([pickupStop('70435', 'DE', stgt.lat, stgt.lng)]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'nv-pickup');
+    expect(out.map((x) => x.id)).toEqual(['s-no-geo-prefix']);
+    // Fallback ohne Geo → distance_km=0.
+    expect(out[0].distance_km).toBe(0);
+  });
+
+  it('prefix3-Fallback NUR wenn Anker KEINE Geo (Item hat Geo)', async () => {
+    // Anker ohne lat/lng → ankerCoords leer → fallback prefix-Match
+    // greift. Item lat/lng vorhanden (irrelevant in Fallback-Pfad).
+    const findMany = jest.fn().mockResolvedValue([
+      makeShipmentRow({
+        id: 's-item-geo-fallback',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: 51.5, lng: 7.0, zip: '70499', city: 'irgendwo',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      ...nvTour([pickupStop('70435', 'DE', null, null)]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'nv-pickup');
+    expect(out.map((x) => x.id)).toEqual(['s-item-geo-fallback']);
+    expect(out[0].distance_km).toBe(0);
+  });
+
+  it('Geo vorhanden + ausserhalb Radius + prefix NICHT match → DROP', async () => {
+    // Item far + zip nicht im Anker-prefix. C3b: alles dropt.
+    const findMany = jest.fn().mockResolvedValue([
+      makeShipmentRow({
+        id: 's-nope',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: 51.5, lng: 7.0, zip: '99999', city: 'far',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      ...nvTour([pickupStop('70435', 'DE', stgt.lat, stgt.lng)]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'nv-pickup');
+    expect(out).toEqual([]);
+  });
+
+  it('customerId-Pfad unabhaengig von Radius (+ distance_km echt, wenn coords)', async () => {
+    // Item: customer matched + Karlsruhe (~64 km, ausserhalb 20 km).
+    // C3b: customer-Pfad bleibt; distance_km wird trotzdem real gesetzt.
+    const findMany = jest.fn().mockResolvedValue([
+      makeShipmentRow({
+        id: 's-cust',
+        customer_id: 'c1',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: 49.0069, lng: 8.4037, zip: '76131', city: 'Karlsruhe',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      ...nvTour([
+        pickupStop('70435', 'DE', stgt.lat, stgt.lng, 'c1'),
+      ]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'nv-pickup');
+    expect(out.map((x) => x.id)).toEqual(['s-cust']);
+    expect(out[0].distance_km).toBeGreaterThan(60);
+    expect(out[0].distance_km).toBeLessThan(70);
+  });
+
+  it('customerId-Pfad ohne Item-Geo → distance_km=0 (kein NaN)', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      makeShipmentRow({
+        id: 's-cust-no-geo',
+        customer_id: 'c1',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: null, lng: null, zip: '99999', city: 'no-geo',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      ...nvTour([
+        pickupStop('70435', 'DE', stgt.lat, stgt.lng, 'c1'),
+      ]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'nv-pickup');
+    expect(out.map((x) => x.id)).toEqual(['s-cust-no-geo']);
+    expect(out[0].distance_km).toBe(0);
+  });
+
+  it('distance_km ist min-Distanz zum NAECHSTEN Anker (mehrere Anker)', async () => {
+    // 2 Anker: Stuttgart, Karlsruhe. Item: Esslingen (~10 km von
+    // Stuttgart, ~70 km von Karlsruhe) → distance = ~10.
+    const findMany = jest.fn().mockResolvedValue([
+      makeShipmentRow({
+        id: 's-esslingen',
+        addresses_shipments_loading_address_idToaddresses: {
+          lat: 48.7406, lng: 9.31, zip: '73728', city: 'Esslingen',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      ...nvTour([
+        pickupStop('9999', 'DE', 48.7758, 9.1829), // Stuttgart
+        pickupStop('9999', 'DE', 49.0069, 8.4037), // Karlsruhe
+      ]),
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'nv-pickup');
+    expect(out).toHaveLength(1);
+    // ~10 km zu Stuttgart, NICHT ~70 zu Karlsruhe.
+    expect(out[0].distance_km).toBeLessThan(15);
+  });
+
+  it('NV-delivery analog (delivery-Adresse als Anker, Radius greift)', async () => {
+    // delivery anker Stuttgart, Item delivery Esslingen ~10 km.
+    const findMany = jest.fn().mockResolvedValue([
+      makeShipmentRow({
+        id: 's-d',
+        addresses_shipments_delivery_address_idToaddresses: {
+          lat: 48.7406, lng: 9.31, zip: '73728', city: 'Esslingen',
+          street: 'X', country_code: 'DE',
+        },
+      }),
+    ]);
+    const prisma = {
+      nv_touren: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 't1',
+          stops: [
+            {
+              stop_type: 'DELIVERY',
+              shipment: {
+                customer_id: null,
+                addresses_shipments_loading_address_idToaddresses: null,
+                addresses_shipments_delivery_address_idToaddresses: {
+                  zip: '9999',
+                  country_code: 'DE',
+                  lat: stgt.lat,
+                  lng: stgt.lng,
+                },
+              },
+            },
+          ],
+        }),
+      },
+      shipments: { findMany },
+    };
+    const out = await resolvePool(prisma as any, 't1', 'nv-delivery');
+    expect(out.map((x) => x.id)).toEqual(['s-d']);
+    expect(out[0].distance_km).toBeGreaterThan(0);
+    expect(out[0].distance_km).toBeLessThan(20);
   });
 });

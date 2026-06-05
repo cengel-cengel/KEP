@@ -432,6 +432,30 @@ function rowMatchesRadius(
   return false;
 }
 
+/** C3b: min-Haversine-Distanz vom Pool-Item zur naechstgelegenen Tour-
+ *  Anker-Coord. null wenn entweder Item oder ALLE Anker keine valide
+ *  lat/lng haben. */
+function minDistToAnkers(
+  row: any,
+  anchor: 'loading' | 'delivery',
+  ankerCoords: AnchorCoord[],
+): number | null {
+  if (ankerCoords.length === 0) return null;
+  const a =
+    anchor === 'loading'
+      ? row?.addresses_shipments_loading_address_idToaddresses
+      : row?.addresses_shipments_delivery_address_idToaddresses;
+  const lat = a?.lat != null ? Number(a.lat) : NaN;
+  const lng = a?.lng != null ? Number(a.lng) : NaN;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  let min = Infinity;
+  for (const c of ankerCoords) {
+    const d = haversineKm({ lat, lng }, c);
+    if (d < min) min = d;
+  }
+  return Number.isFinite(min) ? min : null;
+}
+
 // ─── NV (pickup | delivery) ───────────────────────────────────
 
 async function resolveNvPool(
@@ -533,31 +557,52 @@ async function resolveNvPool(
     select: POOL_ITEM_SELECT,
   });
 
-  // C3: Post-Filter — Bounding-Box im SQL ist nur grobe Vorauswahl;
-  // Haversine-refine schliesst Ecken der BBox aus. Items, die ueber
-  // zip-Prefix ODER customerId reinkamen, bleiben unabhaengig vom
-  // Radius — additive OR-Regel.
-  const filtered = rows.filter((r: any) => {
+  // C3b NV: Match = customerId OR echter Haversine-Radius. prefix3 ist
+  // FALLBACK nur dann, wenn Sendung ODER Anker keine Geo-Koordinaten
+  // tragen — sonst wuerden Sendungen ohne lat/lng durchs Raster fallen.
+  // distance_km wird mit der echten min-Haversine-Distanz gesetzt
+  // (wo verfuegbar), damit C4 sortieren/anzeigen kann.
+  type Out = { row: any; distance_km: number };
+  const out: Out[] = [];
+  for (const r of rows) {
+    // (1) customerId-Match (Pfad unabhaengig von Geo)
+    const customerHit =
+      !!r.customer_id && ankerCustomerIds.has(r.customer_id);
+    // (2) Echte Haversine-Distanz (oder null bei fehlender Geo)
+    const dist = minDistToAnkers(r, anchor, ankerCoords);
+    if (customerHit) {
+      // dist kann null sein (keine Geo) → 0 als Default.
+      out.push({ row: r, distance_km: dist ?? 0 });
+      continue;
+    }
+    if (dist != null) {
+      // Geo verfuegbar: STRIKT Haversine 20km — kein prefix-Fallback.
+      if (radiusKm > 0 && dist <= radiusKm) {
+        out.push({ row: r, distance_km: dist });
+      }
+      // else: Geo da, aber ausserhalb Radius → DROP (auch wenn prefix
+      // matchen wuerde — Carlos C3b: prefix nur Fallback ohne Geo).
+      continue;
+    }
+    // (3) Fallback: Sendung ODER alle Anker ohne Geo → prefix3 greift.
     const a =
       anchor === 'loading'
         ? r?.addresses_shipments_loading_address_idToaddresses
         : r?.addresses_shipments_delivery_address_idToaddresses;
     const country = (a?.country_code ?? 'DE').toUpperCase();
     const zip = a?.zip ?? null;
-    // (a) zip-Prefix-Match
     for (const key of ankerPrefixSet) {
       const [c, p] = key.split('|');
       if (c === country && typeof zip === 'string' && zip.startsWith(p)) {
-        return true;
+        out.push({ row: r, distance_km: 0 });
+        break;
       }
     }
-    // (b) customerId-Match
-    if (r.customer_id && ankerCustomerIds.has(r.customer_id)) return true;
-    // (c) Radius-Match (Haversine refine)
-    return rowMatchesRadius(r, anchor, ankerCoords, radiusKm);
-  });
+  }
 
-  return filtered.map((r: any) => mapShipmentToPoolItem(r, { anchor }));
+  return out.map(({ row, distance_km }) =>
+    mapShipmentToPoolItem(row, { anchor, distance_km }),
+  );
 }
 
 // ─── FV-Sammelgut ─────────────────────────────────────────────

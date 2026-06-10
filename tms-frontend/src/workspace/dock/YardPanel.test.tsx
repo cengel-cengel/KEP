@@ -540,7 +540,8 @@ describe('YardPanel — smoke', () => {
     // T3+S-6.2: DE wird NICHT als Prefix gerendert (Default-Land);
     // PLZ-Cluster "803xx" collapsed 80331+80335 → 3 Sdg.
     expect(
-      await screen.findByText(/^803xx · 3 Sdg · ≈ \d+ LKW$/),
+      // C4: optionales " · ≤ N km"-Suffix bei distance_km>0.
+      await screen.findByText(/^803xx · 3 Sdg · ≈ \d+ LKW( · ≤ \d+ km)?$/),
     ).toBeInTheDocument();
   });
 
@@ -597,7 +598,7 @@ describe('YardPanel — smoke', () => {
     // Beide haben PLZ 80331 → "803xx"-Cluster mit Count 2 — KEIN
     // Praefix (DE+AT gemischt → uniformCountry returns null).
     expect(
-      await screen.findByText(/^803xx · 2 Sdg · ≈ \d+ LKW$/),
+      await screen.findByText(/^803xx · 2 Sdg · ≈ \d+ LKW( · ≤ \d+ km)?$/),
     ).toBeInTheDocument();
   });
 
@@ -1151,10 +1152,10 @@ describe('YardPanel — smoke', () => {
     );
     // 70435+70499 → "704xx" (2 Sdg); 71229 → "712xx" (1 Sdg).
     expect(
-      await screen.findByText(/^704xx · 2 Sdg · ≈ \d+ LKW$/),
+      await screen.findByText(/^704xx · 2 Sdg · ≈ \d+ LKW( · ≤ \d+ km)?$/),
     ).toBeInTheDocument();
     expect(
-      await screen.findByText(/^712xx · 1 Sdg · ≈ \d+ LKW$/),
+      await screen.findByText(/^712xx · 1 Sdg · ≈ \d+ LKW( · ≤ \d+ km)?$/),
     ).toBeInTheDocument();
   });
 
@@ -1293,6 +1294,195 @@ describe('YardPanel — smoke', () => {
     );
     expect(
       await screen.findByText(/Empfangs-PLZ 506xx · 2 Sdg · ≈ 2 LKW/),
+    ).toBeInTheDocument();
+  });
+
+  // ─── C4 (Sprint Geo-Hof): Customer-Clustering + ≤km-Suffix ────
+
+  it('C4 NV: gleicher customer_id mit >=2 Sdg → Customer-Cluster (Kundenname als Header)', async () => {
+    workspaceMock.mode = 'nv';
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nv-touren/tour-1/pool-shipments')) {
+        return Promise.resolve({
+          data: [
+            {
+              id: 'a1',
+              shipment_number: 'A-1',
+              weight_kg: 100,
+              ldm: 1,
+              customer_id: 'cust-WEB',
+              customer_name: 'WEBASTO',
+              lat: 48.78,
+              lng: 9.18,
+              zip: '70435',
+              city: 'Stuttgart',
+              loading_street: 'X',
+              loading_country: 'DE',
+              distance_km: 0,
+            },
+            {
+              id: 'a2',
+              shipment_number: 'A-2',
+              weight_kg: 200,
+              ldm: 1,
+              customer_id: 'cust-WEB',
+              customer_name: 'WEBASTO',
+              lat: 48.79,
+              lng: 9.19,
+              zip: '85435',
+              city: 'XYZ',
+              loading_street: 'X',
+              loading_country: 'DE',
+              distance_km: 14,
+            },
+            {
+              id: 'b1',
+              shipment_number: 'B-1',
+              weight_kg: 100,
+              ldm: 1,
+              customer_id: 'cust-OTHER',
+              customer_name: 'OtherKunde',
+              lat: 48.7,
+              lng: 9.0,
+              zip: '70439',
+              city: 'Stuttgart',
+              loading_street: 'X',
+              loading_country: 'DE',
+              distance_km: 5,
+            },
+          ],
+        });
+      }
+      if (url.includes('/nv-touren/tour-1/loading')) {
+        return Promise.resolve({ data: { id: 'tour-1', stops: [] } });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    // Customer-Cluster Header "WEBASTO · 2 Sdg · ≈ N LKW · ≤ 14 km"
+    expect(
+      await screen.findByText(
+        /^WEBASTO · 2 Sdg · ≈ \d+ LKW · ≤ 14 km$/,
+      ),
+    ).toBeInTheDocument();
+    // Single-Customer (cust-OTHER) faellt NICHT in Customer-Cluster,
+    // sondern in Geo-Cluster (PLZ-Prefix 704xx) — 1 Sdg.
+    expect(
+      await screen.findByText(/704xx · 1 Sdg · ≈ \d+ LKW · ≤ 5 km/),
+    ).toBeInTheDocument();
+  });
+
+  it('C4: customer_id mit nur 1 Sdg → KEIN Customer-Cluster (geht in Geo-Cluster)', async () => {
+    workspaceMock.mode = 'nv';
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nv-touren/tour-1/pool-shipments')) {
+        return Promise.resolve({
+          data: [
+            {
+              id: 'solo',
+              shipment_number: 'A-1',
+              weight_kg: 100,
+              ldm: 1,
+              customer_id: 'cust-SOLO',
+              customer_name: 'SoloKunde',
+              lat: 48.78,
+              lng: 9.18,
+              zip: '70435',
+              city: 'Stuttgart',
+              loading_street: 'X',
+              loading_country: 'DE',
+              distance_km: 0,
+            },
+            {
+              id: 'other',
+              shipment_number: 'B-1',
+              weight_kg: 100,
+              ldm: 1,
+              customer_id: 'cust-OTHER',
+              customer_name: 'OtherKunde',
+              lat: 48.78,
+              lng: 9.18,
+              zip: '70499',
+              city: 'Stuttgart',
+              loading_street: 'X',
+              loading_country: 'DE',
+              distance_km: 0,
+            },
+          ],
+        });
+      }
+      if (url.includes('/nv-touren/tour-1/loading')) {
+        return Promise.resolve({ data: { id: 'tour-1', stops: [] } });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    // Beide Single-Customer → 1 PLZ-Cluster "704xx · 2 Sdg".
+    // KEIN "SoloKunde"-Cluster.
+    expect(
+      await screen.findByText(/^704xx · 2 Sdg · ≈ \d+ LKW$/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^SoloKunde/)).toBeNull();
+  });
+
+  it('C4: ≤Xkm-Suffix entfaellt wenn alle distance_km=0 (z.B. prefix-Fallback)', async () => {
+    workspaceMock.mode = 'nv';
+    apiGet.mockImplementation((url: string) => {
+      if (url.includes('/nv-touren/tour-1/pool-shipments')) {
+        return Promise.resolve({
+          data: [
+            {
+              id: 'p1',
+              shipment_number: 'P-1',
+              weight_kg: 100,
+              ldm: 1,
+              customer_name: null,
+              lat: 0,
+              lng: 0,
+              zip: '70435',
+              city: 'S',
+              loading_street: 'X',
+              loading_country: 'DE',
+              distance_km: 0,
+            },
+            {
+              id: 'p2',
+              shipment_number: 'P-2',
+              weight_kg: 100,
+              ldm: 1,
+              customer_name: null,
+              lat: 0,
+              lng: 0,
+              zip: '70499',
+              city: 'S',
+              loading_street: 'X',
+              loading_country: 'DE',
+              distance_km: 0,
+            },
+          ],
+        });
+      }
+      if (url.includes('/nv-touren/tour-1/loading')) {
+        return Promise.resolve({ data: { id: 'tour-1', stops: [] } });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    render(
+      <Wrapper>
+        <YardPanel />
+      </Wrapper>,
+    );
+    // KEIN km-Suffix (alle distance_km=0).
+    expect(
+      await screen.findByText(/^704xx · 2 Sdg · ≈ \d+ LKW$/),
     ).toBeInTheDocument();
   });
 });

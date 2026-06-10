@@ -67,6 +67,9 @@ interface NearbyShipment {
   width_cm?: number | null;
   height_cm?: number | null;
   effective_pallets?: number | null;
+  // C2: customer_id direkt (vorher nur customer_name) — Voraussetzung
+  // fuer C4-Customer-Clustering.
+  customer_id?: string | null;
   customer_name: string | null;
   lat: number;
   lng: number;
@@ -527,25 +530,60 @@ export default function YardPanel() {
   //   NV: nach Versender-PLZ (loading.zip) — Carlos-Spec unveraendert.
   //   FV: Empfaenger-orientiert via fvReceiverGroup (Depot/Relation
   //       fuer Sammelgut, Empfangs-PLZ fuer Direkt/Sonderformen).
+  // C4 (Sprint Geo-Hof): Customer-Clustering vor geographischer
+  //   Gruppierung. Wenn dieselbe customer_id >=2 Sendungen im Pool
+  //   hat, kommt sie als eigener Customer-Cluster (Header = Kunde,
+  //   bypasst PLZ/Depot-Gruppe). Customer-Cluster werden vor den
+  //   geographischen sortiert; geographische dann nach min-Distanz.
   // S-6.2 Country-Prefix: Slot bekommt nur dann ein Country-Praefix,
   //   wenn ALLE Sendungen in der Gruppe dasselbe Land haben.
   //   NV: Versender-Land (loading_country)
   //   FV: Zustell-Land (delivery_country); Fallback loading_country
   const slots: YardSlot[] = useMemo(() => {
+    const items = nearbyQ.data ?? [];
+    // C4 Schritt 1: customer_id zaehlen — >=2 Sendungen pro Kunde
+    // qualifizieren fuer Customer-Cluster.
+    const customerCounts = new Map<string, number>();
+    for (const s of items) {
+      if (!s.customer_id) continue;
+      customerCounts.set(
+        s.customer_id,
+        (customerCounts.get(s.customer_id) ?? 0) + 1,
+      );
+    }
     const groups = new Map<
       string,
-      { label: string; ships: NearbyShipment[] }
+      {
+        label: string;
+        ships: NearbyShipment[];
+        isCustomer: boolean;
+      }
     >();
-    for (const s of nearbyQ.data ?? []) {
-      // T3: NV gruppiert nach Versender-PLZ-PRAEFIX (PLZ_CLUSTER_DIGITS).
-      // 225 Sdg ueber DE → ~3-5 Lanes statt 30+ → drastische Leer-km-
-      // Reduktion wenn 1 LKW pro Lane reicht.
-      const nvPrefix = plzPrefix(s.zip, PLZ_CLUSTER_DIGITS);
-      const { key, label } =
-        mode === 'fv'
-          ? fvReceiverGroup(s)
-          : { key: nvPrefix, label: nvPrefix };
-      const g = groups.get(key) ?? { label, ships: [] };
+    for (const s of items) {
+      let key: string;
+      let label: string;
+      let isCustomer = false;
+      // C4: Customer-Cluster wenn customer_id mit >=2 Sendungen.
+      if (
+        s.customer_id &&
+        (customerCounts.get(s.customer_id) ?? 0) >= 2
+      ) {
+        key = `cust-${s.customer_id}`;
+        label = s.customer_name ?? s.customer_id.slice(0, 8);
+        isCustomer = true;
+      } else if (mode === 'fv') {
+        const g = fvReceiverGroup(s);
+        key = g.key;
+        label = g.label;
+      } else {
+        // T3: NV gruppiert nach Versender-PLZ-PRAEFIX (PLZ_CLUSTER_DIGITS).
+        // 225 Sdg ueber DE → ~3-5 Lanes statt 30+ → drastische Leer-km-
+        // Reduktion wenn 1 LKW pro Lane reicht.
+        const nvPrefix = plzPrefix(s.zip, PLZ_CLUSTER_DIGITS);
+        key = nvPrefix;
+        label = nvPrefix;
+      }
+      const g = groups.get(key) ?? { label, ships: [], isCustomer };
       g.ships.push(s);
       groups.set(key, g);
     }
@@ -566,11 +604,35 @@ export default function YardPanel() {
       return cc;
     }
 
-    const sorted = Array.from(groups.entries()).sort(([, a], [, b]) =>
-      a.label.localeCompare(b.label),
-    );
+    // C4: Sortierung — Customer-Cluster zuerst (nach min-Distanz),
+    // dann geographische Cluster (nach min-Distanz, dann Label).
+    function minDistKm(ships: NearbyShipment[]): number {
+      let m = Infinity;
+      for (const s of ships) {
+        const d = Number(s.distance_km ?? 0);
+        if (Number.isFinite(d) && d < m) m = d;
+      }
+      return Number.isFinite(m) ? m : 0;
+    }
+    function maxDistKm(ships: NearbyShipment[]): number {
+      let m = 0;
+      for (const s of ships) {
+        const d = Number(s.distance_km ?? 0);
+        if (Number.isFinite(d) && d > m) m = d;
+      }
+      return m;
+    }
+    const sorted = Array.from(groups.entries()).sort(([, a], [, b]) => {
+      if (a.isCustomer !== b.isCustomer) return a.isCustomer ? -1 : 1;
+      const dA = minDistKm(a.ships);
+      const dB = minDistKm(b.ships);
+      if (dA !== dB) return dA - dB;
+      return a.label.localeCompare(b.label);
+    });
     const out: YardSlot[] = sorted.map(([key, g]) => {
-      const cc = uniformCountry(g.ships);
+      // Country-Praefix nur fuer geographische Cluster — Customer-
+      // Cluster sind durch den Kundennamen identifiziert.
+      const cc = g.isCustomer ? null : uniformCountry(g.ships);
       const prefix = cc && cc !== 'DE' ? `${cc} · ` : '';
       // S-6.3 C: FFD-Bin-Pack pro Gruppe → LKW-Zahl.
       // Pack-Einheit = Sendung (NIE gesplittet, Regel #2).
@@ -600,9 +662,14 @@ export default function YardPanel() {
       });
       const lkw = trailers.length;
       const sdg = g.ships.length;
-      // Slot-Label: "<group> · N Sdg · ≈ K LKW"
+      // Slot-Label: "<group> · N Sdg · ≈ K LKW [· ≤X km]"
+      // C4: distance-Suffix wenn mind. eine Sendung distance_km>0
+      // (echter Haversine aus C3b); macht Radius-Cluster sichtbar.
       const baseLabel = `${prefix}${g.label}`;
-      const fullLabel = `${baseLabel} · ${sdg} Sdg · ≈ ${lkw} LKW`;
+      const maxD = maxDistKm(g.ships);
+      const distSuffix =
+        maxD > 0 ? ` · ≤ ${Math.round(maxD)} km` : '';
+      const fullLabel = `${baseLabel} · ${sdg} Sdg · ≈ ${lkw} LKW${distSuffix}`;
       return {
         id: `g-${key}`,
         label: fullLabel,

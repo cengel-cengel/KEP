@@ -40,6 +40,36 @@ Daten-Realität (live gemessen, hat den ursprünglichen Plan überworfen):
 - **Geo-Fälle (FV-Direkt_Umschlag-Teilladung 50 km, Sammelgut-ohne-Depot 100 km)
   = Stufe 2**, braucht Geocoding auf business_partner/network_partner — Backlog.
 
+## Geo-Hof-Pool (Sprint C) — Architektur-Entscheidungen
+- **Match-Reihenfolge NV: customerId > strikt-Geo > prefix-Fallback.**
+  Wo Koordinaten vorhanden sind (Sendung UND Anker), DOMINIERT die
+  echte Haversine-Distanz — ein PLZ-Prefix-Match wird dann ignoriert
+  (Sendung 300 km weg mit zufällig passender PLZ fliegt raus).
+  `prefix3` lebt nur noch als Fallback für Geo-lose Daten, damit keine
+  Sendung durchs Raster fällt. customerId-Match ist Geo-unabhängig
+  (gleicher Empfänger = Bündel-Kandidat, egal wie weit).
+- **Pool bleibt READ-ONLY / "ergänzt".** Der Geo-Match ändert NUR die
+  Sichtbarkeit im Hof — keine Tour-Mutation, kein automatisches
+  Zuordnen. Drag aus dem Hof nutzt weiter dieselben add-Endpoints
+  (POST /tours/:id/add-shipment bzw. POST /nv-touren/:id/stops).
+- **Radien-Defaults { nv: 20, fv: 100 } km leben in der Lib**
+  (NV_RADIUS_KM_DEFAULT / FV_RADIUS_KM_DEFAULT in poolShipments.lib),
+  Override via `PoolOpts.radiusKm` — sichtbar und testbar statt
+  Magic-Number im Endpoint.
+- **≥2-Schwelle für Customer-Cluster (C4)**: Eine einzelne Sendung
+  eines Kunden ist kein "Bündel" — sie fällt in den Geo-Cluster.
+  Erst ab 2 Sendungen desselben Empfängers entsteht ein eigener
+  Customer-Cluster mit Kundennamen-Header.
+- **haversineKm kanonisch in lib/geo.lib** (drift-checked aus
+  scheduler.lib extrahiert). Die 5 Rest-Kopien (nv-touren.service,
+  costs.service, tourMatcher.lib, nv-subunternehmer.service,
+  subcontractors.service) sind BEWUSST stehen gelassen —
+  Konsolidierung ist eigener Sprint, weil jede Stelle eigenen Smoke
+  braucht.
+- **SQL-Strategie Radius**: Bounding-Box-OR-Klauseln pro Tour-Anker
+  als grobe DB-Vorauswahl, Haversine-Refine im Post-Filter (BBox-Ecken
+  raus). Hält die Query indexierbar und die Distanz exakt.
+
 ## Beladeplan-Darstellung — warum so
 - **Float raus, Popout + Embedded rein**: Carlos will den Beladeplan direkt im
   Dock-Panel bearbeiten (embedded) ODER in eigenem Fenster (Popout) — NICHT als

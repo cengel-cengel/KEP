@@ -11,25 +11,34 @@ Mehrere Pushes wurden ohne Smoke gestapelt. Reihenfolge nach Risiko:
    Sendung (verschiedene Klone), Übernehmen, Reload. Erwartung: jeder
    Klon behält seine eigene Position; Hof-Pool aktualisiert nach POST/
    DELETE; Sandbox-Badge leer nach Übernehmen.
-2. **Insert-Cascade FV + NV** (riskantester Smoke-Punkt): in einer Tour `i` ->
+2. **SATTEL-Fix visuell (C1)**: FV-Tour ohne fahrzeug_typ/sub (z.B.
+   2d1976a6) öffnen → Achslast + Cost rechnen jetzt mit SATTEL
+   (13.6 ldm/24 t) statt Koffer 7t; kein "Unbekannter Vehicle-Typ"-
+   Badge mehr.
+3. **Hof-Cluster (C4)**: NV-Hof zeigt Customer-Cluster (Kundenname-
+   Header, ≥2 Sdg) + Geo-Cluster mit "≤ X km"-Suffix, sortiert nach
+   Distanz; FV-Hof Depot-Cluster + neue Empfänger/PLZ-Bündel. Drag
+   aus geclustertem Slot funktioniert unverändert.
+4. **Insert-Cascade FV + NV** (riskantester Smoke-Punkt): in einer Tour `i` ->
    Sendung zwischen zwei andere ziehen -> rücken die anderen sauber nach,
    konsistent nach Reload? PATCH-Loop darf nicht halb hängenbleiben.
    (Unit-Coverage seit 6ef777c (FV) + a85a95d (NV) vorhanden; echtes R3F-
    Drag noch ungesmoked. NV-Insert ist seit Stufe 1 Direct — Sandbox-
    Schutz nur in der Vollansicht.)
-3. **Embedded-Drag FV + NV**: Position bleibt nach Reload. Insbesondere
+5. **Embedded-Drag FV + NV**: Position bleibt nach Reload. Insbesondere
    FV-Klon q>=1 (war 404-Bug vor H5a — jetzt PATCH paletteIndex>=1).
-4. **Repack-Optimal + Reset (NV + FV embedded)**: Stufe 1, neu —
+6. **Repack-Optimal + Reset (NV + FV embedded)**: Stufe 1, neu —
    "🔄 Optimal" und "↺ Reset" im Panel-Header. FV via BE-Endpoints,
    NV via FE-Per-Item-PATCH-Loop. Smoke: Klick → confirm → Positionen
    neu / null.
-5. **Live-Auslastung im Header** (Stufe 1): Header zeigt LDM/kg/Vol-%,
+7. **Live-Auslastung im Header** (Stufe 1): Header zeigt LDM/kg/Vol-%,
    reagiert auf Insert/Remove. Visuell prüfen.
-6. **Hof-Latenz**: lädt der gefilterte Pool leicht (gemessen 0–105 Items/Pool).
-7. **Popout-3D + Maximize**: 3D füllt Fenster, **verzerrt-frei** (Würfel bleiben
+8. **Hof-Latenz**: Geo-Match-Query (BBox-OR) — live gemessen warm
+   ~0.2 s bei 161 Radius + 100 Customer-Matches; unter Last beobachten.
+9. **Popout-3D + Maximize**: 3D füllt Fenster, **verzerrt-frei** (Würfel bleiben
    Würfel); Tab-Wechsel + zurück rendert mit aktueller Größe (sonst fehlt ein
    `invalidate()` beim Sichtbarwerden).
-8. Niedriger: ContextMenu-Aktionen, AxleLoadPanel-Anzeige, Float-Entfernung.
+10. Niedriger: ContextMenu-Aktionen, AxleLoadPanel-Anzeige, Float-Entfernung.
 
 ## Smoke-gebunden + irreversibel
 - **Vollansicht-Routen entfernen (D-Finale)**: löscht den funktionierenden
@@ -56,6 +65,12 @@ Mehrere Pushes wurden ohne Smoke gestapelt. Reihenfolge nach Risiko:
   NV-Sandbox-Key `dbItemId|paletteIndex`; Backfill aus Legacy-Spalten
   (ON CONFLICT DO NOTHING). Phase 2 (Fallback raus + alte Spalten
   droppen) jetzt eingerahmt — eigener Sprint.
+- ERLEDIGT (Geo-Hof C1–C4, 89ef4af + c7a921c + 225724b + e55037b +
+  65c1183): SATTEL-Fix via recommendedVehicle-Fallback (Smoke offen);
+  haversineKm in lib/geo; Cluster-Helper; resolvePool Geo-Match
+  (NV customerId > strikt-20km > prefix-Fallback, FV Depot + zip +
+  100 km); distance_km echt; Hof-Cluster-Render (Customer ≥2 Sdg +
+  Geo mit ≤X km). Live-verifiziert: 161 Radius + 100 Customer, 0 Leak.
 - GEKLÄRT, kein Fix: Render-Spike (grey-spike) ist KEINE kaputte Box-Skalierung
   (shipBoxDims clampt alle Pfade), sondern die designte Pack-Cap-Visualisierung
   in YardScene3D (graue Geister-LKW-Wireframes ab Pos. 6/Lane, wenn Pool >600
@@ -85,10 +100,24 @@ Mehrere Pushes wurden ohne Smoke gestapelt. Reihenfolge nach Risiko:
   Sendung wandert auf den Überlauf-Stellplatz, bis die Tour realistisch
   ist. Berührt Hof + Beladeplan + Karte → eigener Sprint mit Smoke je
   Modus (nv-pickup/nv-delivery/fv-sammelgut).
-- **Bug: Vehicle-Typ `SATTEL` unbekannt → 0 kg / kein Cost / Achslast tot**.
-  `resolveVehicleCapacity` fällt auf 0 zurück, alle abhängigen Metriken
-  (Cost-Engine, AxleLoadPanel) brechen still. Reparatur: SATTEL-Bucket in
-  `lib/vehicleTypes.ts` + Stammdaten-Defaults + Test.
+- ERLEDIGT (C1, 89ef4af — Smoke offen): **SATTEL-0-kg-Bug**. Root-Cause
+  war NICHT fehlender SATTEL-Bucket, sondern resolveVehicleCapacity
+  ignorierte recommendedVehicle (Tour ohne fahrzeug_typ/sub fiel auf
+  Koffer 7t). Fix: recommendedVehicle-Fallback-Parameter, FV-Konsumenten
+  durchgereicht.
+- **NV-recommendedVehicle-Feed**: NV-Endpoints (/nv-touren/:id/loading
+  + Tour-Detail) exposieren heute KEIN recommendedVehicle — die 4
+  NV-Aufrufstellen von resolveVehicleCapacity passen null durch.
+  BE-seitig recommendVehicle für NV exposieren, dann FE durchreichen
+  (Cascade ist seit C1 bereit).
+- **haversine-Konsolidierung**: 5 Rest-Kopien auf lib/geo.lib ziehen
+  (nv-touren.service, costs.service, tourMatcher.lib,
+  nv-subunternehmer.service, subcontractors.service). Jede Stelle
+  braucht eigenen Smoke — bewusst aus C2 ausgeklammert.
+- **Karten-Reopt + Auto-Overflow**: Karten-Punkt → Tour → über
+  Kapazität → "am wenigsten optimale" Sendung (risk_score/detour_km)
+  auf den Überlauf-Stellplatz. Geknüpft an Sprint G / OSRM-Selfhost
+  (ehrliche Reopt-Loops brauchen selbst-bestimmtes OSRM).
 - **Sprint G (3D-LIFO→Reorder)** + **OSRM-Selfhost**: G ist an externem
   OSRM geparkt — externer Endpoint flaky und nicht selbst-bestimmbar.
   Selfhost-Plan: **Oracle Cloud Always-Free**, Region Frankfurt

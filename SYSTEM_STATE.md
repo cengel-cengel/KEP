@@ -84,20 +84,63 @@ konnten nicht vorn/hinten verteilt werden. Sprint H hebt das auf:
 `positions[]`) — Hof-Render auf H4-Adapter ziehen ist Backlog.
 Per-Klon-Reset + Per-Palette-Insert-Cascade ebenfalls Backlog.
 
-## Hof-Pool-Filter (tour-gebunden, NICHT 20-km-Radius)
-Lib `tms-backend/src/lib/poolShipments.lib.ts` -> `resolvePool(prisma,tourId,mode)`.
+## Hof-Pool-Filter (tour-gebunden, seit Sprint C mit Geo-Match)
+Lib `tms-backend/src/lib/poolShipments.lib.ts` -> `resolvePool(prisma,tourId,mode,opts)`.
 Endpoints `/nv-touren/:id/pool-shipments?mode=` + `/tours/:id/pool-shipments?mode=`
 (mode REQUIRED, sonst 400). Modi:
-- `nv-pickup`: status=new, Anchor = Abhol-PLZ 3-stellig der PICKUP-Stops.
-- `nv-delivery`: status=in_warehouse, Anchor = Zustell-PLZ 3-stellig der DELIVERY-Stops.
-- `fv-sammelgut`: status=in_warehouse, transport_type=SAMMELGUT, **exakter
-  Depot-Match** (relation.network_partner_id IN Tour-Depots, KEINE PLZ).
+- `nv-pickup`: status=new, Anchor = loading_address der PICKUP-Stops.
+- `nv-delivery`: status=in_warehouse, Anchor = delivery_address der DELIVERY-Stops.
+- `fv-sammelgut`: status=in_warehouse, transport_type=SAMMELGUT, Anchor =
+  Tour-Depots (relation.network_partner_id) + delivery_address der Tour-Sendungen.
 Shared `POOL_ITEM_SELECT` + `mapShipmentToPoolItem` -> Shape-Paritaet mit /nearby
-strukturell garantiert.
+strukturell garantiert. Match-Regel pro Modus: siehe Geo-Hof-Pool-Section unten.
+
+## Geo-Hof-Pool (Sprint C1–C4)
+Carlos-Definition: der Hof poolt **geografische Bündel** = gleicher
+Empfänger ODER gleiche Zustell-PLZ ODER Umkreis. Umgesetzt:
+
+- **SATTEL-Fix (C1)**: `resolveVehicleCapacity` (lib/vehicleTypes.ts)
+  hat einen `recommendedVehicle`-Fallback-Parameter — Prio
+  `sub > tonnen > canonical-dims > recommended > default`. Löst den
+  Bug, dass FV-Touren ohne fahrzeug_typ/sub still auf Koffer 7t fielen
+  obwohl der Optimizer SATTEL empfahl (Cost/Achslast falsch). Alle
+  4 FV-Konsumenten (LoadingPlanPage, FvBody, YardPanel-FV,
+  FvSwapOptimizerModal) reichen `recommendedVehicle` durch; NV-Pfade
+  passen `null` durch (NV-Endpoint expose recommendedVehicle nicht —
+  NV-Feed ist Backlog).
+- **Geo-Helpers (C2)**: `haversineKm` kanonisch in `lib/geo.lib.ts`
+  (aus scheduler.lib extrahiert, drift-checked); `POOL_ITEM_SELECT`
+  +`customer_id`; Cluster-Helper `clusterByCustomerId` / `clusterByZip`
+  / `clusterByRadius` (pure, null/0-0/NaN-safe, immutable).
+- **Pool-Match (C3 + C3b)**: Match = bestehende Mode-Regel OR
+  customerId OR Geo.
+  · **NV**: customerId-Match ODER strikt Haversine ≤ 20 km
+    (Default `NV_RADIUS_KM_DEFAULT`); `prefix3` ist NUR noch Fallback
+    wenn Sendung ODER Anker keine lat/lng haben — bei vorhandener Geo
+    dominiert die echte Distanz (PLZ-Match wird ignoriert).
+  · **FV**: Depot-Match (bestehend) OR customerId OR zip-Prefix
+    (delivery, NEU) OR Haversine ≤ 100 km (`FV_RADIUS_KM_DEFAULT`,
+    delivery-Anker).
+  · `distance_km` = echte min-Haversine-Distanz zum nächsten Tour-
+    Anker (vorher Default 0). SQL: Bounding-Box-Vor-Filter pro Anker,
+    Haversine-Refine im Post-Filter. Override via `PoolOpts.radiusKm`.
+  · READ-ONLY: keine Tour-Mutation; Drag nutzt weiter dieselben
+    add-Endpoints.
+- **Hof-Cluster-Render (C4)**: YardPanel gruppiert die Pool-Liste:
+  Customer-Cluster (customer_id mit ≥2 Sdg → Kundenname als Header)
+  vor Geo-Clustern (NV plzPrefix / FV Depot/Relation/Empfangs-PLZ);
+  Sortierung nach min-Distanz; Slot-Label mit `≤ X km`-Suffix wenn
+  Radius-gematcht. Render-only — Slots/Cards/Drag unverändert.
+
+**Live-verifiziert**: NV-pickup liefert 161 Radius- + 100 Customer-
+Matches, 0 Leak; Pool-Latenz warm ~0.2 s.
 
 ## Status / offen
-Aktueller Arc (Hof-Filter + Beladeplan-Darstellung + Sprint H Per-Palette-
-Persistenz inkl. H6-Backfill) ist **gebaut + gepusht**, aber teilweise
-noch **nicht gesmoked** (NV-Sandbox per-Palette H5b live ungesmoked).
+Aktueller Arc (Hof-Filter + Beladeplan-Darstellung + Sprint H Per-
+Palette-Persistenz inkl. H6-Backfill + Sprint Geo-Hof C1–C4) ist
+**gebaut + gepusht**, aber teilweise noch **nicht gesmoked**:
+- NV-Sandbox per-Palette (H5b) live ungesmoked
+- SATTEL-Fix (C1) visuell ungesmoked (Achslast/Cost auf Sattel-Tour)
+- Hof-Cluster (C4) visuell ungesmoked
 Smoke-Schwerpunkte + Backlog: siehe BACKLOG.md. Entscheidungen + Warum:
 DECISIONS.md.

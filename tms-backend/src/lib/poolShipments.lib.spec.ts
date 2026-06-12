@@ -130,6 +130,18 @@ describe('poolShipments.lib — mapShipmentToPoolItem (Shape-Parity)', () => {
         weight_kg: 50,
         quantity: 2,
         stackable: true,
+        // U1: positions[] aus buildPositionsArray-Fallback (kein
+        // positions-Rows + keine legacy pos_* im Fixture → 1
+        // virtueller pIdx=0-Eintrag mit null-Werten).
+        positions: [
+          {
+            paletteIndex: 0,
+            posXCm: null,
+            posYCm: null,
+            posZCm: null,
+            rotationDeg: 0,
+          },
+        ],
       },
     ]);
   });
@@ -1442,5 +1454,123 @@ describe('C3b NV resolvePool — echter Haversine-Radius + distance_km', () => {
     expect(out.map((x) => x.id)).toEqual(['s-d']);
     expect(out[0].distance_km).toBeGreaterThan(0);
     expect(out[0].distance_km).toBeLessThan(20);
+  });
+});
+
+// ─── U1 (Sprint Hof-per-Palette): positions[] im Pool-Shape ─────
+
+describe('U1 mapShipmentToPoolItem — positions[] per package_item', () => {
+  function rowWith(itemOverride: Record<string, any>) {
+    return makeShipmentRow({
+      shipment_package_items: [
+        {
+          id: 'pi1',
+          length_cm: 120,
+          width_cm: 80,
+          height_cm: 100,
+          weight_kg: 50,
+          quantity: 3,
+          stackable: true,
+          // Defaults — Tests setzen pos_*/positions konkret
+          pos_x_cm: null,
+          pos_y_cm: null,
+          pos_z_cm: null,
+          rotation_deg: 0,
+          ...itemOverride,
+        },
+      ],
+    });
+  }
+
+  it('positions[] aus DB-Rows durchgereicht + sortiert nach paletteIndex', () => {
+    const row = rowWith({
+      positions: [
+        {
+          palette_index: 2,
+          pos_x_cm: 300,
+          pos_y_cm: 400,
+          pos_z_cm: 0,
+          rotation_deg: 90,
+        },
+        {
+          palette_index: 0,
+          pos_x_cm: 100,
+          pos_y_cm: 200,
+          pos_z_cm: 0,
+          rotation_deg: 0,
+        },
+        {
+          palette_index: 1,
+          pos_x_cm: 200,
+          pos_y_cm: 300,
+          pos_z_cm: 0,
+          rotation_deg: 0,
+        },
+      ],
+    });
+    const out = mapShipmentToPoolItem(row, { anchor: 'loading' });
+    expect(out.package_items[0].positions).toEqual([
+      { paletteIndex: 0, posXCm: 100, posYCm: 200, posZCm: 0, rotationDeg: 0 },
+      { paletteIndex: 1, posXCm: 200, posYCm: 300, posZCm: 0, rotationDeg: 0 },
+      { paletteIndex: 2, posXCm: 300, posYCm: 400, posZCm: 0, rotationDeg: 90 },
+    ]);
+  });
+
+  it('OHNE positions-Rows: Fallback auf 1x pIdx=0 aus Legacy pos_*', () => {
+    const row = rowWith({
+      pos_x_cm: 555,
+      pos_y_cm: 666,
+      pos_z_cm: 0,
+      rotation_deg: 45,
+      // positions FEHLT
+    });
+    const out = mapShipmentToPoolItem(row, { anchor: 'loading' });
+    expect(out.package_items[0].positions).toEqual([
+      {
+        paletteIndex: 0,
+        posXCm: 555,
+        posYCm: 666,
+        posZCm: 0,
+        rotationDeg: 45,
+      },
+    ]);
+  });
+
+  it('Leere positions-Rows + KEINE Legacy: pIdx=0 mit null-Werten', () => {
+    const row = rowWith({
+      positions: [],
+    });
+    const out = mapShipmentToPoolItem(row, { anchor: 'loading' });
+    expect(out.package_items[0].positions).toEqual([
+      {
+        paletteIndex: 0,
+        posXCm: null,
+        posYCm: null,
+        posZCm: null,
+        rotationDeg: 0,
+      },
+    ]);
+  });
+
+  it('Decimal aus Prisma wird zu number normalisiert', () => {
+    const row = rowWith({
+      positions: [
+        {
+          palette_index: 0,
+          pos_x_cm: '123.0' as any,
+          pos_y_cm: '456.0' as any,
+          pos_z_cm: '0' as any,
+          rotation_deg: '90' as any,
+        },
+      ],
+    });
+    const out = mapShipmentToPoolItem(row, { anchor: 'loading' });
+    expect(out.package_items[0].positions[0]).toEqual({
+      paletteIndex: 0,
+      posXCm: 123,
+      posYCm: 456,
+      posZCm: 0,
+      rotationDeg: 90,
+    });
   });
 });

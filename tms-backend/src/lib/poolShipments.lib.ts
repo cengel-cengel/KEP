@@ -42,6 +42,7 @@
  */
 
 import { haversineKm } from './geo.lib';
+import { buildPositionsArray } from './packageItemPositions.lib';
 
 export type PoolMode = 'nv-pickup' | 'nv-delivery' | 'fv-sammelgut';
 
@@ -98,6 +99,17 @@ export interface ShipmentPoolItem {
     weight_kg: number | null;
     quantity: number | null;
     stackable: boolean;
+    /** U1 (Sprint Hof-per-Palette): per-Palette-Positionen vom BE
+     *  (camelCase, sortiert nach paletteIndex). Identische Shape wie
+     *  in loading.service/getLoadingDetail. Mindestens 1 Eintrag
+     *  (pIdx=0) — Fallback aus Legacy via buildPositionsArray. */
+    positions: Array<{
+      paletteIndex: number;
+      posXCm: number | null;
+      posYCm: number | null;
+      posZCm: number | null;
+      rotationDeg: number;
+    }>;
   }>;
   // FV-only (in NV-Modi null/undefined). Im NV-pool sind die
   // Felder als null gesetzt, damit das Type stabil bleibt.
@@ -179,6 +191,24 @@ export const POOL_ITEM_SELECT = {
       weight_kg: true,
       quantity: true,
       stackable: true,
+      // U1 (Sprint Hof-per-Palette): Legacy-pos_*-Felder werden vom
+      // Mapper an buildPositionsArray durchgereicht, wenn die
+      // positions-Relation leer ist (Fallback pIdx=0). Selbe Include-
+      // Form wie loading.service/TOUR_INCLUDE.
+      pos_x_cm: true,
+      pos_y_cm: true,
+      pos_z_cm: true,
+      rotation_deg: true,
+      positions: {
+        orderBy: { palette_index: 'asc' as const },
+        select: {
+          palette_index: true,
+          pos_x_cm: true,
+          pos_y_cm: true,
+          pos_z_cm: true,
+          rotation_deg: true,
+        },
+      },
     },
   },
 } as const;
@@ -233,6 +263,14 @@ export function mapShipmentToPoolItem(
       weight_kg: it.weight_kg != null ? Number(it.weight_kg) : null,
       quantity: it.quantity ?? null,
       stackable: it.stackable,
+      // U1: per-Palette-Positionen via SHARED H2-Lib (gleiches Mapping
+      // wie loading.service/getLoadingDetail). Mindestens 1 Eintrag.
+      positions: buildPositionsArray(it.positions, {
+        pos_x_cm: it.pos_x_cm ?? null,
+        pos_y_cm: it.pos_y_cm ?? null,
+        pos_z_cm: it.pos_z_cm ?? null,
+        rotation_deg: Number(it.rotation_deg ?? 0),
+      }),
     })),
     transport_type: opts.withFvFields ? (c.transport_type ?? null) : null,
     delivery_zip: opts.withFvFields ? (delivery?.zip ?? null) : null,
